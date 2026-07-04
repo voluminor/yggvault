@@ -1,3 +1,9 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/voluminor/yggvault)](https://goreportcard.com/report/github.com/voluminor/yggvault)
+
+![GitHub repo file or directory count](https://img.shields.io/github/directory-file-count/voluminor/yggvault?color=orange)
+![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/voluminor/yggvault?color=green)
+![GitHub repo size](https://img.shields.io/github/repo-size/voluminor/yggvault)
+
 # yggvault
 
 Canonical repository: [github.com/voluminor/yggvault](https://github.com/voluminor/yggvault).
