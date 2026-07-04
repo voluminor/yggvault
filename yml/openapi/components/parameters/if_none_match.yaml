@@ -1,0 +1,8 @@
+name: If-None-Match
+in: header
+required: false
+description: >-
+  Client ETag validator. If one supplied tag matches the current resource ETag,
+  the server returns `304 Not Modified` without a response body.
+schema:
+  type: string

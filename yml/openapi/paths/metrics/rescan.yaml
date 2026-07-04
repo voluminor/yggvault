@@ -1,0 +1,34 @@
+get:
+  tags: [ service ]
+  operationId: getMetricsRescan
+  x-func: GetMetricsRescan
+  summary: Rescan and upstream-source metrics
+  description: >-
+    JSON snapshot of the rescan integrator: cycle, publish, and unavailability
+    totals, mean cycle duration, and the last completed rescan timestamp. Served
+    only when public metrics are enabled for the current entry (`metrics.web.public`
+    or `metrics.ygg.public`); otherwise the endpoint returns 404.
+  responses:
+    '200':
+      description: Rescan metrics.
+      headers:
+        Cache-Control:
+          description: No-cache policy for live metrics.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: schemas/metrics_rescan
+    '400':
+      $ref: responses/default_error
+    '404':
+      $ref: responses/default_error
+    '405':
+      $ref: responses/default_error
+    '414':
+      $ref: responses/default_error
+    '431':
+      $ref: responses/default_error
+    '500':
+      $ref: responses/default_error

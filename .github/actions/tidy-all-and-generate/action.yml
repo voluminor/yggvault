@@ -1,0 +1,61 @@
+name: 'Initialization of all packages'
+description: 'Install generator tools, tidy modules, and generate files'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🔧 Install generator tools (install-if-missing)
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+        gobin="$(go env GOPATH)/bin"
+
+        # ogen is pinned in go.mod because goopenapigen shells out to the `ogen`
+        # binary (PATH -> ~/go/bin -> GOPATH/bin), not via `go run`. The generated
+        # ogen code must match that version, so it is not @latest.
+        ogen_ver=$(awk '$1=="github.com/ogen-go/ogen"{print $2}' go.mod)
+        [ -n "$ogen_ver" ] || { echo "ogen version not found in go.mod" >&2; exit 1; }
+
+        # bin|module@version — install only if the binary is not already resolvable.
+        tools=(
+          "ogen|github.com/ogen-go/ogen/cmd/ogen@${ogen_ver}"
+          "gometagen|github.com/amazing-generators/gometagen/cmd/gometagen@latest"
+          "goconfgen|github.com/amazing-generators/goconfgen/cmd/goconfgen@latest"
+          "godepsgen|github.com/amazing-generators/godepsgen/cmd/godepsgen@latest"
+          "goopenapigen|github.com/amazing-generators/goopenapigen/cmd/goopenapigen@latest"
+        )
+        for entry in "${tools[@]}"; do
+          bin="${entry%%|*}"; mod="${entry#*|}"
+          if command -v "$bin" >/dev/null 2>&1 || [ -x "${gobin}/${bin}" ]; then
+            echo "✔ ${bin} already present"
+          else
+            echo "→ installing ${bin} (${mod})"
+            go install "${mod}"
+          fi
+        done
+
+    - name: 🛠️ generate bootstrap
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+        mkdir -p target tmp
+        go generate .
+
+    - name: 📥 go mod tidy-all
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+        go work sync
+        go list -m -f '{{if .Main}}{{.Dir}}{{end}}' all | while read -r dir; do
+          [ -n "$dir" ] || continue
+          case "$dir" in */_generate/*) continue;; esac
+          echo "  -> $dir"
+          go -C "$dir" mod tidy
+        done
+
+    - name: 🛠️ go generate
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+        mkdir -p target tmp
+        go generate .

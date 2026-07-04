@@ -1,0 +1,17 @@
+type: object
+required: [ version, time, size ]
+properties:
+  version:
+    type: string
+    description: Version label.
+  time:
+    type: string
+    format: date-time
+    description: "Release timestamp from upstream metadata."
+  size:
+    type: integer
+    format: int64
+    description: Total source content size in bytes.
+  url:
+    type: string
+    description: "Path to the version detail document, normally `<version>.json`."

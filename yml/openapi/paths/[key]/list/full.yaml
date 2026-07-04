@@ -1,0 +1,45 @@
+get:
+  tags: [ mirror ]
+  operationId: getMirrorListFull
+  x-func: GetMirrorListFull
+  summary: Mirrored version list with tree hash and source size
+  description: >-
+    Returns all indexed versions for a mirrored key as a newest-first JSON array
+    body. The current handler serves this JSON body as `text/plain`; clients
+    should parse the body content instead of relying on an `application/json`
+    media type.
+  parameters:
+    - $ref: parameters/key
+    - $ref: parameters/if_none_match
+  responses:
+    '200':
+      description: Newest-first JSON array of version records with integrity metadata.
+      headers:
+        ETag:
+          description: Strong cache validator for the generated response body.
+          schema:
+            type: string
+        Cache-Control:
+          description: Cache policy for generated metadata.
+          schema:
+            type: string
+      content:
+        text/plain:
+          schema:
+            type: string
+    '304':
+      $ref: responses/not_modified
+    '400':
+      $ref: responses/default_error
+    '404':
+      $ref: responses/default_error
+    '405':
+      $ref: responses/default_error
+    '414':
+      $ref: responses/default_error
+    '429':
+      $ref: responses/default_error
+    '431':
+      $ref: responses/default_error
+    '500':
+      $ref: responses/default_error

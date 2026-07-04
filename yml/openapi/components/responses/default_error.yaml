@@ -1,0 +1,7 @@
+description: >-
+  Standard JSON error envelope used by request gates, validation failures,
+  missing resources, and internal failures.
+content:
+  application/json:
+    schema:
+      $ref: schemas/default_error

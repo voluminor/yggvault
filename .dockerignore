@@ -1,0 +1,9 @@
+# Docker build context excludes — keep the context small and never ship scratch/IDE state.
+# The vault image COPYs the project source + generated target/ and builds INSIDE the container,
+# so the host go.mod/go.sum are never written by a build.
+.git/
+.idea/
+tmp/
+logs/
+*.log
+*.md

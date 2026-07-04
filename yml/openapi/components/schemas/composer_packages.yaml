@@ -1,0 +1,22 @@
+type: object
+required: [ metadata-url ]
+additionalProperties: true
+properties:
+  metadata-url:
+    type: string
+    description: Composer v2 package metadata URL template, for example `/p2/%package%.json`.
+  available-packages:
+    type: array
+    items:
+      type: string
+    description: Complete prebuilt list of package names currently available from this node.
+  list:
+    type: string
+    description: Package-list endpoint, for example `/packages/list.json`.
+  packages:
+    type: object
+    description: Inline package map. It is normally empty because yggvault uses Composer v2 lazy metadata.
+    additionalProperties:
+      type: object
+      additionalProperties:
+        $ref: schemas/composer_package_version

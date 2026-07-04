@@ -1,0 +1,45 @@
+type: object
+required: [ name, version, dist ]
+additionalProperties: true
+properties:
+  name:
+    type: string
+    description: Composer package name in `vendor/name` form.
+  version:
+    type: string
+    description: Composer version string exposed to clients.
+  version_normalized:
+    type: string
+    description: Composer-normalized version, when available from the upstream package metadata.
+  type:
+    type: string
+    description: Composer package type copied from upstream metadata when present.
+  time:
+    type: string
+    format: date-time
+    description: Release timestamp used by Composer clients.
+  source:
+    type: object
+    description: Upstream Composer source object, preserved when present.
+    additionalProperties: true
+  dist:
+    $ref: schemas/composer_dist
+  require:
+    type: object
+    description: Runtime dependency constraints copied from upstream `composer.json`.
+    additionalProperties:
+      type: string
+  require-dev:
+    type: object
+    description: Development dependency constraints copied from upstream `composer.json`.
+    additionalProperties:
+      type: string
+  autoload:
+    type: object
+    description: Composer autoload section copied from upstream metadata.
+    additionalProperties: true
+  license:
+    type: array
+    description: License identifiers copied from upstream metadata, when present.
+    items:
+      type: string

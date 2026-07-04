@@ -1,0 +1,4 @@
+# build artifacts (the verifier builds in its own /work; in-place builds shouldn't be committed)
+/vaultimportcheck
+/app
+/go.sum

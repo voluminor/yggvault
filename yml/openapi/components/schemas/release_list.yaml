@@ -1,0 +1,16 @@
+type: object
+required: [ key, source, releases ]
+properties:
+  key:
+    type: string
+    description: Registry key for this page.
+  source:
+    $ref: schemas/source_status
+  releases:
+    type: array
+    description: Page of release summaries ordered newest first.
+    items:
+      $ref: schemas/release_summary
+  next:
+    type: string
+    description: Opaque keyset cursor for the next page. Omitted on the last page.

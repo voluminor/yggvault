@@ -1,0 +1,8 @@
+/target/
+/tmp/
+/.idea/
+*.bin
+*.exe
+.env
+go.sum
+/go.work.sum

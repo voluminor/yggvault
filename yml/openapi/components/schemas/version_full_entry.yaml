@@ -1,0 +1,13 @@
+type: object
+required: [ version, hash, size ]
+properties:
+  version:
+    type: string
+    description: Version label.
+  hash:
+    type: string
+    description: "BLAKE3-24 XOF digest of the canonical version tree, encoded as 48 lowercase hex characters."
+  size:
+    type: integer
+    format: int64
+    description: "Total source content size in bytes."

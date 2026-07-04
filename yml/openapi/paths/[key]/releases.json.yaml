@@ -1,0 +1,51 @@
+get:
+  tags: [ mirror ]
+  operationId: getKeyReleases
+  x-func: GetKeyReleases
+  summary: Paginated release list for one key
+  description: >-
+    Lightweight release snapshot for one key. Each item contains version, time,
+    size, and a link to the detail document; release notes and artifact lists
+    are intentionally omitted. Pagination uses keyset cursors:
+    `?after=<next-from-previous-response>`. The `next` field is omitted on the
+    last page. Clients should treat both `application/json` and `text/plain`
+    variants as the same JSON document.
+  parameters:
+    - $ref: parameters/key
+    - $ref: parameters/after
+    - $ref: parameters/if_none_match
+  responses:
+    '200':
+      description: Paginated release list.
+      headers:
+        ETag:
+          description: Strong cache validator for the generated response body.
+          schema:
+            type: string
+        Cache-Control:
+          description: Cache policy for generated metadata.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: schemas/release_list
+        text/plain:
+          schema:
+            type: string
+    '304':
+      $ref: responses/not_modified
+    '400':
+      $ref: responses/default_error
+    '404':
+      $ref: responses/default_error
+    '405':
+      $ref: responses/default_error
+    '414':
+      $ref: responses/default_error
+    '429':
+      $ref: responses/default_error
+    '431':
+      $ref: responses/default_error
+    '500':
+      $ref: responses/default_error

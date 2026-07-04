@@ -1,0 +1,32 @@
+description: Partial artifact response produced for a satisfiable byte `Range` request.
+headers:
+  Content-Range:
+    description: Served byte range and total resource size.
+    schema:
+      type: string
+  Accept-Ranges:
+    description: Byte range support marker. The value is `bytes`.
+    schema:
+      type: string
+  ETag:
+    description: Strong cache validator derived from the artifact body digest.
+    schema:
+      type: string
+  Cache-Control:
+    description: Cache policy configured for served data responses.
+    schema:
+      type: string
+  Last-Modified:
+    description: Modification time of the opened hot-cache artifact file.
+    schema:
+      type: string
+  Content-Length:
+    description: Partial body length in bytes. Artifact responses are sent with a fixed length, not chunked transfer.
+    schema:
+      type: integer
+      format: int64
+content:
+  application/octet-stream:
+    schema:
+      type: string
+      format: binary

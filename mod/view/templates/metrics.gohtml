@@ -1,0 +1,641 @@
+{{define "metrics"}}{{template "shell_open" .}}
+<div class="eyebrow">telemetry &middot; {{len .Groups}} group{{if ne (len .Groups) 1}}s{{end}}</div>
+<h1>metrics</h1>
+<p class="note no-js-only">Live view needs JavaScript; the raw endpoints below work without it.</p>
+{{if .Groups}}
+    <div class="cards">
+        {{range .Groups}}
+            <div class="card">
+                <div class="card-head">
+                    <a href="{{.URL}}" target="_blank" rel="noopener">{{.Label}}</a>
+                    <span class="tag">{{.Kind}}</span>
+                    <span class="grow"></span>
+                    <span class="status st-ok"><span class="dot"></span>exposed</span>
+                </div>
+                <p class="card-desc">{{.Detail}}</p>
+            </div>
+        {{end}}
+    </div>
+{{else}}<p class="empty">No metric groups exposed.</p>{{end}}
+
+{{if .HasJSON}}
+    <div class="only-js">
+        <h2>live</h2>
+        <div class="live-meta">
+            <div class="refresh-track" title="next refresh in {{.RefreshText}}" aria-label="next refresh countdown">
+                <span class="refresh-bar" id="refresh-bar"></span>
+            </div>
+            <span class="status st-unknown" id="live-status"><span class="dot"></span><span
+                        id="live-status-text">connecting</span></span>
+        </div>
+        <div id="live-root">
+            {{range .Groups}}{{if eq .Kind "json"}}
+                <section class="live-group" data-url="{{.URL}}" data-group="{{.Label}}">
+                    <h2>{{.Label}}</h2>
+                    <div class="live-body"><p class="note">waiting for data&hellip;</p></div>
+                </section>
+            {{end}}{{end}}
+        </div>
+    </div>
+    <script>(function () {
+            "use strict";
+            var refreshMS = {{.RefreshMS}};
+            var groupArr = document.querySelectorAll(".live-group");
+            var statusBox = document.getElementById("live-status");
+            var statusText = document.getElementById("live-status-text");
+            var refreshTrack = document.querySelector(".refresh-track");
+            var refreshBar = document.getElementById("refresh-bar");
+            var refreshTimer = 0;
+
+            function el(tag, cls, text) {
+                var n = document.createElement(tag);
+                if (cls) n.className = cls;
+                if (text !== undefined) n.textContent = text;
+                return n;
+            }
+
+            var metricMeta = {
+                group_core: {
+                    label: "HTTP core",
+                    desc: "Request volume, request errors, and cumulative server timing."
+                },
+                group_cache: {
+                    label: "Cache and storage",
+                    desc: "RAM metadata cache plus Pebble storage-engine health."
+                },
+                group_errors: {
+                    label: "Diagnostics",
+                    desc: "Active and recent registry diagnostics reported by the server."
+                },
+                group_rescan: {
+                    label: "Source rescan",
+                    desc: "Background source refresh cycles and published versions."
+                },
+                cache: {
+                    label: "RAM metadata cache",
+                    desc: "Small generated metadata payloads and ETag validators kept in RAM."
+                },
+                storage: {
+                    label: "Pebble storage",
+                    desc: "Durable storage-engine size, cache, compaction, and error counters."
+                },
+                requests_total: {
+                    label: "HTTP requests",
+                    desc: "Requests handled since the current process started."
+                },
+                errors_total: {
+                    label: "HTTP errors",
+                    desc: "Requests recorded as errors by server instrumentation."
+                },
+                request_duration_seconds_sum: {
+                    label: "Total request time",
+                    desc: "Cumulative request handling time across timed requests.",
+                    unit: "duration_s"
+                },
+                request_duration_seconds_count: {
+                    label: "Timed requests",
+                    desc: "Requests included in the cumulative request timer."
+                },
+                error_rate: {
+                    label: "HTTP error rate",
+                    desc: "Share of handled requests recorded as errors.",
+                    unit: "percent"
+                },
+                avg_request_seconds: {
+                    label: "Average request time",
+                    desc: "Total request time divided by timed requests.",
+                    unit: "duration_s"
+                },
+                hits: {
+                    label: "Cache hits",
+                    desc: "Metadata requests served directly from RAM cache."
+                },
+                misses: {
+                    label: "Cache misses",
+                    desc: "Metadata lookups that had to be built or loaded."
+                },
+                materializations: {
+                    label: "Cache builds",
+                    desc: "Metadata payloads built after a cache miss."
+                },
+                materializations_aborted: {
+                    label: "Aborted cache builds",
+                    desc: "Metadata builds stopped by the defensive build timeout."
+                },
+                evictions: {
+                    label: "Cache evictions",
+                    desc: "Entries removed from RAM cache to stay within the byte budget."
+                },
+                singleflight_shared: {
+                    label: "Shared in-flight builds",
+                    desc: "Concurrent callers that reused one build for the same key."
+                },
+                entries: {
+                    label: "Cached entries",
+                    desc: "Current number of metadata payloads kept in RAM."
+                },
+                bytes: {
+                    label: "RAM cache size",
+                    desc: "Current RAM used by cached metadata payloads and validators.",
+                    unit: "bytes"
+                },
+                cache_hit_rate: {
+                    label: "Cache hit rate",
+                    desc: "RAM cache hits divided by hits plus misses.",
+                    unit: "percent"
+                },
+                live_bytes: {
+                    label: "Pebble live data",
+                    desc: "Bytes that belong to live key-value data in durable storage.",
+                    unit: "bytes"
+                },
+                obsolete_bytes: {
+                    label: "Obsolete data",
+                    desc: "Storage bytes superseded by newer data and waiting for cleanup.",
+                    unit: "bytes"
+                },
+                zombie_bytes: {
+                    label: "Zombie data",
+                    desc: "Storage bytes held by old files that are no longer live."
+                },
+                wal_bytes: {
+                    label: "Write-ahead log",
+                    desc: "Durable WAL bytes retained by Pebble.",
+                    unit: "bytes"
+                },
+                memtable_bytes: {
+                    label: "Memtable",
+                    desc: "Current write-side memory reserved by Pebble.",
+                    unit: "bytes"
+                },
+                compaction_debt_bytes: {
+                    label: "Compaction debt",
+                    desc: "Estimated bytes Pebble still needs to compact.",
+                    unit: "bytes"
+                },
+                compaction_inprogress_bytes: {
+                    label: "Compacting now",
+                    desc: "Bytes currently being processed by active compactions.",
+                    unit: "bytes"
+                },
+                compactions: {
+                    label: "Compactions",
+                    desc: "Completed Pebble compaction jobs since process start."
+                },
+                flushes: {
+                    label: "Flushes",
+                    desc: "Completed memtable flushes since process start."
+                },
+                block_cache_hits: {
+                    label: "Block cache hits",
+                    desc: "Pebble block reads served from its decompressed block cache."
+                },
+                block_cache_misses: {
+                    label: "Block cache misses",
+                    desc: "Pebble block reads that had to go below the block cache."
+                },
+                block_cache_hit_rate: {
+                    label: "Block cache hit rate",
+                    desc: "Pebble block cache hits divided by block cache lookups.",
+                    unit: "percent"
+                },
+                write_stalls: {
+                    label: "Write stalls",
+                    desc: "Times Pebble throttled writes to let storage catch up."
+                },
+                background_errors: {
+                    label: "Background errors",
+                    desc: "Storage-engine errors raised by background work."
+                },
+                data_corruptions: {
+                    label: "Data corruptions",
+                    desc: "Corruption events reported by the storage engine."
+                },
+                disk_slow: {
+                    label: "Slow disk events",
+                    desc: "Storage events where disk access was reported as slow."
+                },
+                possible_api_misuse: {
+                    label: "Possible API misuse",
+                    desc: "Pebble warnings that suggest incorrect storage API usage."
+                },
+                flush_duration_nanos: {
+                    label: "Total flush time",
+                    desc: "Cumulative time spent flushing memtables.",
+                    unit: "nanos"
+                },
+                compaction_duration_nanos: {
+                    label: "Total compaction time",
+                    desc: "Cumulative time spent compacting Pebble data.",
+                    unit: "nanos"
+                },
+                avg_flush_time_nanos: {
+                    label: "Average flush time",
+                    desc: "Total flush time divided by completed flushes.",
+                    unit: "nanos"
+                },
+                avg_compaction_time_nanos: {
+                    label: "Average compaction time",
+                    desc: "Total compaction time divided by completed compactions.",
+                    unit: "nanos"
+                },
+                hot_enforce_walks: {
+                    label: "Hot-cache cleanup walks",
+                    desc: "Passes over the regenerable hot-file cache to enforce limits."
+                },
+                hot_enforce_walk_duration_nanos: {
+                    label: "Total hot-cache cleanup time",
+                    desc: "Cumulative time spent enforcing hot-file cache limits.",
+                    unit: "nanos"
+                },
+                avg_hot_walk_time_nanos: {
+                    label: "Average hot-cache cleanup",
+                    desc: "Total hot-cache cleanup time divided by cleanup walks.",
+                    unit: "nanos"
+                },
+                active: {
+                    label: "Active diagnostics",
+                    desc: "Diagnostics currently present in the in-memory registry."
+                },
+                dropped: {
+                    label: "Dropped diagnostics",
+                    desc: "Diagnostics discarded because the recent buffer reached its cap."
+                },
+                recent: {
+                    label: "Recent diagnostics",
+                    desc: "Most recent diagnostics retained for inspection."
+                },
+                code: {
+                    label: "Code",
+                    desc: "Stable diagnostic code."
+                },
+                scope: {
+                    label: "Scope",
+                    desc: "Subsystem that reported the diagnostic."
+                },
+                impact: {
+                    label: "Impact",
+                    desc: "Operational severity of the diagnostic."
+                },
+                reason: {
+                    label: "Reason",
+                    desc: "Machine-readable reason for the diagnostic."
+                },
+                count: {
+                    label: "Count",
+                    desc: "Number of times this diagnostic has been observed."
+                },
+                message: {
+                    label: "Message",
+                    desc: "Human-readable diagnostic detail."
+                },
+                key: {
+                    label: "Key",
+                    desc: "Registry key related to the diagnostic."
+                },
+                version: {
+                    label: "Version",
+                    desc: "Version related to the diagnostic."
+                },
+                cycles_total: {
+                    label: "Rescan cycles",
+                    desc: "Completed background rescan cycles since process start."
+                },
+                versions_published_total: {
+                    label: "Versions published",
+                    desc: "Versions made available by completed rescan cycles."
+                },
+                versions_per_cycle: {
+                    label: "Versions per cycle",
+                    desc: "Published versions divided by completed rescan cycles."
+                },
+                keys_unavailable_total: {
+                    label: "Unavailable keys",
+                    desc: "Source keys that could not be reached during rescan cycles."
+                },
+                cycle_duration_seconds_avg: {
+                    label: "Average cycle time",
+                    desc: "Average duration of completed rescan cycles.",
+                    unit: "duration_s"
+                },
+                last_rescan: {
+                    label: "Last successful rescan",
+                    desc: "UTC time when the last completed rescan cycle started."
+                },
+                last_seen: {
+                    label: "Last seen",
+                    desc: "Most recent time this diagnostic was observed."
+                },
+                first_seen: {
+                    label: "First seen",
+                    desc: "First time this diagnostic entered the registry."
+                }
+            };
+
+            function metaOf(key) {
+                return metricMeta[key] || {};
+            }
+
+            function fmtLabel(key) {
+                return metaOf(key).label || key.replace(/_/g, " ");
+            }
+
+            function fmtDesc(key) {
+                return metaOf(key).desc || "";
+            }
+
+            function fmtUnit(key) {
+                return metaOf(key).unit || "";
+            }
+
+            function fmtBytes(n) {
+                if (n < 1024) return n + " B";
+                var units = ["KiB", "MiB", "GiB", "TiB", "PiB"];
+                var i = -1;
+                do {
+                    n /= 1024;
+                    i++;
+                } while (n >= 1024 && i < units.length - 1);
+                return n.toFixed(1) + " " + units[i];
+            }
+
+            function fmtNanos(n) {
+                if (n < 1e6) return Math.round(n / 1e3) + " µs";
+                if (n < 1e9) return (n / 1e6).toFixed(1) + " ms";
+                return (n / 1e9).toFixed(1) + " s";
+            }
+
+            function fmtSeconds(n) {
+                if (n < 1) return (n * 1000).toFixed(1) + " ms";
+                if (n < 60) return n.toFixed(2) + " s";
+                if (n < 3600) return (n / 60).toFixed(1) + " min";
+                return (n / 3600).toFixed(1) + " h";
+            }
+
+            function fmtPercent(n) {
+                var p = n * 100;
+                if (p === 0) return "0%";
+                if (p < 1) return p.toFixed(2) + "%";
+                if (p < 10) return p.toFixed(1) + "%";
+                return p.toFixed(0) + "%";
+            }
+
+            function relTime(text) {
+                var t = Date.parse(text);
+                if (isNaN(t)) return null;
+                var s = Math.round((Date.now() - t) / 1000);
+                if (s < 0) s = 0;
+                if (s < 60) return s + "s ago";
+                if (s < 3600) return Math.round(s / 60) + "m ago";
+                if (s < 172800) return Math.round(s / 3600) + "h ago";
+                return Math.round(s / 86400) + "d ago";
+            }
+
+            var isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:/;
+
+            function fmtVal(key, v) {
+                if (typeof v === "number") {
+                    var unit = fmtUnit(key);
+                    if (unit === "percent") return fmtPercent(v);
+                    if (unit === "duration_s") return fmtSeconds(v);
+                    if (unit === "bytes" || /bytes$/.test(key)) return fmtBytes(v);
+                    if (unit === "nanos" || /nanos$/.test(key)) return fmtNanos(v);
+                    if (!Number.isInteger(v)) return v.toFixed(3);
+                    return v.toLocaleString("en-US");
+                }
+                if (v === null || v === undefined) return "—";
+                if (typeof v === "string" && isoRe.test(v)) {
+                    var rel = relTime(v);
+                    if (rel !== null) return rel;
+                }
+                return String(v);
+            }
+
+            function labelBlock(key, cls) {
+                var wrap = el("span", cls || "metric-label-block");
+                wrap.appendChild(el("span", "metric-label", fmtLabel(key)));
+                var desc = fmtDesc(key);
+                if (desc) wrap.appendChild(el("span", "metric-desc", desc));
+                wrap.appendChild(el("code", "metric-key", key));
+                return wrap;
+            }
+
+            function labelCell(key) {
+                var td = el("td", "metric-name");
+                td.appendChild(labelBlock(key, "metric-name-block"));
+                return td;
+            }
+
+            function statCard(key, v) {
+                var box = el("div", "stat");
+                var value = el("span", "v", fmtVal(key, v));
+                if (typeof v === "string" && isoRe.test(v)) value.title = v;
+                var desc = fmtDesc(key);
+                if (desc) box.title = desc + " (" + key + ")";
+                box.appendChild(value);
+                box.appendChild(labelBlock(key, "l"));
+                return box;
+            }
+
+            function kvTable(title, obj) {
+                var frag = document.createDocumentFragment();
+                frag.appendChild(el("div", "live-sub", fmtLabel(title)));
+                var wrap = el("div", "table-wrap");
+                var table = el("table", "dl");
+                var tbody = el("tbody");
+                Object.keys(obj).forEach(function (k) {
+                    var v = obj[k];
+                    if (typeof v === "object" && v !== null) return;
+                    var tr = el("tr");
+                    tr.appendChild(labelCell(k));
+                    var td = el("td", "num", fmtVal(k, v));
+                    tr.appendChild(td);
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+                wrap.appendChild(table);
+                frag.appendChild(wrap);
+                return frag;
+            }
+
+            function rowsTable(title, arr) {
+                var frag = document.createDocumentFragment();
+                frag.appendChild(el("div", "live-sub", fmtLabel(title) + " (" + arr.length + ")"));
+                if (!arr.length) return frag;
+                var seen = {};
+                var cols = [];
+                arr.slice(0, 20).forEach(function (row) {
+                    Object.keys(row).forEach(function (k) {
+                        if (!seen[k]) {
+                            seen[k] = true;
+                            cols.push(k);
+                        }
+                    });
+                });
+                var wrap = el("div", "table-wrap");
+                var table = el("table", "dl");
+                var thead = el("thead");
+                var hr = el("tr");
+                cols.forEach(function (c) {
+                    var th = el("th", "", fmtLabel(c));
+                    var desc = fmtDesc(c);
+                    if (desc) th.title = desc + " (" + c + ")";
+                    hr.appendChild(th);
+                });
+                thead.appendChild(hr);
+                table.appendChild(thead);
+                var tbody = el("tbody");
+                arr.slice(0, 20).forEach(function (row) {
+                    var tr = el("tr");
+                    cols.forEach(function (c) {
+                        tr.appendChild(el("td", "", fmtVal(c, row[c])));
+                    });
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+                wrap.appendChild(table);
+                frag.appendChild(wrap);
+                return frag;
+            }
+
+            function ratio(num, den) {
+                if (typeof num !== "number" || typeof den !== "number" || den <= 0) return null;
+                return num / den;
+            }
+
+            function putNumber(target, key, value) {
+                if (typeof value === "number" && isFinite(value)) target[key] = value;
+            }
+
+            function derivedStats(data) {
+                var out = {};
+                putNumber(out, "error_rate", ratio(data.errors_total, data.requests_total));
+                putNumber(out, "avg_request_seconds", ratio(data.request_duration_seconds_sum, data.request_duration_seconds_count));
+                if (data.cache) {
+                    putNumber(out, "cache_hit_rate", ratio(data.cache.hits, data.cache.hits + data.cache.misses));
+                }
+                if (data.storage) {
+                    putNumber(out, "block_cache_hit_rate", ratio(data.storage.block_cache_hits, data.storage.block_cache_hits + data.storage.block_cache_misses));
+                    putNumber(out, "avg_flush_time_nanos", ratio(data.storage.flush_duration_nanos, data.storage.flushes));
+                    putNumber(out, "avg_compaction_time_nanos", ratio(data.storage.compaction_duration_nanos, data.storage.compactions));
+                    putNumber(out, "avg_hot_walk_time_nanos", ratio(data.storage.hot_enforce_walk_duration_nanos, data.storage.hot_enforce_walks));
+                }
+                putNumber(out, "versions_per_cycle", ratio(data.versions_published_total, data.cycles_total));
+                return out;
+            }
+
+            function hydrateGroupHeading(section) {
+                var key = section.getAttribute("data-group") || "";
+                var metaKey = "group_" + key;
+                var title = section.querySelector("h2");
+                if (!title || !key) return;
+                title.textContent = fmtLabel(metaKey);
+                var desc = fmtDesc(metaKey);
+                if (desc) {
+                    var p = el("p", "live-desc", desc);
+                    p.appendChild(el("code", "metric-key", key));
+                    section.insertBefore(p, section.querySelector(".live-body"));
+                }
+            }
+
+            function renderGroup(body, data) {
+                body.textContent = "";
+                var stats = el("div", "stats");
+                var hasStats = false;
+                var derivedObj = derivedStats(data);
+                Object.keys(derivedObj).forEach(function (k) {
+                    stats.appendChild(statCard(k, derivedObj[k]));
+                    hasStats = true;
+                });
+                Object.keys(data).forEach(function (k) {
+                    var v = data[k];
+                    if (typeof v !== "object" || v === null) {
+                        stats.appendChild(statCard(k, v));
+                        hasStats = true;
+                    }
+                });
+                if (hasStats) body.appendChild(stats);
+                Object.keys(data).forEach(function (k) {
+                    var v = data[k];
+                    if (Array.isArray(v)) body.appendChild(rowsTable(k, v));
+                    else if (typeof v === "object" && v !== null) body.appendChild(kvTable(k, v));
+                });
+            }
+
+            function setStatus(ok) {
+                statusBox.className = "status " + (ok ? "st-ok" : "st-error");
+                statusText.textContent = ok ? "live" : "fetch failed";
+                if (refreshTrack) refreshTrack.classList.toggle("is-error", !ok);
+            }
+
+            function setProgress(value, ms) {
+                if (!refreshBar) return;
+                refreshBar.style.transitionDuration = (ms || 0) + "ms";
+                refreshBar.style.transform = "scaleX(" + value + ")";
+            }
+
+            function startRefreshCountdown() {
+                clearTimeout(refreshTimer);
+                setProgress(1, 0);
+                if (refreshBar) refreshBar.offsetWidth;
+                setProgress(0, refreshMS);
+                refreshTimer = setTimeout(tick, refreshMS);
+            }
+
+            function stopRefreshCountdown() {
+                clearTimeout(refreshTimer);
+                setProgress(1, 0);
+            }
+
+            var inFlight = false;
+
+            function tick() {
+                if (inFlight || document.hidden) return;
+                inFlight = true;
+                clearTimeout(refreshTimer);
+                setProgress(0, 0);
+                var pending = groupArr.length;
+                var failed = 0;
+                var aborter = new AbortController();
+                var abortTimer = setTimeout(function () {
+                    aborter.abort();
+                }, Math.max(refreshMS, 5000));
+                Array.prototype.forEach.call(groupArr, function (section) {
+                    var body = section.querySelector(".live-body");
+                    fetch(section.getAttribute("data-url"), {
+                        cache: "no-store",
+                        signal: aborter.signal
+                    }).then(function (res) {
+                        if (!res.ok) throw new Error("status " + res.status);
+                        return res.json();
+                    }).then(function (data) {
+                        renderGroup(body, data);
+                    }).catch(function () {
+                        failed++;
+                        body.textContent = "";
+                        body.appendChild(el("p", "note", "fetch failed"));
+                    }).then(function () {
+                        pending--;
+                        if (pending === 0) {
+                            clearTimeout(abortTimer);
+                            inFlight = false;
+                            setStatus(failed === 0);
+                            startRefreshCountdown();
+                        }
+                    });
+                });
+            }
+
+            document.addEventListener("visibilitychange", function () {
+                if (document.hidden) {
+                    stopRefreshCountdown();
+                    return;
+                }
+                if (!inFlight) tick();
+            });
+
+            Array.prototype.forEach.call(groupArr, hydrateGroupHeading);
+            tick();
+        })();</script>
+{{end}}
+{{template "shell_close" .}}{{end}}

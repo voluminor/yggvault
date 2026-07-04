@@ -1,0 +1,164 @@
+{{define "shell_open"}}<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#101112">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3e8d2">
+    {{if .Head.FaviconHref}}
+        <link rel="icon" href="{{.Head.FaviconHref}}">
+    {{end}}
+    {{if .Head.LogoHref}}
+        <link rel="apple-touch-icon" href="{{.Head.LogoHref}}">
+    {{end}}
+    {{if .Head.OGImageURL}}
+        <meta property="og:type" content="website">
+        <meta property="og:title" content="{{.Head.Title}}">
+        <meta property="og:description" content="{{.Head.Description}}">
+        <meta property="og:image" content="{{.Head.OGImageURL}}">
+        <meta property="og:image:type" content="image/png">
+        <meta property="og:image:width" content="1200">
+        <meta property="og:image:height" content="630">
+        <meta name="twitter:card" content="summary_large_image">
+    {{end}}
+    <meta name="description" content="{{.Head.Description}}">
+    <title>{{.Head.Title}}</title>
+    <script>(function () {
+            var d = document.documentElement;
+            d.className += " js";
+            try {
+                var t = localStorage.getItem("yv-theme");
+                if (t === "light" || t === "dark") d.setAttribute("data-theme", t);
+            } catch (e) {
+            }
+        })();</script>
+    <style>{{.Head.CSS}}</style>
+</head>
+<body>
+<header class="masthead">
+    <div class="wrap">
+        <div class="bar">
+            <span class="brand"><a href="{{.Head.Home}}"><img class="brand-logo" src="{{.Head.LogoHref}}" alt=""
+                                                              width="22" height="22"> {{.Head.Service}}</a></span>
+            {{if .Head.InfoName}}<span class="tagline">{{.Head.InfoName}}</span>{{end}}
+            <span class="spacer"></span>
+            <span class="badge b-{{.Head.ChannelClass}}"
+                  title="entry channel serving this page">{{.Head.ChannelLabel}}</span>
+            <fieldset class="theme-control" aria-label="color theme">
+                <legend class="visually-hidden">Color theme</legend>
+                <input type="radio" name="theme" id="theme-auto" value="auto" checked>
+                <label for="theme-auto" title="match system">&#9681;</label>
+                <input type="radio" name="theme" id="theme-light" value="light">
+                <label for="theme-light" title="light">&#9728;</label>
+                <input type="radio" name="theme" id="theme-dark" value="dark">
+                <label for="theme-dark" title="dark">&#9790;</label>
+            </fieldset>
+        </div>
+        {{if or .Head.Navigation .Head.FeedURL}}
+            <nav class="navlinks" aria-label="service pages">
+                {{range .Head.Navigation}}{{if .URL}}<a href="{{.URL}}">{{.Label}}</a>{{end}}{{end}}
+                {{if .Head.FeedURL}}<a class="feed-link" href="{{.Head.FeedURL}}" target="_blank" rel="noopener"
+                                       title="Atom release feed (opens in a new tab)">feed</a>{{end}}
+            </nav>
+        {{end}}
+        {{if .Head.AltURL}}
+            <details class="alt-entry">
+                <summary>also available via {{.Head.AltLabel}}</summary>
+                <a class="hash" href="{{.Head.AltURL}}">{{.Head.AltURL}}</a>
+            </details>
+        {{end}}
+    </div>
+</header>
+<main class="wrap">
+    {{end}}
+
+    {{define "shell_close"}}
+</main>
+<footer class="wrap">
+    <span><span class="rune">&#10070;</span> {{.Head.Service}}</span>
+    {{if .Head.Location}}<span>{{.Head.Location}}</span>{{end}}
+    {{if .Head.BuildVersion}}
+        <span>{{.Head.BuildVersion}}{{if .Head.BuildDate}} &middot; {{.Head.BuildDate}}{{end}}</span>{{end}}
+</footer>
+<script>(function () {
+        var key = "yv-theme";
+        var stored = "auto";
+        try {
+            var t = localStorage.getItem(key);
+            if (t === "light" || t === "dark" || t === "auto") stored = t;
+        } catch (e) {
+        }
+        var radios = document.querySelectorAll('input[name="theme"]');
+        for (var i = 0; i < radios.length; i++) {
+            var r = radios[i];
+            if (r.value === stored) r.checked = true;
+            r.addEventListener("change", function () {
+                if (!this.checked) return;
+                var d = document.documentElement;
+                if (this.value === "auto") d.removeAttribute("data-theme");
+                else d.setAttribute("data-theme", this.value);
+                try {
+                    localStorage.setItem(key, this.value);
+                } catch (e) {
+                }
+            });
+        }
+
+        if (navigator.clipboard) {
+            document.addEventListener("click", function (ev) {
+                var t = ev.target.closest(".snip pre, span.hash, dd.hash, td.hash, div.hash");
+                if (!t || ev.target.closest("a")) return;
+                navigator.clipboard.writeText((t.getAttribute("data-copy") || t.textContent).trim()).then(function () {
+                    t.classList.add("copied");
+                    setTimeout(function () {
+                        t.classList.remove("copied");
+                    }, 900);
+                }, function () {
+                });
+            });
+        }
+
+        var timeEls = document.querySelectorAll("time[datetime]");
+        for (var ti = 0; ti < timeEls.length; ti++) {
+            var tEl = timeEls[ti];
+            var tDate = new Date(tEl.getAttribute("datetime"));
+            if (isNaN(tDate.getTime())) continue;
+            var utcText = tEl.textContent;
+            tEl.textContent = tDate.toLocaleString(undefined, {
+                year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
+            });
+            tEl.setAttribute("title", utcText + " · " + Intl.DateTimeFormat().resolvedOptions().timeZone);
+        }
+
+        var filterInput = document.querySelector("input[data-filter]");
+        var ledger = document.getElementById("ledger");
+        if (filterInput && ledger) {
+            var rows = ledger.querySelectorAll(".row");
+            filterInput.addEventListener("input", function () {
+                var q = this.value.trim().toLowerCase();
+                for (var i = 0; i < rows.length; i++) {
+                    var nameEl = rows[i].querySelector(".name");
+                    var hay = (nameEl ? nameEl.textContent : rows[i].textContent).toLowerCase();
+                    rows[i].style.display = (q === "" || hay.indexOf(q) !== -1) ? "" : "none";
+                }
+            });
+        }
+    })();</script>
+</body>
+</html>
+{{end}}
+
+{{define "origin"}}
+    <div class="status st-{{.Status}}"><span class="dot"></span><span class="lbl">source</span> {{if .URL}}<a
+                href="{{.URL}}" rel="noopener nofollow">{{.URL}}</a>{{else}}&mdash;{{end}} &middot; {{.Status}}{{if
+        .Classification}} &middot; <span class="tag {{.Classification}}">{{.Label}}</span>{{end}}
+    </div>{{end}}
+
+{{define "tags"}}{{range .}}<span class="tag {{.}}">{{.}}</span> {{end}}{{end}}
+
+{{define "snippets"}}{{range .}}
+    <div class="snip">
+        <div class="lbl">{{.Label}}</div>
+        <pre title="click to copy">{{.Body}}</pre>
+    </div>{{end}}{{end}}

@@ -1,0 +1,11 @@
+type: object
+required: [ packages ]
+additionalProperties: true
+properties:
+  packages:
+    type: object
+    description: One package name mapped to its Composer versions; yggvault serves non-minified p2 metadata.
+    additionalProperties:
+      type: array
+      items:
+        $ref: schemas/composer_package_version

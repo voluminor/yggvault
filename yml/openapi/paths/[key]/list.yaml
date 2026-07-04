@@ -1,0 +1,44 @@
+get:
+  tags: [ mirror ]
+  operationId: getMirrorList
+  x-func: GetMirrorList
+  summary: "Mirrored version list as plain text"
+  description: >-
+    Returns all indexed versions for a mirrored key as a newest-first plain-text
+    list with one version per line. Unknown keys or keys without indexed
+    versions return 404.
+  parameters:
+    - $ref: parameters/key
+    - $ref: parameters/if_none_match
+  responses:
+    '200':
+      description: Newest-first plain-text list with one version per line.
+      headers:
+        ETag:
+          description: Strong cache validator for the generated response body.
+          schema:
+            type: string
+        Cache-Control:
+          description: Cache policy for generated metadata.
+          schema:
+            type: string
+      content:
+        text/plain:
+          schema:
+            type: string
+    '304':
+      $ref: responses/not_modified
+    '400':
+      $ref: responses/default_error
+    '404':
+      $ref: responses/default_error
+    '405':
+      $ref: responses/default_error
+    '414':
+      $ref: responses/default_error
+    '429':
+      $ref: responses/default_error
+    '431':
+      $ref: responses/default_error
+    '500':
+      $ref: responses/default_error

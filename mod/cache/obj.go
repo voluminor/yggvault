@@ -1,0 +1,96 @@
+package cache
+
+import (
+	"container/list"
+	"sync"
+	"sync/atomic"
+
+	"golang.org/x/sync/singleflight"
+
+	"github.com/voluminor/yggvault/target/stconf"
+)
+
+// // // // // // // // // //
+
+const (
+	// cShardCount is the shard count and a power of two for get/set lock locality at up to 1e5 entries.
+	cShardCount = 32
+
+	// cEntryOverheadBytes charges fixed map/list/struct overhead to the byte budget so many tiny entries cannot hide
+	// RAM usage behind payload length only.
+	cEntryOverheadBytes = 64
+)
+
+// // // // // // // // // //
+
+// EntryObj is a cached value: payload bytes plus the ETag validator for server-side 304 handling.
+type EntryObj struct {
+	Payload []byte
+	ETag    string
+}
+
+type cacheItemObj struct {
+	key    string
+	value  EntryObj
+	size   int64
+	expiry int64 // Unix nanoseconds; now >= expiry is a cache miss.
+}
+
+func itemSize(key string, value EntryObj) int64 {
+	return int64(len(key)+len(value.Payload)+len(value.ETag)) + cEntryOverheadBytes
+}
+
+// // // // // // // // // //
+
+type shardObj struct {
+	mu      sync.Mutex
+	itemMap map[string]*list.Element
+	lru     *list.List
+	entries atomic.Int64
+	bytes   atomic.Int64
+}
+
+// // // // // // // // // //
+
+// Obj is the cache: shards, global atomic byte budget, singleflight, and metric counters.
+type Obj struct {
+	shardArr    [cShardCount]*shardObj
+	budget      int64
+	curBytes    atomic.Int64
+	evictCursor atomic.Uint64
+	flightObj   singleflight.Group
+
+	hits          atomic.Uint64
+	misses        atomic.Uint64
+	builds        atomic.Uint64
+	buildsAborted atomic.Uint64
+	evictions     atomic.Uint64
+	shared        atomic.Uint64
+}
+
+// // // // // // // // // //
+
+// New builds a cache with the byte budget from cache.metadata_max_size, validated in config.
+func New(cacheCfgObj stconf.CacheObj) *Obj {
+	budget := int64(cacheCfgObj.MetadataMaxSize)
+	if budget < cShardCount {
+		budget = cShardCount
+	}
+	obj := &Obj{budget: budget}
+	for i := range obj.shardArr {
+		obj.shardArr[i] = &shardObj{
+			itemMap: make(map[string]*list.Element),
+			lru:     list.New(),
+		}
+	}
+	return obj
+}
+
+func (obj *Obj) shardFor(key string) *shardObj {
+	hashValue := uint32(2166136261)
+	for i := 0; i < len(key); i++ {
+		hashValue ^= uint32(key[i])
+		hashValue *= 16777619
+	}
+	return obj.shardArr[hashValue&(cShardCount-1)]
+}

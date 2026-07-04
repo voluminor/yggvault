@@ -1,0 +1,57 @@
+get:
+  tags: [ composer ]
+  operationId: getComposerP2Package
+  x-func: GetComposerP2Package
+  summary: Composer v2 package metadata
+  description: >-
+    Returns Composer v2 p2 metadata for one package name. `packageFile`
+    contains the package segment with `.json` for stable metadata or
+    `~dev.json` for the dev variant, for example `monolog.json` or
+    `monolog~dev.json`. Unknown package names, dev-only misses, and invalid
+    filenames return 404. Query parameters are rejected.
+  parameters:
+    - name: vendor
+      in: path
+      required: true
+      description: Composer vendor segment.
+      schema:
+        type: string
+    - name: packageFile
+      in: path
+      required: true
+      description: Composer package metadata filename, for example `monolog.json` or `monolog~dev.json`.
+      schema:
+        type: string
+    - $ref: parameters/if_none_match
+  responses:
+    '200':
+      description: Composer v2 metadata for one package.
+      headers:
+        ETag:
+          description: Strong cache validator for the generated p2 document.
+          schema:
+            type: string
+        Cache-Control:
+          description: Cache policy for generated Composer metadata.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: schemas/composer_p2
+    '304':
+      $ref: responses/not_modified
+    '400':
+      $ref: responses/default_error
+    '404':
+      $ref: responses/default_error
+    '405':
+      $ref: responses/default_error
+    '414':
+      $ref: responses/default_error
+    '429':
+      $ref: responses/default_error
+    '431':
+      $ref: responses/default_error
+    '500':
+      $ref: responses/default_error

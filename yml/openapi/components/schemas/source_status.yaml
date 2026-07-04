@@ -1,0 +1,16 @@
+type: object
+required: [ url, status, last_scan ]
+properties:
+  url:
+    type: string
+    description: >-
+      Original upstream URL from `release_mirrors`. It is still reported when
+      the last sync used a brother node.
+  status:
+    type: string
+    enum: [ available, temporary_down, permanent_down, unknown ]
+    description: "Upstream availability as observed by this node during the last scan."
+  last_scan:
+    type: string
+    format: date-time
+    description: "Scan timestamp that produced this source status."

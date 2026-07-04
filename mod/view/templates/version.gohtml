@@ -1,0 +1,101 @@
+{{define "version"}}{{template "shell_open" .}}
+<div class="crumb"><a href="{{.Head.Home}}">vault</a> / <a href="{{.KeyURL}}">{{.Key}}</a> / {{.Version}}</div>
+<div class="hero">
+    <div>
+        <h1>{{.Key}} <span class="at">@</span> {{.Version}}</h1>
+    </div>
+</div>
+
+{{if .Degraded}}
+    <div class="degraded">overlay degraded &middot; {{range .Degraded}}{{.}}; {{end}}</div>{{end}}
+
+<h2>integrity</h2>
+<dl class="kv">
+    <dt>size</dt>
+    <dd>{{.Size}}</dd>
+    {{if .Ingested}}
+        <dt>downloaded</dt>
+        <dd>
+            <time datetime="{{.IngestedISO}}">{{.Ingested}}</time>
+        </dd>
+    {{end}}
+    {{if .Verified}}
+        <dt>last checked</dt>
+        <dd>
+            <time datetime="{{.VerifiedISO}}">{{.Verified}}</time>
+        </dd>
+    {{end}}
+    {{if .Overlays}}
+        <dt>overlays</dt>
+        <dd>{{template "tags" .Overlays}}</dd>
+    {{end}}
+    {{if .Detected}}
+        <dt>detected</dt>
+        <dd>{{range $i, $d := .Detected}}{{if $i}} &middot; {{end}}{{$d}}{{end}}</dd>
+    {{end}}
+</dl>
+<div class="origin-row">{{template "origin" .Source}}</div>
+
+{{if .Downloads}}
+    <h2>download</h2>
+    {{template "downloads" .Downloads}}
+{{end}}
+
+{{if .GoDownloads}}
+    <h2>go module archive</h2>
+    <p class="note">module zip with the module path rewritten to this mirror; fetched by <code>go get</code> through the
+        GOPROXY route</p>
+    {{template "downloads" .GoDownloads}}
+{{end}}
+
+{{if .Snippets}}
+    <h2>install</h2>
+    {{template "snippets" .Snippets}}
+    {{if .AltSnippets}}
+        <details class="snip-alt">
+            <summary>install via {{.AltLabel}}</summary>
+            {{template "snippets" .AltSnippets}}
+        </details>
+    {{end}}
+{{end}}
+
+{{if .NotesHTML}}
+    <h2>release notes</h2>
+    <div class="notes">{{.NotesHTML}}</div>
+{{end}}
+
+{{if or .NewerURL .OlderURL}}
+    <div class="histnav">{{if .NewerURL}}<a href="{{.NewerURL}}">&larr; {{.NewerVer}}</a>{{else}}
+            <span></span>{{end}}{{if
+        .OlderURL}}<a href="{{.OlderURL}}">{{.OlderVer}} &rarr;</a>{{else}}<span></span>{{end}}
+    </div>
+{{end}}
+{{template "shell_close" .}}{{end}}
+
+{{define "downloads"}}
+    <table class="dl">
+        <thead>
+        <tr>
+            <th>artifact</th>
+            <th>format</th>
+            <th>size</th>
+            <th>hashes</th>
+        </tr>
+        </thead>
+        <tbody>
+        {{range .}}
+            <tr>
+                <td><a href="{{.URL}}" class="k">{{.Name}}</a></td>
+                <td>{{.Kind}}</td>
+                <td>{{.Size}}</td>
+                <td>
+                    {{range .Hashes}}
+                        <div class="hash" data-copy="{{.Hex}}" title="click to copy"><span
+                                    class="algo">{{.Algo}}</span> {{.Hex}}</div>
+                    {{end}}
+                </td>
+            </tr>
+        {{end}}
+        </tbody>
+    </table>
+{{end}}

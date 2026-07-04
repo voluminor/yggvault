@@ -1,0 +1,49 @@
+{{define "key"}}{{template "shell_open" .}}
+<div class="crumb"><a href="{{.Head.Home}}">vault</a> / {{.Key}}</div>
+<div class="hero">
+    <div>
+        <h1>{{.Key}}</h1>
+        <div class="eyebrow lead">{{if .Latest}}latest {{.Latest}}{{else}}no versions{{end}} &middot; {{.Count}}
+            version{{if ne .Count 1}}s{{end}} mirrored
+        </div>
+    </div>
+</div>
+{{template "origin" .Source}}
+{{if .Overlays}}
+    <div class="overlays">{{template "tags" .Overlays}}</div>{{end}}
+
+{{if .Install}}
+    <h2>install</h2>
+    {{template "snippets" .Install}}
+    {{if .AltInstall}}
+        <details class="snip-alt">
+            <summary>install via {{.AltLabel}}</summary>
+            {{template "snippets" .AltInstall}}
+        </details>
+    {{end}}
+{{end}}
+
+<h2>versions</h2>
+{{if .Versions}}
+    <div class="only-js filter"><input type="search" data-filter placeholder="filter versions on this page&hellip;"
+                                       aria-label="filter versions" autocomplete="off"></div>
+    <div class="ledger" id="ledger">
+        {{range .Versions}}
+            <div class="row">
+                <span class="name"><a href="{{.URL}}">{{.Version}}</a></span>
+                {{if .Go}}<span class="tag go">go</span>{{end}}{{if .Composer}}<span
+                        class="tag composer">composer</span>{{end}}
+                <span class="meta">{{.Time}}</span>
+                <span class="grow"></span>
+                <span class="meta">{{.Size}}</span>
+            </div>
+        {{end}}
+    </div>
+    {{if or .PrevURL .NextURL}}
+        <div class="pager">{{if .PrevURL}}<a href="{{.PrevURL}}">&larr; newer</a>{{end}}{{if .NextURL}}<a
+                    href="{{.NextURL}}">older
+                &rarr;</a>{{end}}
+        </div>
+    {{end}}
+{{else}}<p class="empty">No versions mirrored.</p>{{end}}
+{{template "shell_close" .}}{{end}}

@@ -1,0 +1,13 @@
+- name: service
+  description: Node status, public identity, runtime OpenAPI document, and metrics endpoints.
+- name: mirror
+  description: Release catalog, per-key version metadata, universal archives, and Atom feeds.
+- name: go
+  description: Go module proxy endpoints published from detected Go module candidates.
+- name: archive
+  description: Deterministic source-tree archives built from stored release content.
+- name: composer
+  description: Composer v2 repository metadata and dist archives.
+- name: assets
+  description: >-
+    Generated node assets: favicon, logo, Open Graph banners, and the sitemap.

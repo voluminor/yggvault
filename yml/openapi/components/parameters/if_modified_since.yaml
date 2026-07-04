@@ -1,0 +1,9 @@
+name: If-Modified-Since
+in: header
+required: false
+description: >-
+  HTTP date validator accepted on artifact routes for client compatibility. The
+  current handlers do not use this header to decide `304 Not Modified`; use
+  `If-None-Match` for cache revalidation and `If-Range` for ranged downloads.
+schema:
+  type: string

@@ -1,0 +1,33 @@
+source_class:
+  - git
+  - brother
+listener:
+  - global
+  - web
+  - ygg
+ecosystem:
+  - go
+  - composer
+materializer:
+  - universal
+  - go
+operational_status:
+  - ok
+  - degraded
+  - error
+availability_status:
+  - unknown
+  - available
+  - temporary_down
+  - permanent_down
+log_scope:
+  - global
+  - key
+  - version
+log_reason:
+  - bad_request
+  - upstream_unavailable
+  - upstream_conflict
+  - cache_quota_exceeded
+  - artifact_materialization_failed
+  - go_overlay_degraded

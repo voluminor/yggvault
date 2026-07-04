@@ -1,0 +1,9 @@
+name: If-Range
+in: header
+required: false
+description: >-
+  Validator for a `Range` request. The byte range is served only when the value
+  matches the current ETag; otherwise the server ignores `Range` and returns the
+  full resource with `200 OK`.
+schema:
+  type: string

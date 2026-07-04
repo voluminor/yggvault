@@ -1,0 +1,42 @@
+{{define "catalog"}}{{template "shell_open" .}}
+<div class="eyebrow">catalog &middot; {{.Count}} key{{if ne .Count 1}}s{{end}} mirrored</div>
+<h1>vault index</h1>
+{{if or .About.Description .About.Location .About.Contacts}}
+    <div class="about">
+        {{if .About.Description}}<p class="about-desc">{{.About.Description}}</p>{{end}}
+        {{if or .About.Location .About.Contacts}}
+            <dl class="kv">
+                {{if .About.Location}}
+                    <dt>location</dt>
+                    <dd>{{.About.Location}}</dd>
+                {{end}}
+                {{range .About.Contacts}}
+                    <dt>{{.Name}}</dt>
+                    <dd>{{range $i, $v := .Values}}{{if $i}} &middot; {{end}}{{if $v.URL}}<a href="{{$v.URL}}"
+                                                                                             rel="noopener nofollow">{{$v.Text}}</a>{{else}}{{$v.Text}}{{end}}{{end}}
+                    </dd>
+                {{end}}
+            </dl>
+        {{end}}
+    </div>
+{{end}}
+{{if .Keys}}
+    <div class="only-js filter"><input type="search" data-filter placeholder="filter packages&hellip;"
+                                       aria-label="filter packages" autocomplete="off"></div>
+    <div class="ledger" id="ledger">
+        {{range .Keys}}
+            <div class="row">
+                <span class="name"><a href="{{.URL}}">{{.Key}}</a></span>
+                <span class="meta">{{if .Latest}}{{.Latest}}{{else}}&mdash;{{end}}</span>
+                {{if .Source.Classification}}<span
+                        class="tag {{.Source.Classification}}">{{.Source.Label}}</span>{{end}}
+                {{if .Go}}<span class="tag go">go</span>{{end}}{{if .Composer}}<span
+                        class="tag composer">composer</span>{{end}}
+                <span class="grow"></span>
+                <span class="status st-{{.Source.Status}}" title="origin availability at last scan"><span
+                            class="dot"></span>{{.Source.Status}}</span>
+            </div>
+        {{end}}
+    </div>
+{{else}}<p class="empty">No keys mirrored yet.</p>{{end}}
+{{template "shell_close" .}}{{end}}

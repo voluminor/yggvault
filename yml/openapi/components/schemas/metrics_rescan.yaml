@@ -1,0 +1,24 @@
+type: object
+required: [ cycles_total, versions_published_total, keys_unavailable_total, cycle_duration_seconds_avg ]
+description: Rescan-cycle and upstream-ingest metrics.
+properties:
+  cycles_total:
+    type: integer
+    format: int64
+    description: Completed rescan cycles since process start.
+  versions_published_total:
+    type: integer
+    format: int64
+    description: Versions published or changed across all rescan cycles.
+  keys_unavailable_total:
+    type: integer
+    format: int64
+    description: Key-unavailable events observed across all rescan cycles.
+  cycle_duration_seconds_avg:
+    type: number
+    format: double
+    description: Mean rescan cycle wall-clock duration in seconds; 0 before the first cycle.
+  last_rescan:
+    type: string
+    format: date-time
+    description: Timestamp of the last completed rescan cycle; omitted before the first completed cycle.

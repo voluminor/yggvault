@@ -1,0 +1,29 @@
+type: object
+required: [ keys ]
+properties:
+  keys:
+    type: array
+    description: Catalog entries for all visible mirror keys, ordered by the server catalog builder.
+    items:
+      type: object
+      required: [ key, status, source ]
+      properties:
+        key:
+          type: string
+          description: Registry key from `release_mirrors`.
+        latest:
+          type: string
+          description: Latest active version known for the key, if one exists.
+        status:
+          type: string
+          enum: [ ok, degraded, error ]
+          description: "Operational status of this mirror key, not the upstream repository status."
+        classification:
+          type: string
+          enum: [ git, brother ]
+          description: Source class selected by discovery for this key.
+        source:
+          $ref: schemas/source_status
+        url:
+          type: string
+          description: "Path to the key release list, normally `<key>/releases.json`."

@@ -1,0 +1,8 @@
+{
+  "require": {
+    "monolog/monolog": "*"
+  },
+  "config": {
+    "secure-http": false
+  }
+}

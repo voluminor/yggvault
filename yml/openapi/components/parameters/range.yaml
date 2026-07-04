@@ -1,0 +1,9 @@
+name: Range
+in: header
+required: false
+description: >-
+  Single byte range request for artifact bodies. Satisfiable ranges return
+  `206 Partial Content`; out-of-bounds ranges return `416`. Malformed or
+  unsupported ranges are ignored and the full body is returned.
+schema:
+  type: string

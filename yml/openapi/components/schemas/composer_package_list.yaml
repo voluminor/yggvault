@@ -1,0 +1,8 @@
+type: object
+required: [ packageNames ]
+properties:
+  packageNames:
+    type: array
+    description: Composer package names available through this repository after collision resolution.
+    items:
+      type: string
