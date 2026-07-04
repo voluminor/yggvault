@@ -1,9 +1,0 @@
-name: after
-in: query
-required: false
-description: >-
-  Opaque keyset cursor copied from the `next` field of the previous response.
-  Omit it to read the first page. The page size is controlled by
-  `web.pages.list_page_size`.
-schema:
-  type: string
