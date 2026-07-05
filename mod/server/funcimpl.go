@@ -300,6 +300,11 @@ func (obj *funcObj) versionArchive(ctx context.Context, params api.GetVersionFil
 		return nil, err
 	}
 	if !found {
+		if _, versionFound, getErr := obj.deps.Storage.GetVersion(ctx, params.Key, version); getErr != nil {
+			return nil, getErr
+		} else if versionFound {
+			return nil, serr.ErrUnavailable
+		}
 		return nil, serr.ErrNotFound
 	}
 	gate := gateArtifact(ctx, artObj, params.IfNoneMatch, params.Range, params.IfRange)

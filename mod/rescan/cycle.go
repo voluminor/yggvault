@@ -23,6 +23,13 @@ func composerNameOf(evidenceJSON string) string {
 }
 
 func (obj *Obj) raiseComposerCollision(collisionObj overlay.ComposerCollisionObj) {
+	obj.logObj.Warn().
+		Str("component", "rescan").
+		Str("code", "composer_name_collision").
+		Str("key", collisionObj.Key).
+		Str("conflicting_key", collisionObj.ConflictingKey).
+		Str("composer_name", collisionObj.Name).
+		Msg("composer package name collision; conflicting key is hidden from composer p2 until the operator resolves the conflict")
 	if diagErr := obj.stateObj.RaiseDiagnostic(state.DiagnosticObj{
 		Code:    "composer_name_collision",
 		Scope:   stcode.LogScopeKey,

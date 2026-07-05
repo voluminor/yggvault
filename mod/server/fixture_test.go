@@ -481,6 +481,15 @@ func stateFor(t *testing.T, serverObj *ServerObj) *fakeStateObj {
 	return stateObj
 }
 
+func storeFor(t *testing.T, serverObj *ServerObj) *fakeStoreObj {
+	t.Helper()
+	storeObj, ok := serverObj.funcImplObj.deps.Storage.(*fakeStoreObj)
+	if !ok {
+		t.Fatalf("server storage is not *fakeStoreObj")
+	}
+	return storeObj
+}
+
 // // // // // // // // // //
 
 func doReq(t *testing.T, ts *httptest.Server, method string, pathText string, header map[string]string) (*http.Response, []byte) {
@@ -497,7 +506,7 @@ func doReq(t *testing.T, ts *httptest.Server, method string, pathText string, he
 		t.Fatalf("%s %s: %v", method, pathText, err)
 	}
 	bodyArr, _ := io.ReadAll(respObj.Body)
-	respObj.Body.Close()
+	_ = respObj.Body.Close()
 	return respObj, bodyArr
 }
 

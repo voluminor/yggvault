@@ -185,6 +185,11 @@ func (obj *ServerObj) Start() error {
 	}
 	for i := range obj.listenerArr {
 		entryObj := obj.listenerArr[i]
+		obj.logObj.Info().
+			Str("component", "server").
+			Str("listener", entryObj.label).
+			Str("addr", entryObj.netListener.Addr().String()).
+			Msg("listener started")
 		go func(entry *listenerObj) {
 			if err := entry.httpServer.Serve(entry.netListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				obj.logObj.Error().Err(err).Str("listener", entry.label).Msg("listener stopped")

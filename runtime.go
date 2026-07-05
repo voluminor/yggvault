@@ -223,31 +223,56 @@ func (rt *runtimeObj) maybeReconcileArtifacts(ctx context.Context) {
 		return
 	}
 	if ok && stored == current {
+		rt.loggerObj.Zero().Debug().
+			Str("layout", current).
+			Msg("artifact layout current; background reconcile skipped")
 		return
 	}
+	startEventObj := rt.loggerObj.Zero().Warn().
+		Bool("stored_layout_present", ok).
+		Str("current_layout", current)
+	if ok {
+		startEventObj = startEventObj.Str("stored_layout", stored)
+	}
+	startEventObj.Msg("artifact layout mismatch; background artifact reconcile started")
 	rt.reconcileDone = make(chan struct{})
 	go rt.runArtifactReconcile(ctx, yggHost, current)
 }
 
 func (rt *runtimeObj) runArtifactReconcile(ctx context.Context, yggHost string, fingerprint string) {
 	defer close(rt.reconcileDone)
+	startTime := time.Now()
 	listenerArr := listenerContextsFromConfig(rt.configObj, yggHost)
 	resultObj, err := rebuildAllArtifacts(ctx, rt.storage, rt.overlay, listenerArr)
 	if err != nil {
 		if ctx.Err() == nil {
-			rt.loggerObj.Zero().Warn().Err(err).Msg("background artifact reconcile failed; will retry on next start")
+			rt.loggerObj.Zero().Warn().
+				Err(err).
+				Dur("elapsed", time.Since(startTime)).
+				Msg("background artifact reconcile failed; will retry on next start")
 		}
 		return
 	}
 	if err = rt.storage.SetGlobal(ctx, cArtifactLayoutGlobalKey, fingerprint); err != nil {
-		rt.loggerObj.Zero().Warn().Err(err).Msg("failed to persist artifact-layout fingerprint")
+		rt.loggerObj.Zero().Warn().
+			Err(err).
+			Dur("elapsed", time.Since(startTime)).
+			Msg("failed to persist artifact-layout fingerprint")
 		return
 	}
-	rt.loggerObj.Zero().Info().
+	changed := resultObj.Drift > 0 || resultObj.Created > 0 || resultObj.Updated > 0 || resultObj.Pruned > 0
+	completeEventObj := rt.loggerObj.Zero().Info()
+	if changed {
+		completeEventObj = rt.loggerObj.Zero().Warn()
+	}
+	completeEventObj.
 		Uint64("scanned", resultObj.Scanned).
+		Uint64("drift", resultObj.Drift).
 		Uint64("created", resultObj.Created).
 		Uint64("updated", resultObj.Updated).
 		Uint64("pruned", resultObj.Pruned).
+		Bool("changed", changed).
+		Dur("elapsed", time.Since(startTime)).
 		Msg("background artifact reconcile complete")
 }
 

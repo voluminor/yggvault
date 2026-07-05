@@ -90,6 +90,12 @@ func (obj *Obj) raiseVersionDegraded(key string, version string, code string, er
 }
 
 func (obj *Obj) raiseReleasesTruncated(key string, err error) {
+	obj.logObj.Warn().
+		Str("component", "rescan").
+		Str("code", "releases_truncated").
+		Str("key", key).
+		Err(err).
+		Msg("release listing exceeded processing cap; deletion disabled for this cycle")
 	if diagErr := obj.stateObj.RaiseDiagnostic(state.DiagnosticObj{
 		Code:    "releases_truncated",
 		Scope:   stcode.LogScopeKey,

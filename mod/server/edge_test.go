@@ -617,3 +617,26 @@ func TestErrorMapping(t *testing.T) {
 		t.Fatalf("bad cursor status=%d want 400", badResp.StatusCode)
 	}
 }
+
+func TestArchiveMissingArtifactForExistingVersionIsUnavailable(t *testing.T) {
+	serverObj, lc := newTestServer(t)
+	storeObj := storeFor(t, serverObj)
+	delete(storeObj.artifacts, vkey("lib", "v1.0.0"))
+
+	tsObj := httptest.NewServer(serverObj.Handler(lc))
+	defer tsObj.Close()
+
+	respObj, bodyArr := doGET(t, tsObj, "/lib/v1.0.0.zip", nil)
+	if respObj.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("missing artifact status=%d want 503 body=%s", respObj.StatusCode, bodyArr)
+	}
+	var errObj api.DefaultErrorObj
+	if json.Unmarshal(bodyArr, &errObj) != nil || errObj.Error != "unavailable" {
+		t.Fatalf("missing artifact error body=%s", bodyArr)
+	}
+
+	missingRespObj, _ := doGET(t, tsObj, "/lib/v9.9.9.zip", nil)
+	if missingRespObj.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing version status=%d want 404", missingRespObj.StatusCode)
+	}
+}
