@@ -1,0 +1,2921 @@
+{
+  "components": {
+    "parameters": {
+      "After": {
+        "description": "Opaque keyset cursor copied from the `next` field of the previous response. Omit it to read the first page. The page size is controlled by `web.pages.list_page_size`.",
+        "in": "query",
+        "name": "after",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IfModifiedSince": {
+        "description": "HTTP date validator accepted on artifact routes for client compatibility. The current handlers do not use this header to decide `304 Not Modified`; use `If-None-Match` for cache revalidation and `If-Range` for ranged downloads.",
+        "in": "header",
+        "name": "If-Modified-Since",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IfNoneMatch": {
+        "description": "Client ETag validator. If one supplied tag matches the current resource ETag, the server returns `304 Not Modified` without a response body.",
+        "in": "header",
+        "name": "If-None-Match",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IfRange": {
+        "description": "Validator for a `Range` request. The byte range is served only when the value matches the current ETag; otherwise the server ignores `Range` and returns the full resource with `200 OK`.",
+        "in": "header",
+        "name": "If-Range",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Key": {
+        "description": "Registry key configured in `release_mirrors`. Valid configuration keys match `^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$`, cannot look like a Go major suffix such as `v2`, and cannot use reserved route names including `list`, `latest`, `@v`, `@latest`, `health`, `info`, `metrics`, `openapi.json`, `p`, `p2`, `packages`, `packages.json`, `rpc`, `catalog.json`, `feed.xml`, `logo`, `og.png`, `favicon.ico`, and `sitemap.xml`.",
+        "in": "path",
+        "name": "key",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Range": {
+        "description": "Single byte range request for artifact bodies. Satisfiable ranges return `206 Partial Content`; out-of-bounds ranges return `416`. Malformed or unsupported ranges are ignored and the full body is returned.",
+        "in": "header",
+        "name": "Range",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "DefaultErrorRespObj": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DefaultErrorObj"
+            }
+          }
+        },
+        "description": "Standard JSON error envelope used by request gates, validation failures, missing resources, and internal failures."
+      },
+      "NotModifiedRespObj": {
+        "description": "The resource ETag matched the client validator; the response has no body."
+      },
+      "PartialContentRespObj": {
+        "content": {
+          "application/octet-stream": {
+            "schema": {
+              "format": "binary",
+              "type": "string"
+            }
+          }
+        },
+        "description": "Partial artifact response produced for a satisfiable byte `Range` request.",
+        "headers": {
+          "Accept-Ranges": {
+            "description": "Byte range support marker. The value is `bytes`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          "Cache-Control": {
+            "description": "Cache policy configured for served data responses.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          "Content-Disposition": {
+            "description": "Download file name for archive responses. The value is `attachment; filename=\"<key>-<version>.<ext>\"`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          "Content-Length": {
+            "description": "Partial body length in bytes. Artifact responses are sent with a fixed length, not chunked transfer.",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "Content-Range": {
+            "description": "Served byte range and total resource size.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          "ETag": {
+            "description": "Strong cache validator derived from the artifact body digest.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          "Last-Modified": {
+            "description": "Modification time of the opened hot-cache artifact file.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ArtifactEntryObj": {
+        "properties": {
+          "hash": {
+            "description": "BLAKE3-24 XOF digest of the artifact body, encoded as 48 lowercase hex characters.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Artifact class: `go-zip`, `composer-dist`, `tree-zip`, or `tree-targz`.",
+            "type": "string"
+          },
+          "name": {
+            "description": "File name shown to clients for this derived artifact.",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "SHA-256 body digest in hex, intended for ecosystems that require SHA-256 integrity such as Bazel `http_archive`.",
+            "type": "string"
+          },
+          "shasum": {
+            "description": "SHA-1 body digest in hex. Present for Composer dist artifacts as `dist.shasum`.",
+            "type": "string"
+          },
+          "size": {
+            "description": "Artifact body size in bytes.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "url": {
+            "description": "Download path for the artifact, relative to the current API mount.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "kind",
+          "size",
+          "hash"
+        ],
+        "type": "object"
+      },
+      "CatalogObj": {
+        "properties": {
+          "keys": {
+            "description": "Catalog entries for all visible mirror keys, ordered by the server catalog builder.",
+            "items": {
+              "properties": {
+                "classification": {
+                  "description": "Source class selected by discovery for this key.",
+                  "enum": [
+                    "git",
+                    "brother"
+                  ],
+                  "type": "string"
+                },
+                "key": {
+                  "description": "Registry key from `release_mirrors`.",
+                  "type": "string"
+                },
+                "latest": {
+                  "description": "Latest active version known for the key, if one exists.",
+                  "type": "string"
+                },
+                "source": {
+                  "$ref": "#/components/schemas/SourceStatusObj"
+                },
+                "status": {
+                  "description": "Operational status of this mirror key, not the upstream repository status.",
+                  "enum": [
+                    "ok",
+                    "degraded",
+                    "error"
+                  ],
+                  "type": "string"
+                },
+                "url": {
+                  "description": "Path to the key release list, normally `<key>/releases.json`.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "status",
+                "source"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "type": "object"
+      },
+      "ComposerDistObj": {
+        "additionalProperties": true,
+        "properties": {
+          "reference": {
+            "description": "Version string or upstream reference used by Composer.",
+            "type": "string"
+          },
+          "shasum": {
+            "description": "SHA-1 digest of the dist zip body.",
+            "type": "string"
+          },
+          "type": {
+            "description": "Composer dist type. yggvault currently publishes zip dist URLs.",
+            "enum": [
+              "zip",
+              "tar"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "Universal zip URL for this version, for example `/<key>/<version>.zip`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "url",
+          "reference"
+        ],
+        "type": "object"
+      },
+      "ComposerP2Obj": {
+        "additionalProperties": true,
+        "properties": {
+          "packages": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/ComposerPackageVersionObj"
+              },
+              "type": "array"
+            },
+            "description": "One package name mapped to its Composer versions; yggvault serves non-minified p2 metadata.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "packages"
+        ],
+        "type": "object"
+      },
+      "ComposerPackageListObj": {
+        "properties": {
+          "packageNames": {
+            "description": "Composer package names available through this repository after collision resolution.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "packageNames"
+        ],
+        "type": "object"
+      },
+      "ComposerPackageVersionObj": {
+        "additionalProperties": true,
+        "properties": {
+          "autoload": {
+            "additionalProperties": true,
+            "description": "Composer autoload section copied from upstream metadata.",
+            "type": "object"
+          },
+          "dist": {
+            "$ref": "#/components/schemas/ComposerDistObj"
+          },
+          "license": {
+            "description": "License identifiers copied from upstream metadata, when present.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "Composer package name in `vendor/name` form.",
+            "type": "string"
+          },
+          "require": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Runtime dependency constraints copied from upstream `composer.json`.",
+            "type": "object"
+          },
+          "require-dev": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Development dependency constraints copied from upstream `composer.json`.",
+            "type": "object"
+          },
+          "source": {
+            "additionalProperties": true,
+            "description": "Upstream Composer source object, preserved when present.",
+            "type": "object"
+          },
+          "time": {
+            "description": "Release timestamp used by Composer clients.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "type": {
+            "description": "Composer package type copied from upstream metadata when present.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Composer version string exposed to clients.",
+            "type": "string"
+          },
+          "version_normalized": {
+            "description": "Composer-normalized version, when available from the upstream package metadata.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "dist"
+        ],
+        "type": "object"
+      },
+      "ComposerPackagesObj": {
+        "additionalProperties": true,
+        "properties": {
+          "available-packages": {
+            "description": "Complete prebuilt list of package names currently available from this node.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "list": {
+            "description": "Package-list endpoint, for example `/packages/list.json`.",
+            "type": "string"
+          },
+          "metadata-url": {
+            "description": "Composer v2 package metadata URL template, for example `/p2/%package%.json`.",
+            "type": "string"
+          },
+          "packages": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/ComposerPackageVersionObj"
+              },
+              "type": "object"
+            },
+            "description": "Inline package map. It is normally empty because yggvault uses Composer v2 lazy metadata.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "metadata-url"
+        ],
+        "type": "object"
+      },
+      "DefaultErrorObj": {
+        "properties": {
+          "error": {
+            "description": "Short machine-oriented error code or stable error class.",
+            "type": "string"
+          },
+          "message": {
+            "description": "Human-readable error description. Error text is always emitted in English.",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Request identifier that can be used to find the matching access log entry.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ],
+        "type": "object"
+      },
+      "GoInfoObj": {
+        "properties": {
+          "Time": {
+            "description": "Release timestamp returned in the Go proxy `.info` document.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "Version": {
+            "description": "Canonical Go module version returned by the proxy.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "Version",
+          "Time"
+        ],
+        "type": "object"
+      },
+      "HealthObj": {
+        "properties": {
+          "errors_count": {
+            "description": "Number of recent diagnostics currently tracked by the runtime state.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "last_rescan": {
+            "description": "Timestamp of the last completed rescan cycle, omitted before the first completed cycle.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "reasons": {
+            "description": "Degraded or error reasons as stable reason strings.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "service": {
+            "description": "Service name emitted by this binary.",
+            "enum": [
+              "yggvault"
+            ],
+            "type": "string"
+          },
+          "source": {
+            "description": "Entry channel that served this request: `web` or `yggdrasil`.",
+            "enum": [
+              "web",
+              "yggdrasil"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "description": "Current node health after runtime self-checks and recent diagnostics.",
+            "enum": [
+              "ok",
+              "degraded",
+              "error"
+            ],
+            "type": "string"
+          },
+          "ts": {
+            "description": "Timestamp when the health snapshot was produced.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "status",
+          "source",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "InfoObj": {
+        "properties": {
+          "contacts": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "Public contact map from `info.contacts`, grouped by contact type; omitted when unset.",
+            "type": "object"
+          },
+          "description": {
+            "description": "Free-form public node description or peering policy from `info.description`; omitted when unset.",
+            "type": "string"
+          },
+          "domain": {
+            "description": "Configured clearnet domain from `web.server.domain`; empty when the web entry is disabled.",
+            "type": "string"
+          },
+          "location": {
+            "description": "Optional physical or administrative location from `info.location`; omitted when unset.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Public node name from `info.name`; when empty, the server derives it from the configured domain or Yggdrasil host.",
+            "type": "string"
+          },
+          "route_prefix": {
+            "description": "URL segment the package API is mounted under when the node runs embedded behind a custom static frontend (nested mode); empty when the API is served at the root. For example `pkg` means routes live under `/pkg/...`. Absent on nodes that predate this field.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Build version of the running node from compiled build metadata (for example `v0.1.7`).",
+            "type": "string"
+          },
+          "ygg_host": {
+            "description": "Public Yggdrasil identity host (`<hex>.pk.ygg`); empty when the Yggdrasil entry is disabled.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "domain",
+          "ygg_host"
+        ],
+        "type": "object"
+      },
+      "MetricsCacheObj": {
+        "description": "RAM metadata cache, hot-artifact cache, and storage-engine serving metrics.",
+        "properties": {
+          "cache": {
+            "description": "In-memory metadata and hot-artifact cache counters.",
+            "properties": {
+              "bytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "entries": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "evictions": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "hits": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "materializations": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "materializations_aborted": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "misses": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "singleflight_shared": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "hits",
+              "misses",
+              "materializations",
+              "materializations_aborted",
+              "evictions",
+              "singleflight_shared",
+              "entries",
+              "bytes"
+            ],
+            "type": "object"
+          },
+          "storage": {
+            "description": "Pebble engine gauges, event counters, and hot-cache enforcement counters.",
+            "properties": {
+              "background_errors": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "block_cache_hits": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "block_cache_misses": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "compaction_debt_bytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "compaction_duration_nanos": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "compaction_inprogress_bytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "compactions": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "data_corruptions": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "disk_slow": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "flush_duration_nanos": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "flushes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "hot_enforce_walk_duration_nanos": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "hot_enforce_walks": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "live_bytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "memtable_bytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "obsolete_bytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "possible_api_misuse": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "wal_bytes": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "write_stalls": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "zombie_bytes": {
+                "format": "int64",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "live_bytes",
+              "obsolete_bytes",
+              "zombie_bytes",
+              "wal_bytes",
+              "memtable_bytes",
+              "compaction_debt_bytes",
+              "compaction_inprogress_bytes",
+              "compactions",
+              "flushes",
+              "block_cache_hits",
+              "block_cache_misses",
+              "write_stalls",
+              "background_errors",
+              "data_corruptions",
+              "disk_slow",
+              "possible_api_misuse",
+              "flush_duration_nanos",
+              "compaction_duration_nanos",
+              "hot_enforce_walks",
+              "hot_enforce_walk_duration_nanos"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "cache",
+          "storage"
+        ],
+        "type": "object"
+      },
+      "MetricsCoreObj": {
+        "description": "Core HTTP request metrics aggregated across all operations.",
+        "properties": {
+          "errors_total": {
+            "description": "Total requests that produced an error response.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "request_duration_seconds_count": {
+            "description": "Number of observed request durations.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "request_duration_seconds_sum": {
+            "description": "Sum of request durations in seconds across all requests.",
+            "format": "double",
+            "type": "number"
+          },
+          "requests_total": {
+            "description": "Total handled requests since process start.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requests_total",
+          "errors_total",
+          "request_duration_seconds_sum",
+          "request_duration_seconds_count"
+        ],
+        "type": "object"
+      },
+      "MetricsDiagnosticObj": {
+        "properties": {
+          "code": {
+            "description": "Stable diagnostic code from the Error Registry.",
+            "type": "string"
+          },
+          "count": {
+            "description": "Number of times this diagnostic was observed since first seen.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_seen": {
+            "description": "Timestamp the diagnostic was first observed; omitted when unset.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "impact": {
+            "description": "Operational impact this diagnostic contributes to node health.",
+            "enum": [
+              "ok",
+              "degraded",
+              "error"
+            ],
+            "type": "string"
+          },
+          "key": {
+            "description": "Affected mirror key; omitted for global diagnostics.",
+            "type": "string"
+          },
+          "last_seen": {
+            "description": "Timestamp the diagnostic was last observed.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "message": {
+            "description": "Human-readable diagnostic message; omitted when unset.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Stable reason string classifying the diagnostic.",
+            "type": "string"
+          },
+          "scope": {
+            "description": "Diagnostic scope such as `global` or a per-key scope.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Affected version; omitted when the diagnostic is not version-scoped.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "scope",
+          "impact",
+          "reason",
+          "count",
+          "last_seen"
+        ],
+        "type": "object"
+      },
+      "MetricsErrorsObj": {
+        "description": "Live Error Registry view.",
+        "properties": {
+          "active": {
+            "description": "Number of recent diagnostics currently tracked.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "dropped": {
+            "description": "Diagnostics dropped after the registry reached capacity.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "recent": {
+            "description": "Newest diagnostics first, capped by `metrics.errors.recent_buffer`.",
+            "items": {
+              "$ref": "#/components/schemas/MetricsDiagnosticObj"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "active",
+          "dropped"
+        ],
+        "type": "object"
+      },
+      "MetricsRescanObj": {
+        "description": "Rescan-cycle and upstream-ingest metrics.",
+        "properties": {
+          "cycle_duration_seconds_avg": {
+            "description": "Mean rescan cycle wall-clock duration in seconds; 0 before the first cycle.",
+            "format": "double",
+            "type": "number"
+          },
+          "cycles_total": {
+            "description": "Completed rescan cycles since process start.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "keys_unavailable_total": {
+            "description": "Key-unavailable events observed across all rescan cycles.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_rescan": {
+            "description": "Timestamp of the last completed rescan cycle; omitted before the first completed cycle.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "versions_published_total": {
+            "description": "Versions published or changed across all rescan cycles.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cycles_total",
+          "versions_published_total",
+          "keys_unavailable_total",
+          "cycle_duration_seconds_avg"
+        ],
+        "type": "object"
+      },
+      "ReleaseDetailObj": {
+        "properties": {
+          "artifacts": {
+            "description": "Downloadable artifacts published for this version.",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactEntryObj"
+            },
+            "type": "array"
+          },
+          "degraded": {
+            "description": "Per-version degraded reasons, when some overlay or artifact could not be published.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hash": {
+            "description": "BLAKE3-24 XOF digest of the canonical version tree, encoded as 48 lowercase hex characters.",
+            "type": "string"
+          },
+          "key": {
+            "description": "Registry key that owns this version.",
+            "type": "string"
+          },
+          "notes_markdown": {
+            "description": "Raw upstream release notes in Markdown. Sanitized HTML is rendered only for browser pages.",
+            "type": "string"
+          },
+          "overlays": {
+            "description": "Overlay families detected and published for this version, such as Go or Composer.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "size": {
+            "description": "Total source content size in bytes.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceStatusObj"
+          },
+          "time": {
+            "description": "Release timestamp used for feeds, lists, and package-manager metadata.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "upstream_present": {
+            "description": "Whether this version was still present at the upstream during the last scan. `false` means the mirror kept an upstream-deleted version.",
+            "type": "boolean"
+          },
+          "version": {
+            "description": "Version label as exposed by the mirror.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "version",
+          "time",
+          "source",
+          "artifacts"
+        ],
+        "type": "object"
+      },
+      "ReleaseListObj": {
+        "properties": {
+          "key": {
+            "description": "Registry key for this page.",
+            "type": "string"
+          },
+          "next": {
+            "description": "Opaque keyset cursor for the next page. Omitted on the last page.",
+            "type": "string"
+          },
+          "releases": {
+            "description": "Page of release summaries ordered newest first.",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseSummaryObj"
+            },
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceStatusObj"
+          }
+        },
+        "required": [
+          "key",
+          "source",
+          "releases"
+        ],
+        "type": "object"
+      },
+      "ReleaseSummaryObj": {
+        "properties": {
+          "size": {
+            "description": "Total source content size in bytes.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "time": {
+            "description": "Release timestamp from upstream metadata.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "url": {
+            "description": "Path to the version detail document, normally `<version>.json`.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version label.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "time",
+          "size"
+        ],
+        "type": "object"
+      },
+      "SourceStatusObj": {
+        "properties": {
+          "last_scan": {
+            "description": "Scan timestamp that produced this source status.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "description": "Upstream availability as observed by this node during the last scan.",
+            "enum": [
+              "available",
+              "temporary_down",
+              "permanent_down",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "Original upstream URL from `release_mirrors`. It is still reported when the last sync used a brother node.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "status",
+          "last_scan"
+        ],
+        "type": "object"
+      },
+      "VersionFullEntryObj": {
+        "properties": {
+          "hash": {
+            "description": "BLAKE3-24 XOF digest of the canonical version tree, encoded as 48 lowercase hex characters.",
+            "type": "string"
+          },
+          "size": {
+            "description": "Total source content size in bytes.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "version": {
+            "description": "Version label.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "hash",
+          "size"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "yggvault publishes a read-only package mirror API. The same HTTP routes are\nserved from web listeners and, when enabled, from the Yggdrasil listener.\nListener context affects generated absolute URLs, cache validators, metrics\nlabels, and Go module host rewriting.\n\nThis specification covers:\n\n- service endpoints such as `/health`, `/info`, and `/metrics`;\n- mirror catalog and release metadata;\n- deterministic `.zip` and `.tar.gz` source archives;\n- Go module proxy endpoints;\n- Composer v2 repository metadata;\n- Atom feeds and metrics snapshots.\n\nThe node also serves this document at `/openapi.json`. That route is handled\noutside the generated API handler list.\n\nBrother synchronization is intentionally not modeled here. It uses\n`CONNECT /rpc` followed by Go `net/rpc`/gob, not REST. Operators can expose\nthat channel independently on web and Yggdrasil listeners.\n\n## Mounting\n\nPaths are documented as root-mode paths. When `web.static.dir` is empty,\nAPI, browser, package-manager, generated media, and sitemap routes live at\n`/`.\n\nWhen `web.static.dir` is configured, static files own `/`. Package API,\nbrowser routes, package-manager routes, generated media, and the generated\nnode sitemap move under `web.routing.prefix`, for example\n`/pkg/catalog.json` and `/pkg/sitemap.xml`.\n\nStable service routes stay at their root paths: `/health`, `/info`,\n`/metrics`, and `/openapi.json`. The `/info` response includes\n`route_prefix` so clients and brother nodes can discover the mounted prefix.\n\n## Package-manager routes\n\nPackage-manager endpoints are published per version after content detection:\n\n- Go proxy routes require a usable `go.mod` candidate. If the module path\n  must be rewritten and `overlay.go.rewrite_enabled` is `false`, the Go\n  overlay for that version is not published.\n- Composer routes come from detected `composer.json` packages after\n  package-name collision resolution.\n- Universal archives do not depend on Go or Composer detection.\n\n## Caching and ranges\n\nCacheable responses use strong ETags. Metadata is generated in memory and\ncached. Artifact bodies are read from the hot cache on disk and sent with a\nfixed `Content-Length`.\n\nArchive routes and Go `.zip` routes support single byte ranges and return\n`206 Partial Content` for satisfiable `Range` requests.\n",
+    "title": "yggvault public API",
+    "version": "0.1.4"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/catalog.json": {
+      "get": {
+        "description": "Lightweight cross-key snapshot containing each key, latest version, operational status, source classification, and source availability. Release notes and artifact lists are omitted. The body is served from the metadata cache and does not perform a live storage scan. Clients should treat both `application/json` and `text/plain` variants as the same JSON document. Query parameters are rejected.",
+        "operationId": "getCatalog",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogObj"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Catalog document.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated response body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Catalog of all configured mirror keys",
+        "tags": [
+          "mirror"
+        ]
+      }
+    },
+    "/favicon.ico": {
+      "get": {
+        "description": "Multi-resolution favicon (16/32/48) generated from the node logo. Pre-rendered at startup and served with a strong content ETag. Query parameters are rejected.",
+        "operationId": "getFavicon",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/x-icon": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "ICO favicon.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Long-lived cache policy for the constant asset.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator derived from the generated body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Node favicon",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/feed.xml": {
+      "get": {
+        "description": "Atom 1.0 feed built from the cross-key release history. New events come first. The feed includes publish events and archive mutation events; a mutation is a separate entry with an ID that includes the content hash. The number of entries is capped by `web.pages.feed_size`. Query parameters are rejected.",
+        "operationId": "getFeed",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/atom+xml": {
+                "example": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<feed xmlns=\"http://www.w3.org/2005/Atom\">\n  <id>https://modules.example.org/feed.xml</id>\n  <title>yggvault - new releases</title>\n  <updated>2026-04-02T09:00:00Z</updated>\n  <link rel=\"self\" href=\"/feed.xml\"/>\n  <entry>\n    <id>ratatoskr@v1.2.3#blake3-24:ef01</id>\n    <title>ratatoskr v1.2.3 - archive updated</title>\n    <updated>2026-04-02T09:00:00Z</updated>\n    <link href=\"/ratatoskr/v1.2.3\"/>\n    <content type=\"html\">&lt;p&gt;Upstream re-released the archive.&lt;/p&gt;</content>\n  </entry>\n  <entry>\n    <id>ratatoskr@v1.2.3#blake3-24:abcd</id>\n    <title>ratatoskr v1.2.3 - released</title>\n    <updated>2026-04-01T12:00:00Z</updated>\n    <link href=\"/ratatoskr/v1.2.3\"/>\n    <content type=\"html\">&lt;h2&gt;Changelog&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;fix&lt;/li&gt;&lt;/ul&gt;</content>\n  </entry>\n</feed>\n",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Atom 1.0 feed",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated feed body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Global Atom release-event feed",
+        "tags": [
+          "mirror"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Returns the live node health snapshot for the listener that handled the request. The response is not cached and includes the entry source (`web` or `yggdrasil`), current runtime status, recent diagnostic count, and the last completed rescan timestamp when available.",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthObj"
+                }
+              }
+            },
+            "description": "Live health snapshot.",
+            "headers": {
+              "Cache-Control": {
+                "description": "No-cache policy for live service state.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Health status for the current entry channel",
+        "tags": [
+          "service"
+        ]
+      }
+    },
+    "/info": {
+      "get": {
+        "description": "Public node identity shared by all routes: name, optional description, optional location, public contacts, clearnet domain, and Yggdrasil host. The same identity data is also published through mesh `info`/`inet` signals. Empty `domain` or `ygg_host` means the matching entry is disabled.",
+        "operationId": "getInfo",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoObj"
+                }
+              }
+            },
+            "description": "Public node identity card.",
+            "headers": {
+              "Cache-Control": {
+                "description": "No-cache policy for live node identity.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Public node identity card",
+        "tags": [
+          "service"
+        ]
+      }
+    },
+    "/logo/{size}": {
+      "get": {
+        "description": "Square transparent PNG of the node logo at a whitelisted edge size (16, 32, 48, 180, 192, 512). Pre-rendered at startup; other sizes return 404. Query parameters are rejected.",
+        "operationId": "getLogo",
+        "parameters": [
+          {
+            "description": "Whitelisted logo edge in pixels, for example `192`.",
+            "in": "path",
+            "name": "size",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "PNG logo.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Long-lived cache policy for the constant asset.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator derived from the generated body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Node logo PNG",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "description": "Returns a small HTML page linking the enabled metric groups for the current entry. If both public and internal metric groups are disabled on that entry, the route is not advertised and returns 404.",
+        "operationId": "getMetricsIndex",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html; charset=utf-8": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "HTML metrics index.",
+            "headers": {
+              "Cache-Control": {
+                "description": "No-cache policy for the metrics index.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Human-readable metrics index",
+        "tags": [
+          "service"
+        ]
+      }
+    },
+    "/metrics/cache": {
+      "get": {
+        "description": "JSON snapshot of the metadata/hot-file RAM cache and the storage engine (Pebble gauges, event counters, hot-cache enforcement). Served only when public metrics are enabled for the current entry (`metrics.web.public` or `metrics.ygg.public`); otherwise the endpoint returns 404.",
+        "operationId": "getMetricsCache",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsCacheObj"
+                }
+              }
+            },
+            "description": "Cache and storage metrics.",
+            "headers": {
+              "Cache-Control": {
+                "description": "No-cache policy for live metrics.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Cache and storage-serving metrics",
+        "tags": [
+          "service"
+        ]
+      }
+    },
+    "/metrics/core": {
+      "get": {
+        "description": "JSON snapshot of core HTTP request signals aggregated across operations: request and error totals and request-duration sum/count. Served only when public metrics are enabled for the current entry (`metrics.web.public` or `metrics.ygg.public`); otherwise the endpoint returns 404.",
+        "operationId": "getMetricsCore",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsCoreObj"
+                }
+              }
+            },
+            "description": "Core HTTP request metrics.",
+            "headers": {
+              "Cache-Control": {
+                "description": "No-cache policy for live metrics.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Core HTTP request metrics",
+        "tags": [
+          "service"
+        ]
+      }
+    },
+    "/metrics/errors": {
+      "get": {
+        "description": "JSON view of the Error Registry: active and dropped diagnostic counts plus the bounded newest-first recent buffer for real-time triage. Served only when public metrics are enabled for the current entry (`metrics.web.public` or `metrics.ygg.public`); otherwise the endpoint returns 404.",
+        "operationId": "getMetricsErrors",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsErrorsObj"
+                }
+              }
+            },
+            "description": "Error registry metrics.",
+            "headers": {
+              "Cache-Control": {
+                "description": "No-cache policy for live metrics.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Error registry metrics",
+        "tags": [
+          "service"
+        ]
+      }
+    },
+    "/metrics/internal": {
+      "get": {
+        "description": "Complete Prometheus-compatible text exposition (version 0.0.4) covering every metric group: core, cache, rescan, errors, and internal runtime signals. Built for scrapers such as VictoriaMetrics and Prometheus. Served only when internal metrics are enabled for the current entry (`metrics.web.internal` or `metrics.ygg.internal`); otherwise the endpoint returns 404.",
+        "operationId": "getMetricsInternal",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain; version=0.0.4; charset=utf-8": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Prometheus text exposition (version 0.0.4).",
+            "headers": {
+              "Cache-Control": {
+                "description": "No-store policy for metric snapshots.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Full Prometheus text exposition",
+        "tags": [
+          "service"
+        ]
+      }
+    },
+    "/metrics/rescan": {
+      "get": {
+        "description": "JSON snapshot of the rescan integrator: cycle, publish, and unavailability totals, mean cycle duration, and the last completed rescan timestamp. Served only when public metrics are enabled for the current entry (`metrics.web.public` or `metrics.ygg.public`); otherwise the endpoint returns 404.",
+        "operationId": "getMetricsRescan",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsRescanObj"
+                }
+              }
+            },
+            "description": "Rescan metrics.",
+            "headers": {
+              "Cache-Control": {
+                "description": "No-cache policy for live metrics.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Rescan and upstream-source metrics",
+        "tags": [
+          "service"
+        ]
+      }
+    },
+    "/og.png": {
+      "get": {
+        "description": "Open Graph banner for the whole node (catalog page): mirror-key and version counts, plus the last publish date. Generated on demand and cached. Query parameters are rejected.",
+        "operationId": "getOgNode",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "PNG Open Graph banner.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator derived from content freshness.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Node Open Graph banner",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/og/{key}": {
+      "get": {
+        "description": "Open Graph banner for one mirror key: key name, latest version, version count, and last publish date. Unknown or empty keys return 404. Generated on demand and cached. Query parameters are rejected.",
+        "operationId": "getOgKey",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "PNG Open Graph banner.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator derived from key content freshness.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Module Open Graph banner",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/og/{key}/{version}": {
+      "get": {
+        "description": "Open Graph banner for one version: version string, mirror key, source size, and detected overlays. Unknown key/version pairs return 404. Generated on demand and cached. Query parameters are rejected.",
+        "operationId": "getOgVersion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "description": "Version label, for example `v1.2.3`.",
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "PNG Open Graph banner.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator derived from key content freshness.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Version Open Graph banner",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/p2/{vendor}/{packageFile}": {
+      "get": {
+        "description": "Returns Composer v2 p2 metadata for one package name. `packageFile` contains the package segment with `.json` for stable metadata or `~dev.json` for the dev variant, for example `monolog.json` or `monolog~dev.json`. Unknown package names, dev-only misses, and invalid filenames return 404. Query parameters are rejected.",
+        "operationId": "getComposerP2Package",
+        "parameters": [
+          {
+            "description": "Composer vendor segment.",
+            "in": "path",
+            "name": "vendor",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Composer package metadata filename, for example `monolog.json` or `monolog~dev.json`.",
+            "in": "path",
+            "name": "packageFile",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposerP2Obj"
+                }
+              }
+            },
+            "description": "Composer v2 metadata for one package.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated Composer metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated p2 document.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Composer v2 package metadata",
+        "tags": [
+          "composer"
+        ]
+      }
+    },
+    "/packages.json": {
+      "get": {
+        "description": "Returns the Composer repository `packages.json` document. yggvault uses the Composer v2 lazy metadata flow: the root document advertises the p2 `metadata-url`, the complete prebuilt package-name list, and the package list endpoint. Query parameters are rejected.",
+        "operationId": "getComposerPackages",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposerPackagesObj"
+                }
+              }
+            },
+            "description": "Composer repository root document.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated Composer metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated root document.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Composer repository root metadata",
+        "tags": [
+          "composer"
+        ]
+      }
+    },
+    "/packages/list.json": {
+      "get": {
+        "description": "Returns available Composer package names after package-name collision resolution. The optional `filter` supports Composer-style `*` wildcards and is validated before matching so oversized or malformed filters return 400.",
+        "operationId": "getComposerPackageList",
+        "parameters": [
+          {
+            "description": "Composer filter with optional `*` wildcards.",
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposerPackageListObj"
+                }
+              }
+            },
+            "description": "Available Composer package names.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated Composer metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated package list.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Composer package-name list",
+        "tags": [
+          "composer"
+        ]
+      }
+    },
+    "/sitemap.xml": {
+      "get": {
+        "description": "Sitemap of crawlable HTML pages for the current entry: catalog, mirror-key pages, version pages with path-safe version labels, and the metrics index when public metrics are enabled. Absolute URLs use the entry scheme, host, and nested prefix; the URL count is capped by `web.pages.sitemap_size`. Query parameters are rejected.",
+        "operationId": "getSitemap",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "XML sitemap.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator derived from the entry host and content freshness.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Node sitemap",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/{key}/@latest": {
+      "get": {
+        "description": "Returns the Go proxy `@latest` JSON document for the newest active canonical version in the requested major line. The route is available only when content detection has published a Go overlay for the key and major path.",
+        "operationId": "getGoLatest",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoInfoObj"
+                }
+              }
+            },
+            "description": "Go proxy latest-version document.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated response body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Latest version metadata for the Go module proxy",
+        "tags": [
+          "go"
+        ]
+      }
+    },
+    "/{key}/@v/list": {
+      "get": {
+        "description": "Returns the Go proxy `@v/list` body: one canonical version per line, newest first. The route is available only for keys and major lines where content detection has published a Go overlay. Query parameters are rejected.",
+        "operationId": "getGoVersionList",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Plain-text Go version list.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated response body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Unpaginated Go-compatible version list",
+        "tags": [
+          "go"
+        ]
+      }
+    },
+    "/{key}/@v/{versionFile}": {
+      "get": {
+        "description": "Go module proxy endpoint. The file extension selects the body: `.info` returns the Go proxy info JSON, `.mod` returns the raw or rewritten `go.mod`, and `.zip` streams the Go module zip from the hot cache. Versions are unescaped before lookup. The route is available only when content detection has published a Go overlay. If import rewriting is required but `overlay.go.rewrite_enabled` is false, the Go artifact is not published. Composer dist and universal `.tar.gz` archives are served from `/<key>/<version>.{zip,tar.gz}` instead.",
+        "operationId": "getVersionArtifact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "description": "Version file name, for example `v1.2.3.info`, `v1.2.3.mod`, or `v1.2.3.zip`.",
+            "in": "path",
+            "name": "versionFile",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          },
+          {
+            "$ref": "#/components/parameters/IfModifiedSince"
+          },
+          {
+            "$ref": "#/components/parameters/Range"
+          },
+          {
+            "$ref": "#/components/parameters/IfRange"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Generated Go proxy response body.",
+            "headers": {
+              "Accept-Ranges": {
+                "description": "Byte range support marker for zip artifacts. The value is `bytes`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Cache policy for generated data.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "Download file name for the `.zip` module artifact. The value is `attachment; filename=\"<key>@<version>.zip\"`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "description": "Body size in bytes. Zip responses use a fixed length, not chunked transfer.",
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated body or zip artifact.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Modification time of the opened hot-cache zip file.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "$ref": "#/components/responses/PartialContentRespObj"
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "416": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Go proxy version artifact: .info, .mod, or .zip",
+        "tags": [
+          "go"
+        ]
+      }
+    },
+    "/{key}/latest": {
+      "get": {
+        "description": "Returns the latest indexed version for a mirrored key as a newline-terminated plain-text body. Unknown keys or keys without indexed versions return 404.",
+        "operationId": "getMirrorLatest",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Latest version followed by a newline.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated response body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Latest mirrored version as plain text",
+        "tags": [
+          "mirror"
+        ]
+      }
+    },
+    "/{key}/list": {
+      "get": {
+        "description": "Returns all indexed versions for a mirrored key as a newest-first plain-text list with one version per line. Unknown keys or keys without indexed versions return 404.",
+        "operationId": "getMirrorList",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Newest-first plain-text list with one version per line.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated response body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Mirrored version list as plain text",
+        "tags": [
+          "mirror"
+        ]
+      }
+    },
+    "/{key}/list/full": {
+      "get": {
+        "description": "Returns all indexed versions for a mirrored key as a newest-first JSON array body. The current handler serves this JSON body as `text/plain`; clients should parse the body content instead of relying on an `application/json` media type.",
+        "operationId": "getMirrorListFull",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Newest-first JSON array of version records with integrity metadata.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated response body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Mirrored version list with tree hash and source size",
+        "tags": [
+          "mirror"
+        ]
+      }
+    },
+    "/{key}/releases.json": {
+      "get": {
+        "description": "Lightweight release snapshot for one key. Each item contains version, time, size, and a link to the detail document; release notes and artifact lists are intentionally omitted. Pagination uses keyset cursors: `?after=<next-from-previous-response>`. The `next` field is omitted on the last page. Clients should treat both `application/json` and `text/plain` variants as the same JSON document.",
+        "operationId": "getKeyReleases",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "$ref": "#/components/parameters/After"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseListObj"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Paginated release list.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated response body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Paginated release list for one key",
+        "tags": [
+          "mirror"
+        ]
+      }
+    },
+    "/{key}/releases.xml": {
+      "get": {
+        "description": "Atom 1.0 feed for release history events of one key. New events come first. The feed includes publish events and archive mutation events; a mutation is a separate entry with an ID that includes the content hash. The number of entries is capped by `web.pages.feed_size`. Query parameters are rejected.",
+        "operationId": "getKeyFeed",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/atom+xml": {
+                "example": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<feed xmlns=\"http://www.w3.org/2005/Atom\">\n  <id>https://modules.example.org/ratatoskr/releases.xml</id>\n  <title>ratatoskr - releases</title>\n  <updated>2026-04-01T12:00:00Z</updated>\n  <link rel=\"self\" href=\"/ratatoskr/releases.xml\"/>\n  <entry>\n    <id>ratatoskr@v1.2.3#blake3-24:abcd</id>\n    <title>v1.2.3 - released</title>\n    <updated>2026-04-01T12:00:00Z</updated>\n    <link href=\"/ratatoskr/v1.2.3\"/>\n    <content type=\"html\">&lt;h2&gt;Changelog&lt;/h2&gt;</content>\n  </entry>\n</feed>\n",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Atom 1.0 feed for one key.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for generated metadata.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated feed body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Atom release-event feed for one key",
+        "tags": [
+          "mirror"
+        ]
+      }
+    },
+    "/{key}/{versionFile}": {
+      "get": {
+        "description": "Dispatches by file extension. `.json` returns the release detail document, `.zip` returns a deterministic zip artifact, and `.tar.gz` returns a deterministic tar.gz artifact. Archive artifacts are always the raw uploaded source tree (top-dir `<key>-<version>/`) and are host-independent; Go-module import-path rewriting is exposed only on the go-proxy `@v/<version>.zip` endpoint. A bare `<version>` without an extension renders the browser HTML version page. Query parameters are rejected.",
+        "operationId": "getVersionFile",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Key"
+          },
+          {
+            "description": "Version file name, for example `v1.2.3.json`, `v1.2.3.zip`, or `v1.2.3.tar.gz`.",
+            "in": "path",
+            "name": "versionFile",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          },
+          {
+            "$ref": "#/components/parameters/IfModifiedSince"
+          },
+          {
+            "$ref": "#/components/parameters/Range"
+          },
+          {
+            "$ref": "#/components/parameters/IfRange"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseDetailObj"
+                }
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Release detail JSON, browser HTML, or streamed archive bytes selected by file extension.",
+            "headers": {
+              "Accept-Ranges": {
+                "description": "Byte range support marker for archive artifacts. The value is `bytes`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "Cache policy for generated data.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "description": "Download file name for archive responses. The value is `attachment; filename=\"<key>-<version>.<ext>\"`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "description": "Body size in bytes. Archive responses use a fixed length, not chunked transfer.",
+                "schema": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "ETag": {
+                "description": "Strong cache validator for the generated body or artifact.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Last-Modified": {
+                "description": "Modification time of the opened hot-cache artifact file.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "$ref": "#/components/responses/PartialContentRespObj"
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModifiedRespObj"
+          },
+          "400": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "404": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "405": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "414": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "416": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "429": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "431": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          },
+          "500": {
+            "$ref": "#/components/responses/DefaultErrorRespObj"
+          }
+        },
+        "summary": "Per-version file: <version>.json, <version>.zip, or <version>.tar.gz",
+        "tags": [
+          "mirror",
+          "archive",
+          "go"
+        ]
+      }
+    }
+  },
+  "security": [],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Node status, public identity, runtime OpenAPI document, and metrics endpoints.",
+      "name": "service"
+    },
+    {
+      "description": "Release catalog, per-key version metadata, universal archives, and Atom feeds.",
+      "name": "mirror"
+    },
+    {
+      "description": "Go module proxy endpoints published from detected Go module candidates.",
+      "name": "go"
+    },
+    {
+      "description": "Deterministic source-tree archives built from stored release content.",
+      "name": "archive"
+    },
+    {
+      "description": "Composer v2 repository metadata and dist archives.",
+      "name": "composer"
+    },
+    {
+      "description": "Generated node assets: favicon, logo, Open Graph banners, and the sitemap.",
+      "name": "assets"
+    }
+  ]
+}
