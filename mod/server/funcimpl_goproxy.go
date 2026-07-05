@@ -128,14 +128,16 @@ func (obj *funcObj) goZip(ctx context.Context, key string, version string, major
 	if gate.notModified {
 		return &api.NotModifiedRespObj{}, nil
 	}
+	disposition := archiveDisposition(key + "@" + version + ".zip")
 	// HEAD responds from metadata; a cold go-zip build is unnecessary for size and ETag.
 	if gate.headOnly {
 		return &api.GetVersionArtifactOKHeaders{
-			AcceptRanges:  api.NewOptString("bytes"),
-			ETag:          api.NewOptString(gate.etag),
-			CacheControl:  api.NewOptString(obj.cacheControlData()),
-			ContentLength: api.NewOptInt64(int64(artObj.SizeBytes)),
-			Response:      api.GetVersionArtifactOK{Data: http.NoBody},
+			AcceptRanges:       api.NewOptString("bytes"),
+			ETag:               api.NewOptString(gate.etag),
+			CacheControl:       api.NewOptString(obj.cacheControlData()),
+			ContentLength:      api.NewOptInt64(int64(artObj.SizeBytes)),
+			ContentDisposition: api.NewOptString(disposition),
+			Response:           api.GetVersionArtifactOK{Data: http.NoBody},
 		}, nil
 	}
 	if !gate.spec.satisfiable {
@@ -148,14 +150,15 @@ func (obj *funcObj) goZip(ctx context.Context, key string, version string, major
 	cacheControl := obj.cacheControlData()
 	lastModified := openObj.ModTime.UTC().Format(http.TimeFormat)
 	if gate.spec.partial {
-		return partialResp(openObj.Body, gate.spec, gate.etag, cacheControl, lastModified)
+		return partialResp(openObj.Body, gate.spec, gate.etag, cacheControl, lastModified, disposition)
 	}
 	return &api.GetVersionArtifactOKHeaders{
-		AcceptRanges:  api.NewOptString("bytes"),
-		ETag:          api.NewOptString(gate.etag),
-		CacheControl:  api.NewOptString(cacheControl),
-		LastModified:  api.NewOptString(lastModified),
-		ContentLength: api.NewOptInt64(int64(artObj.SizeBytes)),
-		Response:      api.GetVersionArtifactOK{Data: openObj.Body},
+		AcceptRanges:       api.NewOptString("bytes"),
+		ETag:               api.NewOptString(gate.etag),
+		CacheControl:       api.NewOptString(cacheControl),
+		LastModified:       api.NewOptString(lastModified),
+		ContentLength:      api.NewOptInt64(int64(artObj.SizeBytes)),
+		ContentDisposition: api.NewOptString(disposition),
+		Response:           api.GetVersionArtifactOK{Data: openObj.Body},
 	}, nil
 }

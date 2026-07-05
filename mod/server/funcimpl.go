@@ -286,6 +286,10 @@ func universalArchiveFormatVersion(format archive.FormatType) (uint32, bool) {
 	}
 }
 
+func archiveDisposition(fileName string) string {
+	return `attachment; filename="` + strings.ReplaceAll(fileName, `"`, "") + `"`
+}
+
 func (obj *funcObj) versionArchive(ctx context.Context, params api.GetVersionFileParams, version string, format archive.FormatType) (api.GetVersionFileRes, error) {
 	formatVersion, ok := universalArchiveFormatVersion(format)
 	if !ok {
@@ -302,14 +306,16 @@ func (obj *funcObj) versionArchive(ctx context.Context, params api.GetVersionFil
 	if gate.notModified {
 		return &api.NotModifiedRespObj{}, nil
 	}
+	disposition := archiveDisposition(params.Key + "-" + version + "." + string(format))
 	// HEAD responds from Locate metadata; size, ETag, and Accept-Ranges are known without opening the file.
 	if gate.headOnly {
 		return &api.GetVersionFileOKApplicationOctetStreamHeaders{
-			AcceptRanges:  api.NewOptString("bytes"),
-			ETag:          api.NewOptString(gate.etag),
-			CacheControl:  api.NewOptString(obj.cacheControlData()),
-			ContentLength: api.NewOptInt64(int64(artObj.SizeBytes)),
-			Response:      api.GetVersionFileOKApplicationOctetStream{Data: http.NoBody},
+			AcceptRanges:       api.NewOptString("bytes"),
+			ETag:               api.NewOptString(gate.etag),
+			CacheControl:       api.NewOptString(obj.cacheControlData()),
+			ContentLength:      api.NewOptInt64(int64(artObj.SizeBytes)),
+			ContentDisposition: api.NewOptString(disposition),
+			Response:           api.GetVersionFileOKApplicationOctetStream{Data: http.NoBody},
 		}, nil
 	}
 	if !gate.spec.satisfiable {
@@ -323,14 +329,15 @@ func (obj *funcObj) versionArchive(ctx context.Context, params api.GetVersionFil
 	cacheControl := obj.cacheControlData()
 	lastModified := openObj.ModTime.UTC().Format(http.TimeFormat)
 	if gate.spec.partial {
-		return partialResp(openObj.Body, gate.spec, gate.etag, cacheControl, lastModified)
+		return partialResp(openObj.Body, gate.spec, gate.etag, cacheControl, lastModified, disposition)
 	}
 	return &api.GetVersionFileOKApplicationOctetStreamHeaders{
-		AcceptRanges:  api.NewOptString("bytes"),
-		ETag:          api.NewOptString(gate.etag),
-		CacheControl:  api.NewOptString(cacheControl),
-		LastModified:  api.NewOptString(lastModified),
-		ContentLength: api.NewOptInt64(int64(artObj.SizeBytes)),
-		Response:      api.GetVersionFileOKApplicationOctetStream{Data: openObj.Body},
+		AcceptRanges:       api.NewOptString("bytes"),
+		ETag:               api.NewOptString(gate.etag),
+		CacheControl:       api.NewOptString(cacheControl),
+		LastModified:       api.NewOptString(lastModified),
+		ContentLength:      api.NewOptInt64(int64(artObj.SizeBytes)),
+		ContentDisposition: api.NewOptString(disposition),
+		Response:           api.GetVersionFileOKApplicationOctetStream{Data: openObj.Body},
 	}, nil
 }

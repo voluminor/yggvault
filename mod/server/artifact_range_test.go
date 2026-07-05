@@ -122,6 +122,28 @@ func TestUniversalArchiveIgnoresLegacyListenerSpecificRow(t *testing.T) {
 	}
 }
 
+func TestArchiveContentDisposition(t *testing.T) {
+	serverObj, lc := newTestServer(t)
+	tsObj := httptest.NewServer(serverObj.Handler(lc))
+	defer tsObj.Close()
+
+	resp, _ := doReq(t, tsObj, http.MethodHead, "/lib/v1.0.0.zip", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d want 200", resp.StatusCode)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="lib-v1.0.0.zip"` {
+		t.Fatalf("Content-Disposition=%q want package-qualified name", cd)
+	}
+
+	goResp, _ := doReq(t, tsObj, http.MethodHead, "/lib/@v/v1.0.0.zip", nil)
+	if goResp.StatusCode != http.StatusOK {
+		t.Fatalf("go-proxy status=%d want 200", goResp.StatusCode)
+	}
+	if cd := goResp.Header.Get("Content-Disposition"); cd != `attachment; filename="lib@v1.0.0.zip"` {
+		t.Fatalf("go-proxy Content-Disposition=%q want key@version name", cd)
+	}
+}
+
 func TestArtifactRateLimited(t *testing.T) {
 	serverObj, lc := newTestServer(t, withRateLimit(1, 1))
 	tsObj := httptest.NewServer(serverObj.Handler(lc))

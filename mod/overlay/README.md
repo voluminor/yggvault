@@ -1,7 +1,8 @@
 # mod/overlay
 
 `mod/overlay` turns a canonical version tree into package-manager artifacts and metadata. It detects Go and Composer
-packages, rewrites Go module paths when enabled, plans universal archives, and builds artifact bytes from storage.
+packages, rewrites Go module paths for Go proxy artifacts when enabled, plans raw universal archives, and builds
+artifact bytes from storage.
 
 ## Place in the Runtime
 
@@ -21,11 +22,11 @@ flowchart LR
 ## Responsibilities
 
 - Detect whether a tree is Go-publishable, Composer-publishable, both, or neither.
-- Rewrite Go module paths and imports for the configured public module path.
+- Rewrite Go module paths and imports for the configured public module path in Go proxy module zips.
 - Reject trees that cannot become valid Go module zips.
 - Build Go proxy `.mod`, `.info`, and `.zip` artifacts.
 - Build Composer metadata and dist archives.
-- Build universal `.zip` and `.tar.gz` artifacts.
+- Build raw universal `.zip` and `.tar.gz` artifacts with top directory `<key>-<version>/`.
 - Render install snippets and integrity hints used by the HTML UI.
 
 ## Contracts
@@ -34,7 +35,8 @@ flowchart LR
 - Go zip validity follows `golang.org/x/mod/zip` constraints, including fold collisions and invalid names.
 - Symlink trees are not Go-publishable.
 - Builders must not trust staged files after validation; storage reopens and verifies staged content before commit.
-- Artifact identifiers include listener id when output depends on host or scheme.
+- Artifact identifiers include listener id when output depends on host or scheme; raw universal archives use the global
+  listener id.
 
 ## Important Files
 

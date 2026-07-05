@@ -25,6 +25,10 @@ headers:
     schema:
       type: integer
       format: int64
+  Content-Disposition:
+    description: Download file name for archive responses. The value is `attachment; filename="<key>-<version>.<ext>"`.
+    schema:
+      type: string
 content:
   application/octet-stream:
     schema:
