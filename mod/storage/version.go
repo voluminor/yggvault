@@ -127,7 +127,15 @@ func (obj *Obj) commitPublish(ctx context.Context, publishObj core.PublishObj, t
 		return core.PublishResultObj{}, obj.cleanupPublishFailure(pendingObj, err)
 	}
 	if existingFlag && existingObj.TreeHash != treeHashObj && obj.configObj.HistoryPolicy.Mutation == stcfg.HistoryMutationModeOverwrite {
-		_ = obj.cleanupDeletedObjectsLocked(ctx, existingObj.TreeHash, existingTreeArr)
+		if cleanupErr := obj.cleanupDeletedObjectsLocked(ctx, existingObj.TreeHash, existingTreeArr); cleanupErr != nil {
+			obj.logObj.Warn().
+				Str("component", "storage").
+				Str("key", publishObj.Key).
+				Str("version", publishObj.Version).
+				Str("tree_hash", existingObj.TreeHash.Hex()).
+				Str("error", cleanupErr.Error()).
+				Msg("overwrite cleanup of superseded revision failed; unreferenced objects will be reclaimed by a later sweep")
+		}
 	}
 	return resultObj, nil
 }

@@ -49,6 +49,10 @@ get:
           schema:
             type: integer
             format: int64
+        Content-Disposition:
+          description: Download file name for the `.zip` module artifact. The value is `attachment; filename="<key>@<version>.zip"`.
+          schema:
+            type: string
       content:
         application/octet-stream:
           schema:

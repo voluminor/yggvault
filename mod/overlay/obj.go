@@ -27,9 +27,9 @@ const (
 	// GoZipFormatVersion is the Go module zip format version.
 	GoZipFormatVersion = 2
 	// UniversalZipFormatVersion is the universal zip format version.
-	UniversalZipFormatVersion = 1
+	UniversalZipFormatVersion = 2
 	// UniversalTarGzFormatVersion is the universal tar.gz format version.
-	UniversalTarGzFormatVersion = 1
+	UniversalTarGzFormatVersion = 2
 )
 
 // // // // // // // // // //

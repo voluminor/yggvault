@@ -29,10 +29,6 @@ func universalTopDir(key string, version string) string {
 	return key + "-" + version
 }
 
-func goModuleTopDir(targetModulePath string, version string) string {
-	return targetModulePath + "@" + version
-}
-
 func (obj *Obj) targetModulePath(key string, version string, listenerCtxObj ListenerCtxObj) string {
 	host := obj.domain
 	if listenerCtxObj.EntryHost != "" {

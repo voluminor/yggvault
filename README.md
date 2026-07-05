@@ -686,6 +686,9 @@ built from the same version tree as the universal zip.
 Large `.zip` and `.tar.gz` responses support `ETag`, `If-None-Match`, `Last-Modified`, `Accept-Ranges`, `Range`/`206`,
 and `HEAD`.
 
+Universal `.zip` and `.tar.gz` archives are raw stored source trees with top directory `<key>-<version>/`.
+Go import-path rewriting is applied only to the Go proxy `@v/{version}.zip` module archive.
+
 When `web.static.dir` is enabled, user static files own `/`, while package/API/browser routes move under
 `web.routing.prefix`, for example `/pkg/{key}/latest`. Stable service routes (`/health`, `/info`, `/metrics`,
 `/openapi.json`) stay at the root. See [Custom Frontend and Nested Mode](#custom-frontend-and-nested-mode).

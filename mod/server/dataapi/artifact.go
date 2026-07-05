@@ -12,10 +12,9 @@ import (
 
 // // // // // // // // // //
 
-// OpenArtifact opens the canonical universal archive for streaming, reusing an artifact key/metadata
-// already resolved by artifactio.LocateKey so a full GET does not re-query GetArtifact.
-// listenerCtxObj carries host context for host-sensitive rewrites; artifactio owns body safety and materialization errors.
-func OpenArtifact(ctx context.Context, store ArtifactReaderInterface, overlayObj *overlay.Obj, keyObj core.ArtifactKeyObj, listenerCtxObj overlay.ListenerCtxObj) (artifactio.OpenObj, error) {
+// OpenArtifact opens the raw universal archive for streaming, reusing an artifact key already resolved by
+// the archive route so a full GET does not re-query GetArtifact.
+func OpenArtifact(ctx context.Context, store ArtifactReaderInterface, overlayObj *overlay.Obj, keyObj core.ArtifactKeyObj) (artifactio.OpenObj, error) {
 	key, version := keyObj.Key, keyObj.Version
 	format := archive.FormatType(keyObj.ArtifactKind)
 	versionObj, ok, err := store.GetVersion(ctx, key, version)
@@ -25,16 +24,6 @@ func OpenArtifact(ctx context.Context, store ArtifactReaderInterface, overlayObj
 	if !ok {
 		return artifactio.OpenObj{}, serr.ErrNotFound
 	}
-	detectionObj, _, err := store.GetDetection(ctx, key, version)
-	if err != nil {
-		return artifactio.OpenObj{}, err
-	}
-	goCand, _ := overlay.CandidateFromDetection(detectionObj)
-	rewriteArr, err := store.RewriteSet(ctx, key, version)
-	if err != nil {
-		return artifactio.OpenObj{}, err
-	}
-
-	builderObj := overlayObj.CanonicalUniversalBuilder(store, key, version, versionObj.TreeHash, detectionObj, goCand, rewriteArr, listenerCtxObj, format)
+	builderObj := overlayObj.UniversalBuilder(store, key, version, versionObj.TreeHash, format)
 	return artifactio.OpenResolved(ctx, store, keyObj, builderObj, versionObj.IngestTS.UTC())
 }

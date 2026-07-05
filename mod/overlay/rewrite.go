@@ -2,8 +2,6 @@ package overlay
 
 import (
 	"bytes"
-	"context"
-	"fmt"
 
 	"golang.org/x/mod/module"
 
@@ -150,55 +148,4 @@ func (obj *Obj) GoPublishable(key string, version string, detectionObj core.Dete
 		return true
 	}
 	return obj.rewriteEnabled
-}
-
-// // // // // // // // // //
-
-type rewritingBlobSourceObj struct {
-	st         StorageInterface
-	rewriteSet map[core.HashObj]struct{}
-	oldArr     []byte
-	newArr     []byte
-}
-
-// UseBlob reads a blob, rewrites blobs from rewriteSet on the fly one blob at a time, then synchronously calls useFunc.
-func (s rewritingBlobSourceObj) UseBlob(ctx context.Context, hashObj core.HashObj, useFunc func([]byte) error) error {
-	dataArr, err := s.st.ReadBlob(ctx, hashObj)
-	if err != nil {
-		return err
-	}
-	if _, ok := s.rewriteSet[hashObj]; ok {
-		dataArr = rewriteContent(dataArr, s.oldArr, s.newArr)
-	}
-	return useFunc(dataArr)
-}
-
-func buildRewrittenEntries(
-	ctx context.Context,
-	st StorageInterface,
-	entriesArr []core.TreeEntryObj,
-	rewriteSet map[core.HashObj]struct{},
-	oldArr []byte,
-	newArr []byte,
-	topDir string,
-	maxFileBytes uint64,
-) ([]core.TreeEntryObj, error) {
-	outArr := make([]core.TreeEntryObj, len(entriesArr))
-	for i := range entriesArr {
-		entryObj := entriesArr[i]
-		entryObj.Path = topDir + "/" + entryObj.Path
-		if _, ok := rewriteSet[entryObj.BlobHash]; ok {
-			dataArr, err := st.ReadBlob(ctx, entryObj.BlobHash)
-			if err != nil {
-				return nil, err
-			}
-			sizeAfter := rewrittenSize(dataArr, oldArr, newArr)
-			if maxFileBytes > 0 && uint64(sizeAfter) > maxFileBytes {
-				return nil, fmt.Errorf("rewritten file %s exceeds max file bytes (%d > %d): %w", entryObj.Path, sizeAfter, maxFileBytes, errRewrittenFileTooLarge)
-			}
-			entryObj.SizeBytes = uint64(sizeAfter)
-		}
-		outArr[i] = entryObj
-	}
-	return outArr, nil
 }

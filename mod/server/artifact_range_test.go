@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/voluminor/yggvault/mod/core"
+	"github.com/voluminor/yggvault/target/stcode"
 )
 
 // // // // // // // // // //
@@ -87,6 +90,57 @@ func TestArtifactConditional(t *testing.T) {
 		if len(body) != 0 {
 			t.Fatalf("%s 304 body must be empty, got %d bytes", c.path, len(body))
 		}
+	}
+}
+
+func TestUniversalArchiveIgnoresLegacyListenerSpecificRow(t *testing.T) {
+	serverObj, lc := newTestServer(t)
+	storeObj := serverObj.funcImplObj.deps.Storage.(*fakeStoreObj)
+	storeObj.artifacts[vkey("lib", "v1.0.0")] = append(storeObj.artifacts[vkey("lib", "v1.0.0")], core.ArtifactObj{
+		MaterializerID: stcode.MaterializerUniversal.String(),
+		ArtifactKind:   "zip",
+		ListenerID:     stcode.ListenerWeb.String(),
+		Key:            "lib",
+		Version:        "v1.0.0",
+		BodyHash:       core.HashBytes([]byte("legacy-rewritten")),
+		SizeBytes:      999,
+		FormatVersion:  1,
+		ETag:           `"legacy"`,
+	})
+	tsObj := httptest.NewServer(serverObj.Handler(lc))
+	defer tsObj.Close()
+
+	resp, _ := doReq(t, tsObj, http.MethodHead, "/lib/v1.0.0.zip", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d want 200", resp.StatusCode)
+	}
+	if etag := resp.Header.Get("ETag"); etag != cArtifactETag {
+		t.Fatalf("ETag=%q want current global %q", etag, cArtifactETag)
+	}
+	if resp.ContentLength != int64(len(cArtifactBytes)) {
+		t.Fatalf("ContentLength=%d want current global %d", resp.ContentLength, len(cArtifactBytes))
+	}
+}
+
+func TestArchiveContentDisposition(t *testing.T) {
+	serverObj, lc := newTestServer(t)
+	tsObj := httptest.NewServer(serverObj.Handler(lc))
+	defer tsObj.Close()
+
+	resp, _ := doReq(t, tsObj, http.MethodHead, "/lib/v1.0.0.zip", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d want 200", resp.StatusCode)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="lib-v1.0.0.zip"` {
+		t.Fatalf("Content-Disposition=%q want package-qualified name", cd)
+	}
+
+	goResp, _ := doReq(t, tsObj, http.MethodHead, "/lib/@v/v1.0.0.zip", nil)
+	if goResp.StatusCode != http.StatusOK {
+		t.Fatalf("go-proxy status=%d want 200", goResp.StatusCode)
+	}
+	if cd := goResp.Header.Get("Content-Disposition"); cd != `attachment; filename="lib@v1.0.0.zip"` {
+		t.Fatalf("go-proxy Content-Disposition=%q want key@version name", cd)
 	}
 }
 

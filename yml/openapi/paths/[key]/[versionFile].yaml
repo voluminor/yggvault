@@ -6,11 +6,11 @@ get:
   description: >-
     Dispatches by file extension. `.json` returns the release detail document,
     `.zip` returns a deterministic zip artifact, and `.tar.gz` returns a
-    deterministic tar.gz artifact. If the version is a Go module that requires
-    import-path rewriting, archive artifacts use the rewritten module tree;
-    otherwise they use the canonical stored source tree. A bare `<version>`
-    without an extension renders the browser HTML version page. Query
-    parameters are rejected.
+    deterministic tar.gz artifact. Archive artifacts are always the raw uploaded
+    source tree (top-dir `<key>-<version>/`) and are host-independent; Go-module
+    import-path rewriting is exposed only on the go-proxy `@v/<version>.zip`
+    endpoint. A bare `<version>` without an extension renders the browser HTML
+    version page. Query parameters are rejected.
   parameters:
     - $ref: parameters/key
     - name: versionFile
@@ -48,6 +48,10 @@ get:
           schema:
             type: integer
             format: int64
+        Content-Disposition:
+          description: Download file name for archive responses. The value is `attachment; filename="<key>-<version>.<ext>"`.
+          schema:
+            type: string
       content:
         application/json:
           schema:

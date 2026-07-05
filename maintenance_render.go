@@ -59,12 +59,15 @@ type pruneViewObj struct {
 }
 
 type rebuildViewObj struct {
-	Command string             `json:"command"`
-	Ok      bool               `json:"ok"`
-	Scanned uint64             `json:"scanned"`
-	Drift   uint64             `json:"drift"`
-	Updated uint64             `json:"updated"`
-	Items   []artifactDriftObj `json:"items,omitempty"`
+	Command     string             `json:"command"`
+	Ok          bool               `json:"ok"`
+	Scanned     uint64             `json:"scanned"`
+	Drift       uint64             `json:"drift"`
+	Updated     uint64             `json:"updated"`
+	Created     uint64             `json:"created"`
+	Pruned      uint64             `json:"pruned"`
+	HostChanged bool               `json:"host_changed"`
+	Items       []artifactDriftObj `json:"items,omitempty"`
 }
 
 type errorViewObj struct {
@@ -165,20 +168,26 @@ func renderPrune(resultObj pruneResultViewObj, jsonOutput bool) error {
 	return bufObj.Flush()
 }
 
-func renderRebuild(resultObj rebuildResultObj, jsonOutput bool) error {
+func renderRebuild(resultObj rebuildResultObj, hostChanged bool, jsonOutput bool) error {
 	viewObj := rebuildViewObj{
-		Command: cli.CommandRebuildCache,
-		Ok:      true,
-		Scanned: resultObj.Scanned,
-		Drift:   resultObj.Drift,
-		Updated: resultObj.Updated,
-		Items:   resultObj.Items,
+		Command:     cli.CommandRebuildCache,
+		Ok:          true,
+		Scanned:     resultObj.Scanned,
+		Drift:       resultObj.Drift,
+		Updated:     resultObj.Updated,
+		Created:     resultObj.Created,
+		Pruned:      resultObj.Pruned,
+		HostChanged: hostChanged,
+		Items:       resultObj.Items,
 	}
 	if jsonOutput {
 		return writeJSON(os.Stdout, viewObj)
 	}
 	bufObj := bufio.NewWriter(os.Stdout)
-	fmt.Fprintf(bufObj, "rebuild-cache: scanned %d, drift %d, updated %d\n", viewObj.Scanned, viewObj.Drift, viewObj.Updated)
+	if hostChanged {
+		fmt.Fprintln(bufObj, "rebuild-cache: WARNING host identity (domain/routing-prefix/ygg-host) changed since the last rebuild; host-sensitive artifacts were re-homed to new module paths")
+	}
+	fmt.Fprintf(bufObj, "rebuild-cache: scanned %d, drift %d, updated %d, created %d, pruned %d\n", viewObj.Scanned, viewObj.Drift, viewObj.Updated, viewObj.Created, viewObj.Pruned)
 	for i := range viewObj.Items {
 		itemObj := viewObj.Items[i]
 		fmt.Fprintf(bufObj, "  %s@%s %s/%s/%s f%d  %s -> %s\n",

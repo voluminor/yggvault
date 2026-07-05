@@ -114,12 +114,12 @@ func gateArtifact(ctx context.Context, artObj core.ArtifactObj, ifNoneMatch api.
 
 // // // // // // // // // //
 
-func partialResp(body *artifactio.BodyObj, spec rangeSpecObj, etag string, cacheControl string, lastModified string) (*api.PartialContentRespObjHeaders, error) {
+func partialResp(body *artifactio.BodyObj, spec rangeSpecObj, etag string, cacheControl string, lastModified string, disposition string) (*api.PartialContentRespObjHeaders, error) {
 	if _, seekErr := body.Seek(spec.start, io.SeekStart); seekErr != nil {
 		_ = body.Close()
 		return nil, serr.ErrUnavailable
 	}
-	return &api.PartialContentRespObjHeaders{
+	headersObj := &api.PartialContentRespObjHeaders{
 		AcceptRanges:  api.NewOptString("bytes"),
 		CacheControl:  api.NewOptString(cacheControl),
 		ContentLength: api.NewOptInt64(spec.length),
@@ -127,7 +127,11 @@ func partialResp(body *artifactio.BodyObj, spec rangeSpecObj, etag string, cache
 		ETag:          api.NewOptString(etag),
 		LastModified:  api.NewOptString(lastModified),
 		Response:      api.PartialContentRespObj{Data: &rangeBodyObj{BodyObj: body, remaining: spec.length}},
-	}, nil
+	}
+	if disposition != "" {
+		headersObj.ContentDisposition = api.NewOptString(disposition)
+	}
+	return headersObj, nil
 }
 
 // // // // // // // // // //

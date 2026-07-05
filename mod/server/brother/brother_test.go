@@ -13,6 +13,7 @@ import (
 
 	"github.com/voluminor/yggvault/mod/brotherwire"
 	"github.com/voluminor/yggvault/mod/core"
+	"github.com/voluminor/yggvault/mod/storage/pebblestore"
 	"github.com/voluminor/yggvault/mod/storage/treecodec"
 )
 
@@ -33,6 +34,7 @@ type fakeStoreObj struct {
 	versionOf    map[string]core.VersionObj
 	trees        map[core.HashObj][]core.TreeEntryObj
 	blobs        map[core.HashObj][]byte
+	readErr      map[core.HashObj]error
 
 	listCalls   int
 	blobReadSet []core.HashObj
@@ -63,9 +65,12 @@ func (f *fakeStoreObj) ReadTree(_ context.Context, treeHashObj core.HashObj) ([]
 }
 func (f *fakeStoreObj) ReadBlob(_ context.Context, hashObj core.HashObj) ([]byte, error) {
 	f.blobReadSet = append(f.blobReadSet, hashObj)
+	if e, ok := f.readErr[hashObj]; ok {
+		return nil, e
+	}
 	data, ok := f.blobs[hashObj]
 	if !ok {
-		return nil, errors.New("blob not found")
+		return nil, pebblestore.ErrObjectNotFound
 	}
 	return data, nil
 }
@@ -301,6 +306,31 @@ func TestHandlerBlobsFetchDedup(t *testing.T) {
 	}
 	if len(reply.Blobs) != 2 {
 		t.Fatalf("reply blobs: want 2, got %d", len(reply.Blobs))
+	}
+}
+
+// TestHandlerBlobsFetchReadErrorFailsClosed asserts that a real read/IO error (not a genuine absence) fails the
+// whole batch instead of being silently dropped — the peer must retry rather than ingest a truncated version.
+func TestHandlerBlobsFetchReadErrorFailsClosed(t *testing.T) {
+	h1 := core.HashBytes([]byte("blob-1"))
+	h2 := core.HashBytes([]byte("blob-2"))
+	store := &fakeStoreObj{
+		blobs:   map[core.HashObj][]byte{h1: []byte("one"), h2: []byte("two")},
+		readErr: map[core.HashObj]error{h2: errors.New("disk read failed")},
+	}
+	h := newHandler(store, nil)
+
+	arg := brotherwire.BlobsFetchArgObj{Hashes: []brotherwire.HashWire{
+		brotherwire.HashWire(h1),
+		brotherwire.HashWire(h2),
+	}}
+	var reply brotherwire.BlobsFetchReplyObj
+	err := h.BlobsFetch(arg, &reply)
+	if err == nil {
+		t.Fatal("BlobsFetch: expected an error on a real read failure, got nil")
+	}
+	if errors.Is(err, pebblestore.ErrObjectNotFound) {
+		t.Fatalf("a real read error must not be classified as not-found: %v", err)
 	}
 }
 

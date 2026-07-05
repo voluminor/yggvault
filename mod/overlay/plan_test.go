@@ -47,7 +47,7 @@ func TestArtifactPlanComposerGlobal(t *testing.T) {
 	}
 }
 
-func TestArtifactPlanGoRewritePerListener(t *testing.T) {
+func TestArtifactPlanGoRewriteUniversalGlobal(t *testing.T) {
 	obj := planTestOverlay(t, true)
 	detectionObj := core.DetectionObj{IsGo: true}
 	candidateObj := &CandidateObj{Ecosystem: stcode.EcosystemGo, GoModulePath: "upstream.example/foo"}
@@ -57,12 +57,12 @@ func TestArtifactPlanGoRewritePerListener(t *testing.T) {
 	}
 
 	planArr := obj.ArtifactPlan(nil, "foo", "v1.0.0", core.HashObj{}, detectionObj, candidateObj, nil, listenerArr)
-	if len(planArr) != 6 {
-		t.Fatalf("plan=%d want 6 (universal x2 listeners x2 formats + go-zip x2): %+v", len(planArr), planArr)
+	if len(planArr) != 4 {
+		t.Fatalf("plan=%d want 4 (universal global x2 formats + go-zip per-listener x2): %+v", len(planArr), planArr)
 	}
 	kinds := planKindSet(planArr)
 	for _, want := range []string{
-		"universal/zip/web", "universal/zip/ygg", "universal/tar.gz/web", "universal/tar.gz/ygg",
+		"universal/zip/global", "universal/tar.gz/global",
 		"go/zip/web", "go/zip/ygg",
 	} {
 		if kinds[want] != 1 {
