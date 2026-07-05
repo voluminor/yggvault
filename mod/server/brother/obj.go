@@ -25,9 +25,6 @@ const (
 
 	// cBlobBatchMax is the default hash cap for one Brother.BlobsFetch request.
 	cBlobBatchMax = brotherwire.DefaultMaxFetchBatchCount
-
-	// cMaxFetchResponseBytes is the default total-byte cap for one BlobsFetch response.
-	cMaxFetchResponseBytes = brotherwire.DefaultMaxFetchResponseBytes
 )
 
 // // // // // // // // // //

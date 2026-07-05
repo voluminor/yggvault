@@ -286,3 +286,35 @@ func (obj *TxObj) ArtifactPaths(ctx context.Context, key string, version string)
 	}
 	return pathArr, nil
 }
+
+// DeleteArtifactRow deletes one materialized artifact by identity and returns its hot-file path (empty if the
+// row is missing or has no hot file). The caller removes the returned hot file after the transaction commits.
+func (obj *TxObj) DeleteArtifactRow(ctx context.Context, keyObj core.ArtifactKeyObj) (string, error) {
+	identity := sq.Eq{
+		"materializer_id": keyObj.MaterializerID,
+		"artifact_kind":   keyObj.ArtifactKind,
+		"listener_id":     keyObj.ListenerID,
+		"key":             keyObj.Key,
+		"version":         keyObj.Version,
+	}
+	rowObj, err := queryRowSQL(ctx, obj.indexObj, obj.txObj, obj.indexObj.builderObj.
+		Select("file_path").From("materialized_artifacts").Where(identity))
+	if err != nil {
+		return "", err
+	}
+	var filePathObj sql.NullString
+	switch scanErr := rowObj.Scan(&filePathObj); {
+	case errors.Is(scanErr, sql.ErrNoRows):
+		return "", nil
+	case scanErr != nil:
+		return "", scanErr
+	}
+	if _, err = execSQL(ctx, obj.indexObj, obj.txObj, obj.indexObj.builderObj.
+		Delete("materialized_artifacts").Where(identity)); err != nil {
+		return "", err
+	}
+	if filePathObj.Valid {
+		return filePathObj.String, nil
+	}
+	return "", nil
+}

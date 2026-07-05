@@ -171,3 +171,37 @@ func (obj *Obj) EnsureArtifactFile(ctx context.Context, keyObj core.ArtifactKeyO
 	}
 	return fileObj, nil
 }
+
+// DeleteArtifact removes one materialized artifact row by identity and its hot file under writeMu.
+// A missing row is a no-op. Used by artifact reconciliation to prune rows the overlay plan no longer produces.
+func (obj *Obj) DeleteArtifact(ctx context.Context, keyObj core.ArtifactKeyObj) error {
+	keyObj, err := validateArtifactKey(keyObj)
+	if err != nil {
+		return err
+	}
+	releaseFunc, err := beginOperation(obj)
+	if err != nil {
+		return err
+	}
+	defer releaseFunc()
+
+	obj.writeMu.Lock()
+	defer obj.writeMu.Unlock()
+
+	var filePath string
+	err = obj.indexObj.WithTx(ctx, func(txObj *sqliteindex.TxObj) error {
+		pathText, delErr := txObj.DeleteArtifactRow(ctx, keyObj)
+		if delErr != nil {
+			return delErr
+		}
+		filePath = pathText
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if filePath != "" {
+		_ = obj.removeHotPathAccountedLocked(filePath)
+	}
+	return nil
+}

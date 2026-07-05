@@ -275,9 +275,23 @@ func (obj *funcObj) versionDetail(ctx context.Context, params api.GetVersionFile
 	}, nil
 }
 
+func universalArchiveFormatVersion(format archive.FormatType) (uint32, bool) {
+	switch format {
+	case archive.FormatZip:
+		return overlay.UniversalZipFormatVersion, true
+	case archive.FormatTarGz:
+		return overlay.UniversalTarGzFormatVersion, true
+	default:
+		return 0, false
+	}
+}
+
 func (obj *funcObj) versionArchive(ctx context.Context, params api.GetVersionFileParams, version string, format archive.FormatType) (api.GetVersionFileRes, error) {
-	olc := obj.overlayListenerCtx(listenerCtxFrom(ctx))
-	artObj, keyObj, found, err := artifactio.LocateKey(ctx, obj.deps.Storage, stcode.MaterializerUniversal.String(), string(format), params.Key, version, olc.ListenerID)
+	formatVersion, ok := universalArchiveFormatVersion(format)
+	if !ok {
+		return nil, serr.ErrNotFound
+	}
+	artObj, keyObj, found, err := artifactio.LocateGlobalFormatKey(ctx, obj.deps.Storage, stcode.MaterializerUniversal.String(), string(format), params.Key, version, formatVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +316,7 @@ func (obj *funcObj) versionArchive(ctx context.Context, params api.GetVersionFil
 		return nil, serr.ErrRangeNotSatisfiable
 	}
 	// keyObj is reused so OpenArtifact does not repeat GetArtifact on full-body responses.
-	openObj, err := dataapi.OpenArtifact(ctx, obj.deps.Storage, obj.deps.Overlay, keyObj, olc)
+	openObj, err := dataapi.OpenArtifact(ctx, obj.deps.Storage, obj.deps.Overlay, keyObj)
 	if err != nil {
 		return nil, err
 	}

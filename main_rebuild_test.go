@@ -10,6 +10,7 @@ import (
 	"github.com/voluminor/yggvault/mod/core"
 	"github.com/voluminor/yggvault/mod/overlay"
 	"github.com/voluminor/yggvault/mod/storage"
+	"github.com/voluminor/yggvault/target/stcode"
 	"github.com/voluminor/yggvault/target/stconf"
 )
 
@@ -76,6 +77,16 @@ func materializeFromStorage(t *testing.T, ctx context.Context, storeObj *storage
 		}
 	}
 	return len(planArr)
+}
+
+func artifactKeyOf(artObj core.ArtifactObj) core.ArtifactKeyObj {
+	return core.ArtifactKeyObj{
+		MaterializerID: artObj.MaterializerID,
+		ArtifactKind:   artObj.ArtifactKind,
+		ListenerID:     artObj.ListenerID,
+		Key:            artObj.Key,
+		Version:        artObj.Version,
+	}
 }
 
 // // // // // // // // // //
@@ -180,5 +191,184 @@ func TestRebuildAndSelfTest(t *testing.T) {
 	leftArr, err := storeObj.DistinctKeys(ctx, "", 100)
 	if err != nil || len(leftArr) != 0 {
 		t.Fatalf("after delete keys=%v err=%v", leftArr, err)
+	}
+}
+
+// TestGlobalsRoundTrip covers the durable globals key/value accessors that persist the host-identity fingerprint.
+func TestGlobalsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	cfgObj := newTestConfig(t)
+	storeObj, err := storage.New(ctx, cfgObj)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	defer func() { _ = storeObj.Close(context.Background()) }()
+
+	if _, ok, gErr := storeObj.GetGlobal(ctx, cHostIdentityGlobalKey); gErr != nil || ok {
+		t.Fatalf("expected absent key: ok=%v err=%v", ok, gErr)
+	}
+	if err = storeObj.SetGlobal(ctx, cHostIdentityGlobalKey, "abc"); err != nil {
+		t.Fatalf("SetGlobal: %v", err)
+	}
+	valueText, ok, err := storeObj.GetGlobal(ctx, cHostIdentityGlobalKey)
+	if err != nil || !ok || valueText != "abc" {
+		t.Fatalf("GetGlobal: value=%q ok=%v err=%v", valueText, ok, err)
+	}
+	if err = storeObj.SetGlobal(ctx, cHostIdentityGlobalKey, "xyz"); err != nil {
+		t.Fatalf("SetGlobal upsert: %v", err)
+	}
+	if valueText, _, _ = storeObj.GetGlobal(ctx, cHostIdentityGlobalKey); valueText != "xyz" {
+		t.Fatalf("upsert value: %q", valueText)
+	}
+}
+
+// TestUpgradeReconcilePrunesLegacyUniversalAndCreatesMissing simulates an upgraded store: a legacy per-listener
+// universal row (the pre-collapse shape) is pruned, a deleted planned row is re-created, and no stale bytes survive.
+func TestUpgradeReconcilePrunesLegacyUniversalAndCreatesMissing(t *testing.T) {
+	ctx := context.Background()
+	cfgObj := newTestConfig(t)
+	storeObj, err := storage.New(ctx, cfgObj)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	defer func() { _ = storeObj.Close(context.Background()) }()
+
+	overlayObj, err := overlay.New(cfgObj)
+	if err != nil {
+		t.Fatalf("overlay.New: %v", err)
+	}
+
+	const key = "example-module"
+	const version = "v1.0.0"
+	if _, err = storeObj.Publish(ctx, core.PublishObj{
+		Key:             key,
+		Version:         version,
+		SourceHash:      core.HashBytes([]byte("src")),
+		SourceSizeBytes: 1,
+		Entries: []core.InputEntryObj{
+			{Path: "go.mod", Mode: core.ModeFile, Content: []byte(cTestGoMod)},
+			{Path: "foo.go", Mode: core.ModeFile, Content: []byte(cTestGoSrc)},
+		},
+		Detection: core.DetectionObj{IsGo: true, EvidenceJSON: `{"go_module_path":"example.com/foo"}`},
+	}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	listenerArr := listenerContextsFromConfig(cfgObj, "")
+	materializeFromStorage(t, ctx, storeObj, overlayObj, listenerArr, key, version)
+
+	storedArr, err := storeObj.ListArtifacts(ctx, key, version)
+	if err != nil {
+		t.Fatalf("ListArtifacts: %v", err)
+	}
+	globalID := stcode.ListenerGlobal.String()
+	var zipGlobal, targzGlobal core.ArtifactObj
+	for i := range storedArr {
+		if storedArr[i].ListenerID != globalID {
+			t.Fatalf("post-collapse universal must be global, got %+v", storedArr[i])
+		}
+		if storedArr[i].ArtifactKind == "zip" {
+			zipGlobal = storedArr[i]
+		} else {
+			targzGlobal = storedArr[i]
+		}
+	}
+	if zipGlobal.Key == "" || targzGlobal.Key == "" {
+		t.Fatalf("expected global zip and tar.gz universal rows, got %+v", storedArr)
+	}
+
+	legacy := zipGlobal
+	legacy.ListenerID = stcode.ListenerWeb.String()
+	legacy.FormatVersion = 1
+	legacy.BodyHash = core.HashBytes([]byte("OLD-REWRITTEN"))
+	legacy.SizeBytes = 999
+	if err = storeObj.RegisterArtifact(ctx, legacy); err != nil {
+		t.Fatalf("register legacy row: %v", err)
+	}
+	if err = storeObj.DeleteArtifact(ctx, artifactKeyOf(targzGlobal)); err != nil {
+		t.Fatalf("delete planned row: %v", err)
+	}
+
+	resultObj, err := rebuildAllArtifacts(ctx, storeObj, overlayObj, listenerArr)
+	if err != nil {
+		t.Fatalf("rebuildAllArtifacts: %v", err)
+	}
+	if resultObj.Pruned < 1 {
+		t.Fatalf("legacy per-listener universal row must be pruned: %+v", resultObj)
+	}
+	if resultObj.Created < 1 {
+		t.Fatalf("deleted planned row must be re-created: %+v", resultObj)
+	}
+
+	if _, ok, gErr := storeObj.GetArtifact(ctx, artifactKeyOf(legacy)); gErr != nil || ok {
+		t.Fatalf("legacy per-listener universal row must be gone: ok=%v err=%v", ok, gErr)
+	}
+	gotZip, ok, err := storeObj.GetArtifact(ctx, artifactKeyOf(zipGlobal))
+	if err != nil || !ok || gotZip.BodyHash != zipGlobal.BodyHash {
+		t.Fatalf("global zip must keep the raw digest: ok=%v err=%v hashMatch=%v", ok, err, gotZip.BodyHash == zipGlobal.BodyHash)
+	}
+	gotTargz, ok, err := storeObj.GetArtifact(ctx, artifactKeyOf(targzGlobal))
+	if err != nil || !ok || gotTargz.BodyHash != targzGlobal.BodyHash {
+		t.Fatalf("global tar.gz must be re-created with the raw digest: ok=%v err=%v hashMatch=%v", ok, err, gotTargz.BodyHash == targzGlobal.BodyHash)
+	}
+
+	driftArr, err := selfTestFormats(ctx, storeObj, overlayObj, listenerArr)
+	if err != nil || len(driftArr) != 0 {
+		t.Fatalf("post-reconcile drift: len=%d err=%v", len(driftArr), err)
+	}
+}
+
+func TestRebuildCreatesCompletelyMissingArtifactSet(t *testing.T) {
+	ctx := context.Background()
+	cfgObj := newTestConfig(t)
+	storeObj, err := storage.New(ctx, cfgObj)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	defer func() { _ = storeObj.Close(context.Background()) }()
+
+	overlayObj, err := overlay.New(cfgObj)
+	if err != nil {
+		t.Fatalf("overlay.New: %v", err)
+	}
+
+	const key = "example-module"
+	const version = "v1.0.0"
+	if _, err = storeObj.Publish(ctx, core.PublishObj{
+		Key:             key,
+		Version:         version,
+		SourceHash:      core.HashBytes([]byte("src")),
+		SourceSizeBytes: 1,
+		Entries: []core.InputEntryObj{
+			{Path: "go.mod", Mode: core.ModeFile, Content: []byte(cTestGoMod)},
+			{Path: "foo.go", Mode: core.ModeFile, Content: []byte(cTestGoSrc)},
+		},
+		Detection: core.DetectionObj{IsGo: true, EvidenceJSON: `{"go_module_path":"example.com/foo"}`},
+	}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	listenerArr := listenerContextsFromConfig(cfgObj, "")
+	planCount := materializeFromStorage(t, ctx, storeObj, overlayObj, listenerArr, key, version)
+	storedArr, err := storeObj.ListArtifacts(ctx, key, version)
+	if err != nil {
+		t.Fatalf("ListArtifacts: %v", err)
+	}
+	for i := range storedArr {
+		if err = storeObj.DeleteArtifact(ctx, artifactKeyOf(storedArr[i])); err != nil {
+			t.Fatalf("DeleteArtifact %d: %v", i, err)
+		}
+	}
+
+	resultObj, err := rebuildAllArtifacts(ctx, storeObj, overlayObj, listenerArr)
+	if err != nil {
+		t.Fatalf("rebuildAllArtifacts: %v", err)
+	}
+	if resultObj.Created != uint64(planCount) {
+		t.Fatalf("rebuild should recreate the full missing plan: created=%d plan=%d result=%+v", resultObj.Created, planCount, resultObj)
+	}
+	rebuiltArr, err := storeObj.ListArtifacts(ctx, key, version)
+	if err != nil || len(rebuiltArr) != planCount {
+		t.Fatalf("rebuilt artifacts: len=%d want=%d err=%v", len(rebuiltArr), planCount, err)
 	}
 }

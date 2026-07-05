@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/voluminor/yggvault/mod/core"
 	"github.com/voluminor/yggvault/mod/overlay"
 	"github.com/voluminor/yggvault/mod/storage"
+	"github.com/voluminor/yggvault/target/stcode"
 	"github.com/voluminor/yggvault/target/stconf"
 )
 
@@ -33,6 +35,8 @@ type rebuildResultObj struct {
 	Scanned uint64
 	Drift   uint64
 	Updated uint64
+	Created uint64
+	Pruned  uint64
 	Items   []artifactDriftObj
 }
 
@@ -40,6 +44,22 @@ type rebuildResultObj struct {
 
 func listenerContextsFromConfig(configObj *stconf.ConfigObj, yggHost string) []overlay.ListenerCtxObj {
 	return overlay.ListenerContexts(configObj.Web.Server.Domain, configObj.Web.Routing.Prefix, yggHost)
+}
+
+const cHostIdentityGlobalKey = "host_identity"
+
+func hostIdentityFingerprint(configObj *stconf.ConfigObj, yggHost string) string {
+	rawText := configObj.Web.Server.Domain + "\x00" + configObj.Web.Routing.Prefix + "\x00" + yggHost
+	return core.HashBytes([]byte(rawText)).Hex()
+}
+
+const cArtifactLayoutGlobalKey = "artifact_layout"
+
+const cArtifactLayoutRevision = 1
+
+func artifactLayoutFingerprint() string {
+	return fmt.Sprintf("r%d:uz%d:ut%d:gz%d", cArtifactLayoutRevision,
+		overlay.UniversalZipFormatVersion, overlay.UniversalTarGzFormatVersion, overlay.GoZipFormatVersion)
 }
 
 func artifactIdentityKey(materializerID string, artifactKind string, listenerID string) string {
@@ -180,6 +200,19 @@ func rebuildAllArtifacts(ctx context.Context, storeObj *storage.Obj, overlayObj 
 	return resultObj, nil
 }
 
+func driftItem(artifactObj core.ArtifactObj, storedHash string, rebuiltHash string) artifactDriftObj {
+	return artifactDriftObj{
+		Key:            artifactObj.Key,
+		Version:        artifactObj.Version,
+		MaterializerID: artifactObj.MaterializerID,
+		ArtifactKind:   artifactObj.ArtifactKind,
+		ListenerID:     artifactObj.ListenerID,
+		FormatVersion:  artifactObj.FormatVersion,
+		StoredHash:     storedHash,
+		RebuiltHash:    rebuiltHash,
+	}
+}
+
 func rebuildVersionArtifacts(ctx context.Context, storeObj *storage.Obj, overlayObj *overlay.Obj, listenerArr []overlay.ListenerCtxObj, key string, version string, resultObj *rebuildResultObj) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -188,28 +221,34 @@ func rebuildVersionArtifacts(ctx context.Context, storeObj *storage.Obj, overlay
 	if err != nil {
 		return err
 	}
-	if len(storedArr) == 0 {
-		return nil
-	}
 	planArr, ok, err := artifactPlanForVersion(ctx, storeObj, overlayObj, listenerArr, key, version)
 	if err != nil || !ok {
 		return err
 	}
-	planMap := make(map[string]overlay.ArtifactPlanObj, len(planArr))
-	for i := range planArr {
-		planMap[planIdentityKey(planArr[i])] = planArr[i]
+	storedMap := make(map[string]core.ArtifactObj, len(storedArr))
+	for i := range storedArr {
+		storedMap[storedIdentityKey(storedArr[i])] = storedArr[i]
 	}
 
-	for i := range storedArr {
-		storedObj := storedArr[i]
-		planObj, planExists := planMap[storedIdentityKey(storedObj)]
-		if !planExists {
-			continue
+	for i := range planArr {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
+		planObj := planArr[i]
 		resultObj.Scanned++
 		digestObj, digestErr := storeObj.ArtifactDigest(ctx, planObj.Builder)
 		if digestErr != nil {
 			return digestErr
+		}
+		newArtifactObj := artifactFromPlan(planObj, key, version, digestObj)
+		storedObj, exists := storedMap[planIdentityKey(planObj)]
+		if !exists {
+			if err = storeObj.RegisterArtifact(ctx, newArtifactObj); err != nil {
+				return err
+			}
+			resultObj.Created++
+			resultObj.Items = append(resultObj.Items, driftItem(newArtifactObj, "", digestObj.BodyHash.Hex()))
+			continue
 		}
 		fresh := storedObj.BodyHash == digestObj.BodyHash &&
 			storedObj.FormatVersion == planObj.FormatVersion &&
@@ -218,21 +257,29 @@ func rebuildVersionArtifacts(ctx context.Context, storeObj *storage.Obj, overlay
 			continue
 		}
 		resultObj.Drift++
-		newArtifactObj := artifactFromPlan(planObj, key, version, digestObj)
 		if err = storeObj.UpdateArtifactDigest(ctx, newArtifactObj); err != nil {
 			return err
 		}
 		resultObj.Updated++
-		resultObj.Items = append(resultObj.Items, artifactDriftObj{
+		resultObj.Items = append(resultObj.Items, driftItem(newArtifactObj, storedObj.BodyHash.Hex(), digestObj.BodyHash.Hex()))
+	}
+
+	for i := range storedArr {
+		storedObj := storedArr[i]
+		if storedObj.MaterializerID != stcode.MaterializerUniversal.String() || storedObj.ListenerID == stcode.ListenerGlobal.String() {
+			continue
+		}
+		if err = storeObj.DeleteArtifact(ctx, core.ArtifactKeyObj{
+			MaterializerID: storedObj.MaterializerID,
+			ArtifactKind:   storedObj.ArtifactKind,
+			ListenerID:     storedObj.ListenerID,
 			Key:            key,
 			Version:        version,
-			MaterializerID: newArtifactObj.MaterializerID,
-			ArtifactKind:   newArtifactObj.ArtifactKind,
-			ListenerID:     newArtifactObj.ListenerID,
-			FormatVersion:  newArtifactObj.FormatVersion,
-			StoredHash:     storedObj.BodyHash.Hex(),
-			RebuiltHash:    digestObj.BodyHash.Hex(),
-		})
+		}); err != nil {
+			return err
+		}
+		resultObj.Pruned++
+		resultObj.Items = append(resultObj.Items, driftItem(storedObj, storedObj.BodyHash.Hex(), ""))
 	}
 	return nil
 }

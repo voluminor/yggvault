@@ -102,13 +102,11 @@ func TestReachablePagingHelpers(t *testing.T) {
 		{"blob-f", 2, 600},
 	}
 	wantRefObj := make(map[core.HashObj]BlobRefObj)
-	var allBlobArr []core.HashObj
 	var liveBlobArr []core.HashObj
 	for _, inputObj := range blobInputArr {
 		hashObj := core.HashBytes([]byte(inputObj.tag))
 		seedBlobRef(t, indexObj, hashObj, inputObj.refcount, inputObj.size)
 		wantRefObj[hashObj] = BlobRefObj{Refcount: inputObj.refcount, SizeBytes: inputObj.size}
-		allBlobArr = append(allBlobArr, hashObj)
 		if inputObj.refcount > 0 {
 			liveBlobArr = append(liveBlobArr, hashObj)
 		}

@@ -2,10 +2,12 @@ package brother
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/voluminor/yggvault/mod/brotherwire"
 	"github.com/voluminor/yggvault/mod/core"
+	"github.com/voluminor/yggvault/mod/storage/pebblestore"
 	"github.com/voluminor/yggvault/mod/storage/treecodec"
 )
 
@@ -128,7 +130,10 @@ func (h *handlerObj) BlobsFetch(arg brotherwire.BlobsFetchArgObj, reply *brother
 		seenSet[hashWire] = struct{}{}
 		dataArr, err := h.storeObj.ReadBlob(h.ctx, core.HashObj(hashWire))
 		if err != nil {
-			continue
+			if errors.Is(err, pebblestore.ErrObjectNotFound) {
+				continue
+			}
+			return fmt.Errorf("blob fetch: read %s: %w", core.HashObj(hashWire).Hex(), err)
 		}
 		totalBytes += uint64(len(dataArr))
 		if totalBytes > maxResponseBytes {

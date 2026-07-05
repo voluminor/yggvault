@@ -240,9 +240,23 @@ func runRebuildCache(ctx context.Context, configObj *stconf.ConfigObj, storeObj 
 		}
 	}
 	listenerArr := listenerContextsFromConfig(configObj, yggHost)
+
+	fingerprint := hostIdentityFingerprint(configObj, yggHost)
+	priorFingerprint, hadPrior, err := storeObj.GetGlobal(ctx, cHostIdentityGlobalKey)
+	if err != nil {
+		return err
+	}
+	hostChanged := hadPrior && priorFingerprint != fingerprint
+
 	resultObj, err := rebuildAllArtifacts(ctx, storeObj, overlayObj, listenerArr)
 	if err != nil {
 		return err
 	}
-	return renderRebuild(resultObj, jsonOutput)
+	if err = storeObj.SetGlobal(ctx, cHostIdentityGlobalKey, fingerprint); err != nil {
+		return err
+	}
+	if err = storeObj.SetGlobal(ctx, cArtifactLayoutGlobalKey, artifactLayoutFingerprint()); err != nil {
+		return err
+	}
+	return renderRebuild(resultObj, hostChanged, jsonOutput)
 }

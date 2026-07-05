@@ -128,7 +128,28 @@ func LocateKey(ctx context.Context, store StoreInterface, materializerID string,
 	return core.ArtifactObj{}, core.ArtifactKeyObj{}, false, nil
 }
 
-// OpenResolved materializes the hot file for an artifact key already resolved by LocateKey, so a full
+// LocateGlobalFormatKey finds a global-scope artifact only when its format version matches the current descriptor.
+// It is used for host-independent universal archives so stale listener-specific or older-format rows cannot shadow
+// current global metadata before background reconciliation has cleaned them up.
+func LocateGlobalFormatKey(ctx context.Context, store StoreInterface, materializerID string, kind string, key string, version string, formatVersion uint32) (core.ArtifactObj, core.ArtifactKeyObj, bool, error) {
+	keyObj := core.ArtifactKeyObj{
+		MaterializerID: materializerID,
+		ArtifactKind:   kind,
+		ListenerID:     stcode.ListenerGlobal.String(),
+		Key:            key,
+		Version:        version,
+	}
+	artifactObj, ok, err := store.GetArtifact(ctx, keyObj)
+	if err != nil || !ok {
+		return core.ArtifactObj{}, core.ArtifactKeyObj{}, ok, err
+	}
+	if artifactObj.FormatVersion != formatVersion {
+		return core.ArtifactObj{}, core.ArtifactKeyObj{}, false, nil
+	}
+	return artifactObj, keyObj, true, nil
+}
+
+// OpenResolved materializes the hot file for an artifact key already resolved by a locate helper, so a full
 // GET does not re-query GetArtifact. Missing/failed materialization returns serr.ErrUnavailable;
 // context cancellation is passed through. On success OpenObj.Body owns the file and the caller must close it.
 func OpenResolved(ctx context.Context, store StoreInterface, keyObj core.ArtifactKeyObj, builderObj storage.ArtifactBuilderInterface, modTime time.Time) (OpenObj, error) {

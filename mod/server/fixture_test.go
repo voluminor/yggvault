@@ -346,8 +346,8 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 		blobs:      map[core.HashObj][]byte{goModHash: goModArr},
 		detections: map[string]core.DetectionObj{vkey("lib", "v1.0.0"): {IsGo: true, EvidenceJSON: `{"go_module_path":"mirror.example/lib"}`}},
 		artifacts: map[string][]core.ArtifactObj{vkey("lib", "v1.0.0"): {
-			{MaterializerID: stcode.MaterializerUniversal.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v1.0.0", BodyHash: core.HashBytes([]byte("z")), SizeBytes: uint64(len(cArtifactBytes)), ETag: cArtifactETag, BodySha1: []byte{0x01, 0x02}},
-			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v1.0.0", BodyHash: core.HashBytes([]byte("gz")), SizeBytes: uint64(len(cArtifactBytes)), ETag: `"goz"`, BodySha1: []byte{0x03, 0x04}},
+			{MaterializerID: stcode.MaterializerUniversal.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v1.0.0", BodyHash: core.HashBytes([]byte("z")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.UniversalZipFormatVersion, ETag: cArtifactETag, BodySha1: []byte{0x01, 0x02}},
+			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v1.0.0", BodyHash: core.HashBytes([]byte("gz")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.GoZipFormatVersion, ETag: `"goz"`, BodySha1: []byte{0x03, 0x04}},
 		}},
 		feed:        []core.FeedEventObj{{Key: "lib", Version: "v1.0.0", EventTS: now, TreeHash: treeHash, ReleaseNotes: "release **notes**", FirstPublish: true}},
 		artifactRaw: []byte(cArtifactBytes),
@@ -374,8 +374,8 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 		}, storeObj.versions["lib"]...)
 		storeObj.detections[vkey("lib", "blockly-v9.3.3")] = core.DetectionObj{EvidenceJSON: `{"raw_version":true}`}
 		storeObj.artifacts[vkey("lib", "blockly-v9.3.3")] = []core.ArtifactObj{
-			{MaterializerID: stcode.MaterializerUniversal.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "blockly-v9.3.3", BodyHash: core.HashBytes([]byte("rz")), SizeBytes: uint64(len(cArtifactBytes)), ETag: `"rz"`, BodySha256: []byte{0x11, 0x12}},
-			{MaterializerID: stcode.MaterializerUniversal.String(), ArtifactKind: "tar.gz", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "blockly-v9.3.3", BodyHash: core.HashBytes([]byte("rt")), SizeBytes: uint64(len(cArtifactBytes)), ETag: `"rt"`, BodySha256: []byte{0x13, 0x14}},
+			{MaterializerID: stcode.MaterializerUniversal.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "blockly-v9.3.3", BodyHash: core.HashBytes([]byte("rz")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.UniversalZipFormatVersion, ETag: `"rz"`, BodySha256: []byte{0x11, 0x12}},
+			{MaterializerID: stcode.MaterializerUniversal.String(), ArtifactKind: "tar.gz", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "blockly-v9.3.3", BodyHash: core.HashBytes([]byte("rt")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.UniversalTarGzFormatVersion, ETag: `"rt"`, BodySha256: []byte{0x13, 0x14}},
 		}
 		keyStateObj := stateObj.keyStates["lib"]
 		keyStateObj.VersionCount = 2
@@ -394,7 +394,7 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 			GoZipBlockReason: `invalid file paths (1): "testdata/a?b.json"`,
 		}
 		storeObj.artifacts[vkey("lib", "v1.2.0")] = []core.ArtifactObj{
-			{MaterializerID: stcode.MaterializerUniversal.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v1.2.0", BodyHash: core.HashBytes([]byte("bz")), SizeBytes: uint64(len(cArtifactBytes)), ETag: `"bz"`, BodySha1: []byte{0x07, 0x08}},
+			{MaterializerID: stcode.MaterializerUniversal.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v1.2.0", BodyHash: core.HashBytes([]byte("bz")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.UniversalZipFormatVersion, ETag: `"bz"`, BodySha1: []byte{0x07, 0x08}},
 		}
 		keyStateObj := stateObj.keyStates["lib"]
 		keyStateObj.VersionCount = 2
@@ -407,7 +407,7 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 		}, storeObj.versions["lib"]...)
 		storeObj.detections[vkey("lib", "v2.44.0")] = core.DetectionObj{IsGo: true, EvidenceJSON: `{"go_module_path":"mirror.example/lib"}`}
 		storeObj.artifacts[vkey("lib", "v2.44.0")] = []core.ArtifactObj{
-			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v2.44.0", BodyHash: core.HashBytes([]byte("gz2")), SizeBytes: uint64(len(cArtifactBytes)), ETag: `"goz2"`, BodySha1: []byte{0x05, 0x06}},
+			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v2.44.0", BodyHash: core.HashBytes([]byte("gz2")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.GoZipFormatVersion, ETag: `"goz2"`, BodySha1: []byte{0x05, 0x06}},
 		}
 		keyStateObj := stateObj.keyStates["lib"]
 		keyStateObj.LatestVersion = "v2.44.0"

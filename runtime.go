@@ -52,6 +52,8 @@ type runtimeObj struct {
 	rescan    *rescan.Obj
 	server    *server.ServerObj
 	profiling *http.Server // pprof loopback listener (nil when profiling.enabled=false)
+
+	reconcileDone chan struct{}
 }
 
 // // // // // // // // // //
@@ -209,6 +211,46 @@ func (rt *runtimeObj) runFormatSelfTest(ctx context.Context, yggHost string) {
 	})
 }
 
+func (rt *runtimeObj) maybeReconcileArtifacts(ctx context.Context) {
+	yggHost := ""
+	if rt.mesh.Enabled() {
+		yggHost = rt.mesh.Host()
+	}
+	current := artifactLayoutFingerprint()
+	stored, ok, err := rt.storage.GetGlobal(ctx, cArtifactLayoutGlobalKey)
+	if err != nil {
+		rt.loggerObj.Zero().Warn().Err(err).Msg("artifact-layout check failed; skipping background reconcile")
+		return
+	}
+	if ok && stored == current {
+		return
+	}
+	rt.reconcileDone = make(chan struct{})
+	go rt.runArtifactReconcile(ctx, yggHost, current)
+}
+
+func (rt *runtimeObj) runArtifactReconcile(ctx context.Context, yggHost string, fingerprint string) {
+	defer close(rt.reconcileDone)
+	listenerArr := listenerContextsFromConfig(rt.configObj, yggHost)
+	resultObj, err := rebuildAllArtifacts(ctx, rt.storage, rt.overlay, listenerArr)
+	if err != nil {
+		if ctx.Err() == nil {
+			rt.loggerObj.Zero().Warn().Err(err).Msg("background artifact reconcile failed; will retry on next start")
+		}
+		return
+	}
+	if err = rt.storage.SetGlobal(ctx, cArtifactLayoutGlobalKey, fingerprint); err != nil {
+		rt.loggerObj.Zero().Warn().Err(err).Msg("failed to persist artifact-layout fingerprint")
+		return
+	}
+	rt.loggerObj.Zero().Info().
+		Uint64("scanned", resultObj.Scanned).
+		Uint64("created", resultObj.Created).
+		Uint64("updated", resultObj.Updated).
+		Uint64("pruned", resultObj.Pruned).
+		Msg("background artifact reconcile complete")
+}
+
 func (rt *runtimeObj) start(ctx context.Context) error {
 	rt.telemetry.Start(ctx)
 	if err := rt.startProfiling(); err != nil {
@@ -219,6 +261,7 @@ func (rt *runtimeObj) start(ctx context.Context) error {
 	}
 	rt.rescan.Start()
 	rt.rescan.Trigger()
+	rt.maybeReconcileArtifacts(ctx)
 	return nil
 }
 
@@ -249,6 +292,12 @@ func (rt *runtimeObj) shutdown() {
 	}
 	if rt.telemetry != nil {
 		rt.logClose("telemetry", rt.telemetry.Close(drainCtx))
+	}
+	if rt.reconcileDone != nil {
+		select {
+		case <-rt.reconcileDone:
+		case <-drainCtx.Done():
+		}
 	}
 	if rt.storage != nil {
 		storageCtx, cancelStorage := context.WithTimeout(context.Background(), cStorageCloseBudget)

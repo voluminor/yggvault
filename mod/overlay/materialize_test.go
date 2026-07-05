@@ -10,6 +10,7 @@ import (
 
 	"github.com/voluminor/yggvault/mod/archive"
 	"github.com/voluminor/yggvault/mod/core"
+	"github.com/voluminor/yggvault/target/stcode"
 	"github.com/voluminor/yggvault/target/stconf"
 )
 
@@ -149,5 +150,55 @@ func TestGoModuleZipRewritesImports(t *testing.T) {
 	fooArr := readZipFile(t, bufferObj.Bytes(), "mirror.example/foo@v1.0.0/foo.go")
 	if strings.Contains(string(fooArr), "upstream.example/foo") {
 		t.Fatalf("upstream path leaked into foo.go: %q", fooArr)
+	}
+}
+
+// TestUniversalArtifactRawForGoModule guards that the universal artifact stays raw for a rewrite-eligible Go module.
+func TestUniversalArtifactRawForGoModule(t *testing.T) {
+	st := buildStorage(map[string][]byte{
+		"go.mod": []byte("module upstream.example/foo\n\ngo 1.22\n"),
+		"foo.go": []byte("package foo\n\n// ref upstream.example/foo here\n"),
+	})
+	configObj := stconf.FullConfig()
+	configObj.Overlay.Go.RewriteEnabled = true
+	configObj.Web.Server.Domain = "mirror.example"
+	configObj.Web.Routing.Prefix = ""
+	obj, err := New(configObj)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	detectionObj := core.DetectionObj{IsGo: true}
+	candidateObj := &CandidateObj{Ecosystem: stcode.EcosystemGo, GoModulePath: "upstream.example/foo"}
+	listenerArr := []ListenerCtxObj{{ListenerID: stcode.ListenerWeb, EntryHost: "mirror.example"}}
+
+	planArr := obj.ArtifactPlan(st, "foo", "v1.0.0", st.treeHash, detectionObj, candidateObj, nil, listenerArr)
+
+	built := false
+	for i := range planArr {
+		planObj := planArr[i]
+		if planObj.MaterializerID != stcode.MaterializerUniversal || planObj.ArtifactKind != archive.FormatZip {
+			continue
+		}
+		built = true
+		var bufferObj bytes.Buffer
+		if err := planObj.Builder.Build(context.Background(), &bufferObj); err != nil {
+			t.Fatalf("build universal zip: %v", err)
+		}
+		for _, name := range readZipNames(t, bufferObj.Bytes()) {
+			if !strings.HasPrefix(name, "foo-v1.0.0/") {
+				t.Fatalf("universal entry %q is not under raw top-dir foo-v1.0.0/", name)
+			}
+		}
+		goModArr := readZipFile(t, bufferObj.Bytes(), "foo-v1.0.0/go.mod")
+		if !strings.Contains(string(goModArr), "module upstream.example/foo") {
+			t.Fatalf("universal go.mod must stay raw, got: %q", goModArr)
+		}
+		if strings.Contains(string(goModArr), "mirror.example") {
+			t.Fatalf("universal go.mod was rewritten to the vault host: %q", goModArr)
+		}
+	}
+	if !built {
+		t.Fatal("plan has no universal/zip artifact")
 	}
 }

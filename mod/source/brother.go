@@ -28,9 +28,6 @@ const (
 	// cTreeObjectMax caps a single tree object and matches the storage tree-codec.
 	cTreeObjectMax = 256 << 20
 
-	// cBatchMax is the default blob hash count for one batch.
-	cBatchMax = brotherwire.DefaultMaxFetchBatchCount
-
 	// cIndexPageMax caps the number of versions on a single index page.
 	cIndexPageMax = 4096
 
