@@ -3,8 +3,8 @@
      sodipodi:docname="yggvault_banner.svg" version="1.1" viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg"
      xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
      xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd">
- <sodipodi:namedview bordercolor="#000000" borderopacity="0.25" inkscape:current-layer="svg62" inkscape:cx="805.96704"
-                     inkscape:cy="371.19739" inkscape:deskcolor="#d1d1d1" inkscape:pagecheckerboard="0"
+ <sodipodi:namedview bordercolor="#000000" borderopacity="0.25" inkscape:current-layer="svg62" inkscape:cx="717.07362"
+                     inkscape:cy="374.42988" inkscape:deskcolor="#d1d1d1" inkscape:pagecheckerboard="0"
                      inkscape:pageopacity="0.0" inkscape:showpageshadow="2" inkscape:window-height="1008"
                      inkscape:window-maximized="1" inkscape:window-width="1920" inkscape:window-x="0"
                      inkscape:window-y="0" inkscape:zoom="0.92807765" pagecolor="#ffffff" showgrid="false"/>
@@ -28,32 +28,33 @@
    <circle cx="24" cy="26" r="2.25" fill="#00f0ff"/>
    <circle cx="28" cy="16" r="2.25" fill="#f02828"/>
   </g>
-  <rect x="562.43" y="135.04" width="2.7305" height="349.5" fill="#565858" stroke-width="1.0922"/>
-  <text x="608.29907" y="152.5114" fill="#565858"
-        font-family="ui-monospace, 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="15.291px"
-        letter-spacing="3.5" stroke-width="1.0922">DEEP-MESH LEDGER
-  </text>
-  <text x="606.11469" y="263.91513" fill="#0d0d0d"
-        font-family="ui-monospace, 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="100.48px"
-        font-weight="700" letter-spacing="1" stroke-width="1.0922">yggvault
-  </text>
-  <rect x="608.3" y="290.13" width="469.64" height="2.1844" fill="#565858" opacity=".45" stroke-width="1.0922"/>
-  <text x="608.29907" y="340.36865" fill="#1a1a1a"
-        font-family="system-ui, '-apple-system', 'Segoe UI', Roboto, sans-serif" font-size="25.12px"
-        stroke-width="1.0922">Release-archive mirror for Go modules &amp; Composer
-  </text>
-  <text x="608.29907" y="373.13446" fill="#403e39"
-        font-family="system-ui, '-apple-system', 'Segoe UI', Roboto, sans-serif" font-size="19.66px"
-        stroke-width="1.0922">Served over plain HTTP/HTTPS and the Yggdrasil mesh
-  </text>
-  <text x="608.29907" y="423.37537" fill="#565858"
-        font-family="ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace" font-size="15.291px"
-        stroke-width="1.0922">GOPROXY · Composer v2 · archives · Atom · Brother sync · Yggdrasil
-  </text>
-  <rect x="608.3" y="458.33" width="609.44" height="48.057" rx="6" ry="6" fill-opacity=".05" stroke="#565858"
-        stroke-opacity=".55" stroke-width="1.0922"/>
-  <text x="630.14294" y="488.90698" font-family="ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace"
-        font-size="16.383px" stroke-width="1.1863" xml:space="preserve"><tspan fill="#565858">$ </tspan>
-   <tspan fill="#0d0d0d">go install github.com/voluminor/yggvault@latest</tspan></text>
+  <g stroke-width="1.0922">
+   <rect x="562.43" y="135.04" width="2.7305" height="349.5" fill="#565858"/>
+   <text x="608.29907" y="152.5114" fill="#565858"
+         font-family="ui-monospace, 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="15.291px"
+         letter-spacing="3.5">DEEP-MESH LEDGER
+   </text>
+   <text x="606.11469" y="263.91513" fill="#0d0d0d"
+         font-family="ui-monospace, 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace" font-size="100.48px"
+         font-weight="700" letter-spacing="1">yggvault
+   </text>
+   <rect x="608.3" y="290.13" width="469.64" height="2.1844" fill="#565858" opacity=".45"/>
+   <text x="608.29907" y="340.36865" fill="#1a1a1a"
+         font-family="system-ui, '-apple-system', 'Segoe UI', Roboto, sans-serif" font-size="25.12px">Release-archive
+    mirror for Go modules &amp; Composer
+   </text>
+   <text x="608.29907" y="373.13446" fill="#403e39"
+         font-family="system-ui, '-apple-system', 'Segoe UI', Roboto, sans-serif" font-size="19.66px">Served over plain
+    HTTP/HTTPS and the Yggdrasil mesh
+   </text>
+   <text x="608.29907" y="423.37537" fill="#565858"
+         font-family="ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace" font-size="15.291px">GOPROXY ·
+    Composer v2 · archives · Atom · Brother sync · Yggdrasil
+   </text>
+   <rect x="608.3" y="458.33" width="609.44" height="48.057" rx="6" ry="6" fill-opacity=".05" stroke="#565858"
+         stroke-opacity=".55"/>
+  </g>
+  <text x="770.72534" y="488.90698" font-family="ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace"
+        font-size="16.383px" stroke-width="1.1863" xml:space="preserve">github.com/voluminor/yggvault</text>
  </g>
 </svg>

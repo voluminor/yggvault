@@ -61,7 +61,7 @@ func New(depsObj DepsObj) (*ServerObj, error) {
 		contactGroups: sortedContactGroups(depsObj.Config.Info.Contacts),
 	}
 
-	specObj, err := newOpenAPISpec()
+	specObj, err := newOpenAPISpec(depsObj.Config)
 	if err != nil {
 		return nil, err
 	}
