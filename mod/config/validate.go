@@ -42,6 +42,7 @@ func validate(stc *stcfg.ConfigObj) error {
 		validateMetrics,
 		validateProfiling,
 		validateRateLimit,
+		validateSource,
 		validateWeb,
 		validateInfo,
 		validateTopLevel,
@@ -185,6 +186,13 @@ func validateRateLimit(stc *stcfg.ConfigObj) error {
 		if p.rps > 0 && p.maxTracked < 1 {
 			return fmt.Errorf("rate_limit.%s.max_tracked must be >= 1 when requests_per_second > 0", p.name)
 		}
+	}
+	return nil
+}
+
+func validateSource(stc *stcfg.ConfigObj) error {
+	if stc.Source.RateLimit.RequestsPerSecond > 0 && stc.Source.RateLimit.Burst < 1 {
+		return errors.New("source.rate_limit.burst must be >= 1 when requests_per_second > 0")
 	}
 	return nil
 }

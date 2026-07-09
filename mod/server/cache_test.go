@@ -1,13 +1,20 @@
 package server
 
 import (
+	"context"
+	"fmt"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/voluminor/yggvault/mod/cache"
 )
 
 // // // // // // // // // //
 
-func storeForTest(t *testing.T, serverObj *ServerObj) *fakeStoreObj {
+func storeForTest(t *testing.T, serverObj *Obj) *fakeStoreObj {
 	t.Helper()
 	storeObj, ok := serverObj.funcImplObj.deps.Storage.(*fakeStoreObj)
 	if !ok {
@@ -42,6 +49,38 @@ func TestCacheDedupesBuild(t *testing.T) {
 	}
 	if got := storeObj.keysetCalls.Load(); got != callsAfterFirst {
 		t.Fatalf("cache-hit still scanned storage: %d -> %d", callsAfterFirst, got)
+	}
+}
+
+func TestCacheStillCachesWhenRescanOverdue(t *testing.T) {
+	serverObj, lc := newTestServer(t, withCache())
+	ts := httptest.NewServer(serverObj.Handler(lc))
+	defer ts.Close()
+	storeObj := storeForTest(t, serverObj)
+
+	// A zero LastRescan makes SecondsToNextRescan return 0; without the floor the byte cache would be a
+	// no-op and every request would rebuild feeds/sitemaps exactly while the node is degraded.
+	stateObj := stateFor(t, serverObj)
+	stateObj.lastRescan = time.Time{}
+
+	resp1, body1 := doGET(t, ts, "/lib/list", nil)
+	if resp1.StatusCode != 200 {
+		t.Fatalf("first /lib/list: status %d", resp1.StatusCode)
+	}
+	callsAfterFirst := storeObj.keysetCalls.Load()
+	if callsAfterFirst == 0 {
+		t.Fatalf("builder did not scan storage on cache-miss")
+	}
+
+	resp2, body2 := doGET(t, ts, "/lib/list", nil)
+	if resp2.StatusCode != 200 {
+		t.Fatalf("second /lib/list: status %d", resp2.StatusCode)
+	}
+	if string(body2) != string(body1) {
+		t.Fatalf("cached body differs: %q vs %q", body1, body2)
+	}
+	if got := storeObj.keysetCalls.Load(); got != callsAfterFirst {
+		t.Fatalf("overdue rescan disabled caching: re-scanned storage %d -> %d", callsAfterFirst, got)
 	}
 }
 
@@ -88,5 +127,43 @@ func TestObjCacheDedupes(t *testing.T) {
 		if got := storeObj.keysetCalls.Load(); got != callsAfterFirst {
 			t.Fatalf("%s cache-hit re-scanned storage: %d -> %d", pathText, callsAfterFirst, got)
 		}
+	}
+}
+
+func TestObjCacheBuildGateCapsDifferentKeys(t *testing.T) {
+	cacheObj := newObjCache(cache.NewBuildGate(2))
+	var (
+		currentObj atomic.Int64
+		maxObj     atomic.Int64
+	)
+	buildFn := func(_ context.Context) (any, error) {
+		nowValue := currentObj.Add(1)
+		for {
+			maxValue := maxObj.Load()
+			if nowValue <= maxValue || maxObj.CompareAndSwap(maxValue, nowValue) {
+				break
+			}
+		}
+		time.Sleep(40 * time.Millisecond)
+		currentObj.Add(-1)
+		return "built", nil
+	}
+
+	const countValue = 10
+	var wgObj sync.WaitGroup
+	wgObj.Add(countValue)
+	for i := 0; i < countValue; i++ {
+		go func(idx int) {
+			defer wgObj.Done()
+			keyText := fmt.Sprintf("cold-%02d", idx)
+			if _, err := cacheObj.getOrBuild(context.Background(), keyText, time.Minute, buildFn); err != nil {
+				t.Errorf("getOrBuild(%s): %v", keyText, err)
+			}
+		}(i)
+	}
+	wgObj.Wait()
+
+	if got := maxObj.Load(); got > 2 {
+		t.Fatalf("max concurrent builds=%d want <= 2", got)
 	}
 }

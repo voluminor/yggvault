@@ -192,24 +192,39 @@ func (obj *Obj) publicMirrorDetail(ctx context.Context, listURL string, summaryO
 	}, nil
 }
 
-// PublicMirrorVersions reads a yggvault public API release list and resolves each version's universal archive.
-func (obj *Obj) PublicMirrorVersions(ctx context.Context, rootURL string, remoteKey string) ([]PublicMirrorVersionObj, bool, error) {
+// PublicMirrorListingObj is the outcome of one public-mirror listing pass.
+// Names holds every version seen in the listing: it is the authoritative upstream set for deletion grace, so a
+// version whose detail cannot be resolved this cycle is never mistaken for an upstream deletion.
+// Versions holds only versions whose detail resolved and that the caller asked to resolve (skip=false).
+// Unresolved counts versions whose detail failed this cycle; they remain in Names and are retried next cycle.
+// Truncated reports that the listing hit the version cap, so it is not authoritative for deletion.
+type PublicMirrorListingObj struct {
+	Versions   []PublicMirrorVersionObj
+	Names      []string
+	Unresolved int
+	Truncated  bool
+}
+
+// PublicMirrorVersions reads a yggvault public API release list and resolves each requested version's universal
+// archive. skip reports versions whose detail must not be fetched (already stored, or unstorable); such versions
+// still appear in Names. A single version's resolve failure is isolated: it is counted in Unresolved and skipped,
+// never failing the whole listing. Only a listing-level failure (page fetch/decode, protocol violation) returns err.
+func (obj *Obj) PublicMirrorVersions(ctx context.Context, rootURL string, remoteKey string, skip func(version string) bool) (PublicMirrorListingObj, error) {
 	baseObj, err := publicMirrorKeyBase(rootURL, remoteKey)
 	if err != nil {
-		return nil, false, permanent(err)
+		return PublicMirrorListingObj{}, permanent(err)
 	}
 	listURL := publicMirrorPath(baseObj, "/releases.json")
 
-	outArr := make([]PublicMirrorVersionObj, 0)
+	resultObj := PublicMirrorListingObj{Versions: make([]PublicMirrorVersionObj, 0)}
 	nextText := ""
-	truncatedFlag := false
 	seenCursorSet := make(map[string]struct{})
 	for {
 		pageURL := listURL
 		if nextText != "" {
 			u, err := url.Parse(listURL)
 			if err != nil {
-				return nil, false, permanent(err)
+				return PublicMirrorListingObj{}, permanent(err)
 			}
 			q := u.Query()
 			q.Set("after", nextText)
@@ -222,28 +237,41 @@ func (obj *Obj) PublicMirrorVersions(ctx context.Context, rootURL string, remote
 			return obj.getPublicMirrorJSON(ctx, pageURL, &listObj)
 		})
 		if err != nil {
-			return nil, false, err
+			return PublicMirrorListingObj{}, err
 		}
 		for _, summaryObj := range listObj.Releases {
-			if len(outArr) >= cMaxReleases {
-				truncatedFlag = true
-				return outArr, truncatedFlag, nil
+			if len(resultObj.Names) >= cMaxReleases {
+				resultObj.Truncated = true
+				return resultObj, nil
+			}
+			if summaryObj.Version == "" {
+				// A summary without a version name cannot be tracked as an upstream version; skip it.
+				continue
+			}
+			resultObj.Names = append(resultObj.Names, summaryObj.Version)
+			if skip != nil && skip(summaryObj.Version) {
+				continue
 			}
 			fallbackURL := publicMirrorPath(baseObj, "/"+url.PathEscape(summaryObj.Version)+".json")
-			versionObj, err := obj.publicMirrorDetail(ctx, pageURL, summaryObj, fallbackURL)
-			if err != nil {
-				return nil, false, err
+			versionObj, derr := obj.publicMirrorDetail(ctx, pageURL, summaryObj, fallbackURL)
+			if derr != nil {
+				if ctx.Err() != nil {
+					return PublicMirrorListingObj{}, ctx.Err()
+				}
+				// Isolate one version's failure: it stays in Names (deletion-safe) and is retried next cycle.
+				resultObj.Unresolved++
+				continue
 			}
-			outArr = append(outArr, versionObj)
+			resultObj.Versions = append(resultObj.Versions, versionObj)
 		}
 		if listObj.Next == "" {
-			return outArr, truncatedFlag, nil
+			return resultObj, nil
 		}
 		if len(listObj.Releases) == 0 {
-			return nil, false, permanent(fmt.Errorf("public mirror %q returned an empty page with next cursor %q", pageURL, listObj.Next))
+			return PublicMirrorListingObj{}, permanent(fmt.Errorf("public mirror %q returned an empty page with next cursor %q", pageURL, listObj.Next))
 		}
 		if _, ok := seenCursorSet[listObj.Next]; ok {
-			return nil, false, permanent(fmt.Errorf("public mirror %q repeated next cursor %q", listURL, listObj.Next))
+			return PublicMirrorListingObj{}, permanent(fmt.Errorf("public mirror %q repeated next cursor %q", listURL, listObj.Next))
 		}
 		seenCursorSet[listObj.Next] = struct{}{}
 		nextText = listObj.Next

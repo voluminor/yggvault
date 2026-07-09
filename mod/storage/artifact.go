@@ -155,13 +155,11 @@ func (obj *Obj) EnsureArtifactFile(ctx context.Context, keyObj core.ArtifactKeyO
 	if err != nil {
 		return nil, err
 	}
-	if fileObj.BodyHash != artifactObj.BodyHash {
+	// Waiters reopen the shared build independently, so re-validate type/size and enforce the
+	// verify_on_read policy here; openValidHotFile only covers the cache-hit fast path.
+	if err = obj.validateSharedHotFile(ctx, keyObj, fileObj, artifactObj); err != nil {
 		_ = fileObj.Close()
-		return nil, newArtifactBuildErr(keyObj, nil, cArtifactCheckStaleHash, artifactObj.BodyHash.Hex(), fileObj.BodyHash.Hex(), 0, 0)
-	}
-	if fileObj.SizeBytes != artifactObj.SizeBytes {
-		_ = fileObj.Close()
-		return nil, newArtifactBuildErr(keyObj, nil, cArtifactCheckStaleSize, "", "", artifactObj.SizeBytes, fileObj.SizeBytes)
+		return nil, err
 	}
 	select {
 	case <-ctx.Done():

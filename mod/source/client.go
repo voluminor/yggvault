@@ -93,19 +93,20 @@ func (obj *Obj) buildClients() {
 	}
 
 	obj.metaClient = &http.Client{
-		Transport:     obj.withAuth(newTransport()),
+		Transport:     obj.withLimit(obj.withAuth(newTransport())),
 		Timeout:       obj.requestTimeout,
 		CheckRedirect: obj.checkRedirect,
 	}
 	// refs (git smart HTTP) runs anonymously: git endpoints reject Bearer on public GitHub repos,
 	// and API rate limits do not apply to this protocol. SSRF guards and timeouts remain identical.
 	obj.refsClient = &http.Client{
-		Transport:     newTransport(),
+		Transport:     obj.withLimit(newTransport()),
 		Timeout:       obj.requestTimeout,
 		CheckRedirect: obj.checkRedirect,
 	}
+	// The download slot is taken before the HTTP limiter, so the wait queue is bounded by download_max_parallel.
 	obj.downloadClient = &http.Client{
-		Transport:     obj.withAuth(newTransport()),
+		Transport:     obj.withLimit(obj.withAuth(newTransport())),
 		CheckRedirect: obj.checkRedirect,
 	}
 }
@@ -227,6 +228,14 @@ func (obj *Obj) streamToSpool(ctx context.Context, rawURL, destPath string, stat
 
 	reqCtx, reqCancel := context.WithCancelCause(ctx)
 	defer reqCancel(nil)
+	// Hard wall-clock ceiling for this attempt: the idle timer and throughput floor alone let a drip
+	// feeder just above the minimum rate hold a download slot for many hours. Wrap before the request so
+	// the deadline also covers connect/TLS; the stall cancel operates on the parent and still propagates.
+	if obj.maxDownloadDuration > 0 {
+		var deadlineCancel context.CancelFunc
+		reqCtx, deadlineCancel = context.WithTimeout(reqCtx, obj.maxDownloadDuration)
+		defer deadlineCancel()
+	}
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return 0, permanent(err)

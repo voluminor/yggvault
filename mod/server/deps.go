@@ -73,4 +73,6 @@ type DepsObj struct {
 	Log       zerolog.Logger
 	// Cache is a shared RAM cache for built byte bodies. Nil disables cache and singleflight deduplication.
 	Cache *cache.Obj
+	// BuildGate limits detached builds shared by Cache and the typed object cache.
+	BuildGate *cache.BuildGateObj
 }

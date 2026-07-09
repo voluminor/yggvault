@@ -12,48 +12,162 @@ on:
 
 env:
   GO_VERSION: "1.26"
-  GOMETAGEN: "github.com/amazing-generators/gometagen/cmd/gometagen@latest"
+  RELEASE_SKIP_ENABLED: "true"
 
 jobs:
-  prepare:
-    name: "🔧 Prepare"
+  gate:
+    name: "🚦 Gate"
     runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.decide.outputs.skip || 'false' }}
+      sha: ${{ steps.hash.outputs.sha }}
+      marker-key: ${{ steps.hash.outputs.marker-key }}
+      content-hash: ${{ steps.hash.outputs.content-hash }}
+      generator-versions: ${{ steps.hash.outputs.generator-versions }}
+      gometagen-version: ${{ steps.hash.outputs.gometagen-version }}
     steps:
       - name: 🛎️ Checkout
         uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 1
+
+      - name: 🔧 Install Go from go.mod
+        uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version-file: go.mod
+
+      - name: 🧮 Compute marker key
+        id: hash
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          # Pin the exact commit the skip decision was computed for; stage MUST build this SHA,
+          # otherwise a push landing between gate and stage would release an untested tree.
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+          resolve_version() {
+            go list -m -f '{{.Version}}' "$1@latest"
+          }
+
+          versions_file="${RUNNER_TEMP}/generator-versions.env"
+          {
+            echo "GOMETAGEN_VERSION=$(resolve_version github.com/amazing-generators/gometagen)"
+            echo "GOCONFGEN_VERSION=$(resolve_version github.com/amazing-generators/goconfgen)"
+            echo "GODEPSGEN_VERSION=$(resolve_version github.com/amazing-generators/godepsgen)"
+            echo "GOOPENAPIGEN_VERSION=$(resolve_version github.com/amazing-generators/goopenapigen)"
+          } > "$versions_file"
+
+          set -a
+          . "$versions_file"
+          set +a
+
+          tmp_index="${RUNNER_TEMP}/content.index"
+          GIT_INDEX_FILE="$tmp_index" git read-tree HEAD
+          GIT_INDEX_FILE="$tmp_index" git update-index --force-remove -- _run/values.yml >/dev/null 2>&1 || true
+          tree_hash=$(GIT_INDEX_FILE="$tmp_index" git write-tree)
+
+          matrix_descriptor='main-verify-v1:ubuntu-latest,ubuntu-24.04-arm,macos-latest,windows-latest:bench=true'
+          content_hash=$(
+            {
+              echo 'schema-v1'
+              echo "tree=${tree_hash}"
+              cat "$versions_file"
+              echo "matrix=${matrix_descriptor}"
+            } | sha256sum | awk '{print $1}'
+          )
+
+          {
+            echo "content-hash=${content_hash}"
+            echo "marker-key=tests-green-v1-${content_hash}"
+            echo "gometagen-version=${GOMETAGEN_VERSION}"
+            echo "generator-versions<<GENERATOR_VERSIONS"
+            cat "$versions_file"
+            echo "GENERATOR_VERSIONS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 🔎 Lookup green marker
+        id: marker
+        uses: actions/cache/restore@v4
+        with:
+          path: .ci/tests-green
+          key: ${{ steps.hash.outputs.marker-key }}
+          lookup-only: true
+
+      - name: 🚦 Decide
+        id: decide
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [ "${{ env.RELEASE_SKIP_ENABLED }}" = "true" ] && [ "${{ steps.marker.outputs.cache-hit }}" = "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  stage:
+    name: "🔧 Stage bumped source"
+    needs: [ gate ]
+    runs-on: ubuntu-latest
+    outputs:
+      base-sha: ${{ steps.bump.outputs.base-sha }}
+      build-ver: ${{ steps.build-env.outputs.version }}
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@v7
+        with:
+          # The SHA the gate hashed — not the branch tip, which may have moved since.
+          ref: ${{ needs.gate.outputs.sha }}
+          fetch-depth: 0
 
       - uses: ./.github/actions/init-go
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - uses: ./.github/actions/tidy-all-and-generate
+      - name: 📦 Increment minor version locally
+        id: bump
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "base-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          gometagen="github.com/amazing-generators/gometagen/cmd/gometagen@${{ needs.gate.outputs.gometagen-version }}"
+          new_ver=$(go run "${gometagen}" version minor -source _run/values.yml)
+          echo "New version: ${new_ver}"
 
-      - name: 📦 Upload source
+      - uses: ./.github/actions/tidy-all-and-generate
+        with:
+          generator-versions: ${{ needs.gate.outputs.generator-versions }}
+
+      - id: build-env
+        uses: ./.github/actions/generate-build-env
+        with:
+          gometagen-version: ${{ needs.gate.outputs.gometagen-version }}
+
+      - name: 📦 Upload staged source
         uses: actions/upload-artifact@v7
         with:
           name: src-gen
-          path: .
+          include-hidden-files: true
+          if-no-files-found: error
+          path: |
+            .
+            !.git
+            !.git/**
 
   test:
     name: "🧪 Test [${{ matrix.os }}]"
-    needs: [ prepare ]
+    needs: [ gate, stage ]
+    if: needs.stage.result == 'success' && needs.gate.outputs.skip != 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15, windows-latest ]
+        os: [ ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest ]
 
     steps:
-      - name: 🛎️ Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 1
-
-      - name: 📥 Download source
+      - name: 📥 Download staged source
         uses: actions/download-artifact@v8
         with:
           name: src-gen
@@ -67,63 +181,19 @@ jobs:
         with:
           run-benchmarks: 'false'
 
-  bump-version:
-    name: "📦 Minor version bump"
-    needs: [ test ]
-    runs-on: ubuntu-latest
-    steps:
-      - name: 🛎️ Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - uses: ./.github/actions/github-setup-user
-
-      - uses: ./.github/actions/init-go
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: 📦 Increment minor version
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          new_ver=$(go run "${GOMETAGEN}" version minor -source _run/values.yml)
-          echo "New version: ${new_ver}"
-
-          git add _run/values.yml
-          git diff --cached --quiet || git commit -m "minor(${new_ver}): release"
-          git push origin HEAD:main
-
-      - uses: ./.github/actions/tidy-all-and-generate
-
-      - uses: ./.github/actions/generate-build-env
-
-      - name: 📦 Upload bumped assets
-        uses: actions/upload-artifact@v7
-        with:
-          name: bumped
-          if-no-files-found: error
-          path: |
-            target
-            tmp
-            build_env.txt
-
   build-nocgo:
     name: "🛠️ Build pure-Go (CGO=0)"
-    needs: [ bump-version ]
+    needs: [ gate, stage, test ]
+    if: >-
+      !cancelled() &&
+      needs.stage.result == 'success' &&
+      (needs.test.result == 'success' || (needs.gate.outputs.skip == 'true' && needs.test.result == 'skipped'))
     runs-on: ubuntu-latest
     steps:
-      - name: 🛎️ Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 1
-
-      - name: 📥 Download bumped assets
+      - name: 📥 Download staged source
         uses: actions/download-artifact@v8
         with:
-          name: bumped
+          name: src-gen
           path: .
 
       - name: 🗒️ Source env
@@ -140,7 +210,6 @@ jobs:
           set -Eeuo pipefail
           mkdir -p dist
 
-          # format: GOOS/GOARCH[/arm-variant]
           targets=(
             linux/amd64
             linux/arm64
@@ -167,11 +236,11 @@ jobs:
             fi
 
             outname="${BUILD_NAME}-${tag}${suffix}"
-            echo "→ ${outname}"
+            echo "Building ${outname}"
             go build -trimpath -ldflags="-s -w" -o "dist/${outname}" .
           done
 
-          echo "=== Built $(ls dist/ | wc -l) pure-Go binaries ==="
+          echo "Built $(ls dist/ | wc -l) pure-Go binaries"
           ls -lhS dist/
 
       - name: 📦 Upload pure-Go binaries
@@ -183,7 +252,11 @@ jobs:
 
   build-cgo:
     name: "🛠️ Build CGO [${{ matrix.goos }}/amd64]"
-    needs: [ bump-version ]
+    needs: [ gate, stage, test ]
+    if: >-
+      !cancelled() &&
+      needs.stage.result == 'success' &&
+      (needs.test.result == 'success' || (needs.gate.outputs.skip == 'true' && needs.test.result == 'skipped'))
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -193,16 +266,10 @@ jobs:
           - { runner: windows-latest, goos: windows, ext: ".exe" }
 
     steps:
-      - name: 🛎️ Checkout
-        uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 1
-
-      - name: 📥 Download bumped assets
+      - name: 📥 Download staged source
         uses: actions/download-artifact@v8
         with:
-          name: bumped
+          name: src-gen
           path: .
 
       - name: 🗒️ Source env
@@ -220,7 +287,7 @@ jobs:
           mkdir -p dist
           export GOOS="${{ matrix.goos }}" GOARCH=amd64 CGO_ENABLED=1
           outname="${BUILD_NAME}-${{ matrix.goos }}-amd64-cgo${{ matrix.ext }}"
-          echo "→ ${outname}"
+          echo "Building ${outname}"
           go build -trimpath -ldflags="-s -w" -o "dist/${outname}" .
           ls -lhS dist/
 
@@ -233,21 +300,27 @@ jobs:
 
   release:
     name: "🚀 Release"
-    needs: [ build-nocgo, build-cgo ]
+    needs: [ gate, stage, test, build-nocgo, build-cgo ]
+    if: >-
+      !cancelled() &&
+      needs.stage.result == 'success' &&
+      needs.build-nocgo.result == 'success' &&
+      needs.build-cgo.result == 'success' &&
+      (needs.test.result == 'success' || (needs.gate.outputs.skip == 'true' && needs.test.result == 'skipped'))
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: 🛎️ Checkout
+      - name: 🛎️ Checkout base
         uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ needs.stage.outputs.base-sha }}
           fetch-depth: 0
 
-      - name: 📥 Download bumped assets
+      - name: 📥 Download staged source
         uses: actions/download-artifact@v8
         with:
-          name: bumped
+          name: src-gen
           path: .
 
       - name: 🗒️ Source env
@@ -261,14 +334,24 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - name: 🔄 Refresh main
+      - uses: ./.github/actions/github-setup-user
+
+      - name: 📤 Push release bump
         shell: bash
         run: |
           set -Eeuo pipefail
+          base_sha="${{ needs.stage.outputs.base-sha }}"
           git fetch origin main --tags
-          git reset --hard origin/main
+          current_sha=$(git rev-parse refs/remotes/origin/main)
+          if [ "$current_sha" != "$base_sha" ]; then
+            echo "main moved from ${base_sha} to ${current_sha}" >&2
+            exit 1
+          fi
 
-      - uses: ./.github/actions/github-setup-user
+          git add _run/values.yml
+          git diff --cached --quiet && { echo "release bump is empty" >&2; exit 1; }
+          git commit -m "minor(${BUILD_VER}): release [skip ci]"
+          git push origin HEAD:main --force-with-lease=refs/heads/main:${base_sha}
 
       - name: 🏷️ Create stripped tag ${{ env.BUILD_VER }}
         shell: bash
@@ -276,10 +359,8 @@ jobs:
           set -Eeuo pipefail
           ORIG_SHA=$(git rev-parse HEAD)
 
-          # Embed generated assets into the tagged tree so it builds without generators.
           git add -f target tmp
 
-          # Strip dev/generator/test/workspace assets from the release tag only.
           paths_arr=()
           while IFS= read -r -d '' path; do
             paths_arr+=("$path")
@@ -314,7 +395,6 @@ jobs:
         with:
           name: |
             src-gen
-            bumped
             bin-nocgo
             bin-cgo-linux
             bin-cgo-windows

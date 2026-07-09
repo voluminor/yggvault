@@ -101,7 +101,7 @@ func newOpenAPISpec(configObj *stconf.ConfigObj) (openapiSpecObj, error) {
 
 // // // // // // // // // //
 
-func (obj *ServerObj) serveOpenAPI(w http.ResponseWriter, r *http.Request, lc listenerCtxObj) {
+func (obj *Obj) serveOpenAPI(w http.ResponseWriter, r *http.Request, lc listenerCtxObj) {
 	if lc.rateLimited(r) {
 		writeError(w, r, http.StatusTooManyRequests, "rate_limited", "rate limit exceeded")
 		return

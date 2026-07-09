@@ -122,32 +122,6 @@ func (obj *Obj) publishHealthChangedLocked(changedFlag bool) {
 	obj.publishSnapshotLocked(nextObj)
 }
 
-func (obj *Obj) publishDiagnosticBumpLocked(keyObj diagnosticKeyObj) {
-	currentObj := obj.snapObj.Load()
-	recordObj := obj.diagnosticMap[keyObj]
-	if currentObj == nil || recordObj == nil {
-		obj.publishChangedLocked(true)
-		return
-	}
-	nextDiagArr := append([]DiagnosticViewObj(nil), currentObj.diagnosticArr...)
-	foundFlag := false
-	for i := range nextDiagArr {
-		if nextDiagArr[i].Code == recordObj.code && nextDiagArr[i].Scope == recordObj.scope &&
-			nextDiagArr[i].Key == recordObj.key && nextDiagArr[i].Version == recordObj.version {
-			nextDiagArr[i] = diagnosticViewFromRecord(recordObj)
-			foundFlag = true
-			break
-		}
-	}
-	if !foundFlag {
-		obj.publishChangedLocked(true)
-		return
-	}
-	nextObj := *currentObj
-	nextObj.diagnosticArr = nextDiagArr
-	obj.publishSnapshotLocked(nextObj)
-}
-
 func validateOptionalText(name string, value string, maxBytes int) error {
 	if value == "" {
 		return nil

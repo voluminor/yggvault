@@ -2,6 +2,7 @@ package overlay
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"golang.org/x/mod/module"
 	modzip "golang.org/x/mod/zip"
 
 	"github.com/voluminor/yggvault/mod/core"
@@ -18,6 +20,9 @@ import (
 // // // // // // // // // //
 
 const (
+	// GoZipUnclassifiedLabel is the stable label for x/mod/zip errors this code cannot classify yet.
+	GoZipUnclassifiedLabel = "unclassified module zip errors"
+
 	// cMaxBlockSamples limits path examples per block-reason category.
 	cMaxBlockSamples = 3
 	// cMaxBlockSampleBytes limits one sampled path.
@@ -32,6 +37,13 @@ const (
 	// guard covers real large modules with headroom and blocks known resource-exhaustion shapes.
 	cGoZipPathBudgetBytes  = 4 << 20
 	cGoZipDirSegmentBudget = 1 << 18
+)
+
+const (
+	// These texts pin the unexported sentinels of golang.org/x/mod/zip.
+	cModZipPathNotCleanText    = "file path is not clean"
+	cModZipPathNotRelativeText = "file path is not relative"
+	cModZipGoModCaseText       = "go.mod files must have lowercase names"
 )
 
 // // // // // // // // // //
@@ -91,20 +103,28 @@ func treeComplexityReason(treeArr []core.TreeEntryObj) string {
 	return ""
 }
 
-// classifyInvalid groups CheckFiles Invalid errors by reason.
-// modzip exposes no sentinel errors, so wording drift falls back to a generic invalid block.
-func classifyInvalid(feObj modzip.FileError, invalidObj, collisionObj, oversizeObj *blockSamplesObj) {
-	msgText := feObj.Err.Error()
+// classifyInvalid splits Invalid entries from CheckFiles so a new x/mod message text cannot masquerade as an invalid path.
+func classifyInvalid(feObj modzip.FileError, invalidObj, collisionObj, oversizeObj, unclassifiedObj *blockSamplesObj) {
+	msgText := ""
+	if feObj.Err != nil {
+		msgText = feObj.Err.Error()
+	}
+	var invalidPathErrObj *module.InvalidPathError
 	switch {
 	case strings.Contains(msgText, "collision"),
 		strings.Contains(msgText, "both a file and a directory"),
 		strings.Contains(msgText, "multiple entries"):
-		// Collision text carries both sides of the pair, so clip the whole message.
+		// The collision text contains both sides of the pair, so the whole message is capped.
 		collisionObj.add(clipSample(msgText))
 	case strings.Contains(msgText, "too large"):
 		oversizeObj.add(strconv.Quote(clipSample(feObj.Path)))
-	default:
+	case errors.As(feObj.Err, &invalidPathErrObj),
+		msgText == cModZipPathNotCleanText,
+		msgText == cModZipPathNotRelativeText,
+		msgText == cModZipGoModCaseText:
 		invalidObj.add(strconv.Quote(clipSample(feObj.Path)))
+	default:
+		unclassifiedObj.add(clipSample(feObj.Error()))
 	}
 }
 
@@ -155,9 +175,9 @@ func goZipBlockReason(treeArr []core.TreeEntryObj, goModArr []byte) string {
 	}
 
 	cfObj, _ := modzip.CheckFiles(filesArr)
-	var invalidObj, collisionObj, oversizeObj blockSamplesObj
+	var invalidObj, collisionObj, oversizeObj, unclassifiedObj blockSamplesObj
 	for _, feObj := range cfObj.Invalid {
-		classifyInvalid(feObj, &invalidObj, &collisionObj, &oversizeObj)
+		classifyInvalid(feObj, &invalidObj, &collisionObj, &oversizeObj, &unclassifiedObj)
 	}
 
 	var partArr []string
@@ -170,6 +190,7 @@ func goZipBlockReason(treeArr []core.TreeEntryObj, goModArr []byte) string {
 	appendPart("invalid file paths", invalidObj)
 	appendPart("case-insensitive path collisions", collisionObj)
 	appendPart("oversized files", oversizeObj)
+	appendPart(GoZipUnclassifiedLabel, unclassifiedObj)
 	if cfObj.SizeError != nil {
 		partArr = append(partArr, cfObj.SizeError.Error())
 	}

@@ -62,6 +62,10 @@ type BrotherSessionObj struct {
 	remoteKey  string
 	fetchBytes uint64
 	fetchCount uint
+
+	indexKeyset       bool
+	indexAfterSeq     int64
+	indexAfterVersion string
 }
 
 // // // // // // // // // //
@@ -317,8 +321,9 @@ func (s *BrotherSessionObj) Hello(ctx context.Context) (HelloResultObj, error) {
 		return HelloResultObj{}, err
 	}
 	s.updateFetchLimits(reply.MaxFetchResponseBytes, reply.MaxFetchBatchCount)
+	s.indexKeyset = reply.IndexKeyset
 	bytesObj, countObj := s.FetchLimits()
-	return HelloResultObj{Protocol: reply.Protocol, MaxFetchResponseBytes: bytesObj, MaxFetchBatchCount: countObj}, nil
+	return HelloResultObj{Protocol: reply.Protocol, MaxFetchResponseBytes: bytesObj, MaxFetchBatchCount: countObj, IndexKeyset: reply.IndexKeyset}, nil
 }
 
 // Index returns one page of remoteKey versions with release notes and source info.
@@ -327,6 +332,14 @@ func (s *BrotherSessionObj) Hello(ctx context.Context) (HelloResultObj, error) {
 func (s *BrotherSessionObj) Index(ctx context.Context, page uint32) ([]BrotherIndexEntryObj, uint32, BrotherSourceInfoObj, error) {
 	var reply brotherwire.IndexReplyObj
 	arg := brotherwire.IndexArgObj{Key: s.remoteKey, Page: page}
+	if s.indexKeyset {
+		if page <= 1 {
+			s.indexAfterSeq = 0
+			s.indexAfterVersion = ""
+		}
+		arg.AfterSeq = s.indexAfterSeq
+		arg.AfterVersion = s.indexAfterVersion
+	}
 	if err := s.rpcCall(ctx, brotherwire.MethodIndex, arg, &reply); err != nil {
 		return nil, 0, BrotherSourceInfoObj{}, err
 	}
@@ -358,6 +371,16 @@ func (s *BrotherSessionObj) Index(ctx context.Context, page uint32) ([]BrotherIn
 			TreeHash:     fromWire(entry.TreeHash),
 			SourceHash:   fromWire(entry.SourceHash),
 			UpstreamSeq:  entry.UpstreamSeq,
+		}
+	}
+	if s.indexKeyset {
+		if reply.NextPage == 0 {
+			s.indexAfterSeq = 0
+			s.indexAfterVersion = ""
+		} else if len(out) > 0 {
+			lastObj := out[len(out)-1]
+			s.indexAfterSeq = lastObj.UpstreamSeq
+			s.indexAfterVersion = lastObj.Version
 		}
 	}
 	srcInfoObj := BrotherSourceInfoObj{SourceURL: reply.Source.SourceURL}

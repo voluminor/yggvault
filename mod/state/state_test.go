@@ -107,6 +107,72 @@ func testDiagnosticKeyObj(diagnosticObj DiagnosticObj) DiagnosticKeyObj {
 	}
 }
 
+func assertInactiveDiagnosticList(t *testing.T, obj *Obj) {
+	t.Helper()
+
+	obj.lockObj.Lock()
+	defer obj.lockObj.Unlock()
+
+	seenMap := make(map[*diagnosticRecordObj]struct{}, obj.inactiveLen)
+	count := 0
+	var prevObj *diagnosticRecordObj
+	for recordObj := obj.inactiveHead; recordObj != nil; recordObj = recordObj.inactiveNext {
+		if _, ok := seenMap[recordObj]; ok {
+			t.Fatal("inactive diagnostic list contains a cycle")
+		}
+		if recordObj.active {
+			t.Fatalf("active diagnostic is linked as inactive: %#v", keyFromDiagnosticRecordObj(recordObj))
+		}
+		if recordObj.inactivePrev != prevObj {
+			t.Fatalf("inactive diagnostic prev link is broken: %#v", keyFromDiagnosticRecordObj(recordObj))
+		}
+		if obj.diagnosticMap[keyFromDiagnosticRecordObj(recordObj)] != recordObj {
+			t.Fatalf("inactive diagnostic is not present in map: %#v", keyFromDiagnosticRecordObj(recordObj))
+		}
+		seenMap[recordObj] = struct{}{}
+		prevObj = recordObj
+		count++
+	}
+	if obj.inactiveTail != prevObj {
+		t.Fatal("inactive diagnostic tail link is broken")
+	}
+	if obj.inactiveLen != count {
+		t.Fatalf("inactive diagnostic list len=%d, want %d", obj.inactiveLen, count)
+	}
+
+	inactiveCount := 0
+	for keyObj, recordObj := range obj.diagnosticMap {
+		if recordObj.active {
+			if _, ok := seenMap[recordObj]; ok {
+				t.Fatalf("active diagnostic is present in inactive list: %#v", keyObj)
+			}
+			if recordObj.inactivePrev != nil || recordObj.inactiveNext != nil {
+				t.Fatalf("active diagnostic has stale inactive links: %#v", keyObj)
+			}
+			continue
+		}
+		inactiveCount++
+		if _, ok := seenMap[recordObj]; !ok {
+			t.Fatalf("inactive diagnostic is missing from list: %#v", keyObj)
+		}
+	}
+	if inactiveCount != count {
+		t.Fatalf("inactive diagnostics in map=%d, want list len %d", inactiveCount, count)
+	}
+}
+
+func assertDiagnosticMapContains(t *testing.T, obj *Obj, diagnosticObj DiagnosticObj, wantFlag bool) {
+	t.Helper()
+
+	keyObj := keyFromDiagnosticObj(diagnosticObj)
+	obj.lockObj.Lock()
+	_, ok := obj.diagnosticMap[keyObj]
+	obj.lockObj.Unlock()
+	if ok != wantFlag {
+		t.Fatalf("diagnostic map contains %#v = %v, want %v", keyObj, ok, wantFlag)
+	}
+}
+
 // //
 
 func TestNewSeedsSnapshot(t *testing.T) {
@@ -571,6 +637,100 @@ func TestRegistryBounded(t *testing.T) {
 	if obj.Health().DroppedDiagnostics != 1 {
 		t.Fatalf("dropped diagnostics=%d, want 1", obj.Health().DroppedDiagnostics)
 	}
+	assertInactiveDiagnosticList(t, obj)
+}
+
+func TestDiagnosticEvictsOldestInactive(t *testing.T) {
+	obj := newTestObj(t)
+	obj.maxDiagnostics = 3
+
+	firstObj := testBuildDiagnosticObj("core-lib", "v1.0.0")
+	secondObj := testBuildDiagnosticObj("core-lib", "v1.0.1")
+	thirdObj := testBuildDiagnosticObj("core-lib", "v1.0.2")
+	fourthObj := testBuildDiagnosticObj("core-lib", "v1.0.3")
+	fifthObj := testBuildDiagnosticObj("core-lib", "v1.0.4")
+	for _, diagnosticObj := range []DiagnosticObj{firstObj, secondObj, thirdObj} {
+		if err := obj.RaiseDiagnostic(diagnosticObj); err != nil {
+			t.Fatalf("RaiseDiagnostic setup returned error: %v", err)
+		}
+	}
+	if err := obj.ClearDiagnostic(testDiagnosticKeyObj(secondObj)); err != nil {
+		t.Fatalf("ClearDiagnostic second returned error: %v", err)
+	}
+	if err := obj.ClearDiagnostic(testDiagnosticKeyObj(firstObj)); err != nil {
+		t.Fatalf("ClearDiagnostic first returned error: %v", err)
+	}
+
+	if err := obj.RaiseDiagnostic(fourthObj); err != nil {
+		t.Fatalf("RaiseDiagnostic fourth returned error: %v", err)
+	}
+	assertDiagnosticMapContains(t, obj, secondObj, false)
+	assertDiagnosticMapContains(t, obj, firstObj, true)
+	assertDiagnosticMapContains(t, obj, fourthObj, true)
+	assertInactiveDiagnosticList(t, obj)
+
+	if err := obj.RaiseDiagnostic(fifthObj); err != nil {
+		t.Fatalf("RaiseDiagnostic fifth returned error: %v", err)
+	}
+	assertDiagnosticMapContains(t, obj, firstObj, false)
+	assertDiagnosticMapContains(t, obj, thirdObj, true)
+	assertDiagnosticMapContains(t, obj, fifthObj, true)
+	assertInactiveDiagnosticList(t, obj)
+}
+
+func TestDiagnosticOverwriteReRaiseUnlinksInactive(t *testing.T) {
+	obj := newTestObj(t)
+
+	diagnosticObj := testBuildDiagnosticObj("core-lib", "v1.0.0")
+	if err := obj.RaiseDiagnostic(diagnosticObj); err != nil {
+		t.Fatalf("RaiseDiagnostic setup returned error: %v", err)
+	}
+	if err := obj.ClearDiagnostic(testDiagnosticKeyObj(diagnosticObj)); err != nil {
+		t.Fatalf("ClearDiagnostic returned error: %v", err)
+	}
+	assertInactiveDiagnosticList(t, obj)
+
+	diagnosticObj.Message = "build failed again"
+	if err := obj.RaiseDiagnostic(diagnosticObj); err != nil {
+		t.Fatalf("RaiseDiagnostic re-raise returned error: %v", err)
+	}
+	assertInactiveDiagnosticList(t, obj)
+
+	diagnosticArr := obj.ActiveDiagnostics()
+	if len(diagnosticArr) != 1 {
+		t.Fatalf("active diagnostics=%d, want 1", len(diagnosticArr))
+	}
+	if diagnosticArr[0].Count != 2 {
+		t.Fatalf("diagnostic count=%d, want 2", diagnosticArr[0].Count)
+	}
+	if diagnosticArr[0].Message != "build failed again" {
+		t.Fatalf("diagnostic message=%q, want updated message", diagnosticArr[0].Message)
+	}
+}
+
+func TestClearVersionDiagnosticsNoopDoesNotPublish(t *testing.T) {
+	obj := newTestObj(t)
+
+	beforeGeneration := obj.Generation()
+	if err := obj.ClearVersionDiagnostics("core-lib", "v9.9.9"); err != nil {
+		t.Fatalf("ClearVersionDiagnostics empty returned error: %v", err)
+	}
+	if obj.Generation() != beforeGeneration {
+		t.Fatalf("generation changed on empty clear-version: %d", obj.Generation())
+	}
+
+	diagnosticObj := testBuildDiagnosticObj("core-lib", "v1.0.0")
+	if err := obj.RaiseDiagnostic(diagnosticObj); err != nil {
+		t.Fatalf("RaiseDiagnostic setup returned error: %v", err)
+	}
+	beforeGeneration = obj.Generation()
+	if err := obj.ClearVersionDiagnostics("core-lib", "v9.9.9"); err != nil {
+		t.Fatalf("ClearVersionDiagnostics unmatched returned error: %v", err)
+	}
+	if obj.Generation() != beforeGeneration {
+		t.Fatalf("generation changed on unmatched clear-version: %d", obj.Generation())
+	}
+	assertInactiveDiagnosticList(t, obj)
 }
 
 func TestSnapshotCopySemantics(t *testing.T) {
@@ -850,4 +1010,58 @@ func TestConcurrentReadWrite(t *testing.T) {
 
 	close(stopChan)
 	wgObj.Wait()
+}
+
+// TestRaiseDiagnosticRecurringReordersRecentWindow guards the invariant that a recurring diagnostic
+// (the common bump path) is republished in LastSeen-desc order, so the capped "recent" window and the
+// recent_error metric keep it visible after the bump rather than leaving it in its old position.
+func TestRaiseDiagnosticRecurringReordersRecentWindow(t *testing.T) {
+	obj := newTestObj(t)
+
+	if err := obj.RaiseDiagnostic(testUpstreamDiagnosticObj("core-lib")); err != nil {
+		t.Fatalf("raise core-lib: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+	if err := obj.RaiseDiagnostic(testUpstreamDiagnosticObj("ui-kit")); err != nil {
+		t.Fatalf("raise ui-kit: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+	if err := obj.RaiseDiagnostic(testUpstreamDiagnosticObj("core-lib")); err != nil {
+		t.Fatalf("re-raise core-lib: %v", err)
+	}
+
+	recentArr := obj.Snapshot().RecentDiagnostics(1)
+	if len(recentArr) != 1 {
+		t.Fatalf("RecentDiagnostics(1) length = %d, want 1", len(recentArr))
+	}
+	if recentArr[0].Key != "core-lib" {
+		t.Fatalf("recent[0].Key = %q, want core-lib: recurring bump must reorder the window", recentArr[0].Key)
+	}
+	if recentArr[0].Count < 2 {
+		t.Fatalf("recent[0].Count = %d, want >= 2 after repeat", recentArr[0].Count)
+	}
+}
+
+// TestUnavailableCyclesFreezeAtPermanent checks that once a key reaches permanent-down, further unavailable
+// scans stop growing the counter (frozen at permanentAt), so a dead mirror does not churn a changed count
+// under an unchanged status every cycle. Test config sets PermanentAfterCycles=2.
+func TestUnavailableCyclesFreezeAtPermanent(t *testing.T) {
+	obj := newTestObj(t)
+	base := time.Now().UTC()
+	for i := 0; i < 5; i++ {
+		if err := obj.MarkUnavailable("core-lib", base.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatalf("MarkUnavailable #%d: %v", i, err)
+		}
+	}
+
+	keyStateObj, ok := obj.KeyState("core-lib")
+	if !ok {
+		t.Fatal("KeyState missing for core-lib")
+	}
+	if keyStateObj.Availability != stcode.AvailabilityStatusPermanentDown {
+		t.Fatalf("availability=%v, want PermanentDown", keyStateObj.Availability)
+	}
+	if keyStateObj.UnavailableCycles != 2 {
+		t.Fatalf("UnavailableCycles=%d, want 2 (frozen at permanentAt)", keyStateObj.UnavailableCycles)
+	}
 }

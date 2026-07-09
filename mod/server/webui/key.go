@@ -7,6 +7,7 @@ import (
 
 	"github.com/voluminor/yggvault/mod/core"
 	"github.com/voluminor/yggvault/mod/overlay"
+	"github.com/voluminor/yggvault/mod/server/link"
 	"github.com/voluminor/yggvault/mod/view"
 )
 
@@ -14,7 +15,7 @@ import (
 
 // Key builds the key page: newest-first version window, keyset pagination, badges and install snippets.
 // found=false means the caller will return 404. The zero cursor selects the newest page.
-func Key(ctx context.Context, st StateReaderInterface, store VersionReaderInterface, lnk LinkInterface, ctxObj view.ContextObj, key string, cursor PageCursorObj, pageSize int) ([]byte, bool, error) {
+func Key(ctx context.Context, st StateReaderInterface, store VersionReaderInterface, lnk link.Obj, ctxObj view.ContextObj, key string, cursor PageCursorObj, pageSize int) ([]byte, bool, error) {
 	rnd, err := renderer()
 	if err != nil {
 		return nil, false, err
@@ -145,7 +146,7 @@ func versionEcosystems(ctx context.Context, store VersionReaderInterface, key st
 	return detectionObj.IsGo && !detectionObj.GoZipBlocked, detectionObj.IsComposer
 }
 
-func keyOverlaysAndInstall(ctx context.Context, store VersionReaderInterface, lnk LinkInterface, altObj view.AlternateObj, key string, latest string) ([]string, []view.CodeSnippetObj, []view.CodeSnippetObj, error) {
+func keyOverlaysAndInstall(ctx context.Context, store VersionReaderInterface, lnk link.Obj, altObj view.AlternateObj, key string, latest string) ([]string, []view.CodeSnippetObj, []view.CodeSnippetObj, error) {
 	if latest == "" {
 		return nil, nil, nil, nil
 	}
@@ -177,7 +178,7 @@ func keyOverlaysAndInstall(ctx context.Context, store VersionReaderInterface, ln
 
 // keyInstall builds install snippets for one scheme/host pair.
 // Key pages use @latest for Go; exact versions live on version pages.
-func keyInstall(detectionObj core.DetectionObj, composerCand *overlay.CandidateObj, lnk LinkInterface, key string, latest string, scheme string, host string) []view.CodeSnippetObj {
+func keyInstall(detectionObj core.DetectionObj, composerCand *overlay.CandidateObj, lnk link.Obj, key string, latest string, scheme string, host string) []view.CodeSnippetObj {
 	var installArr []view.CodeSnippetObj
 	// A blocked Go zip has no @v routes, so a go get snippet would be misleading.
 	if detectionObj.IsGo && !detectionObj.GoZipBlocked && host != "" {

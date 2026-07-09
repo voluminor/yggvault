@@ -1,8 +1,7 @@
 package webui
 
 import (
-	"strings"
-
+	"github.com/voluminor/yggvault/mod/server/link"
 	"github.com/voluminor/yggvault/mod/view"
 )
 
@@ -31,19 +30,10 @@ func dropDuplicateSnippets(altArr []view.CodeSnippetObj, primaryArr []view.CodeS
 	return outArr
 }
 
-func schemeHost(lnk LinkInterface) (string, string) {
-	probe := lnk.Abs("/")
-	idx := strings.Index(probe, "://")
-	if idx < 0 {
+// schemeHost returns the entry scheme and host, or empty strings for a relative (hostless) entry.
+func schemeHost(lnk link.Obj) (string, string) {
+	if lnk.EntryHost == "" {
 		return "", ""
 	}
-	scheme := probe[:idx]
-	rest := probe[idx+len("://"):]
-	if slash := strings.IndexByte(rest, '/'); slash >= 0 {
-		rest = rest[:slash]
-	}
-	if scheme == "" || rest == "" {
-		return "", ""
-	}
-	return scheme, rest
+	return lnk.Scheme, lnk.EntryHost
 }

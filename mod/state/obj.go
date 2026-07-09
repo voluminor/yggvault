@@ -23,9 +23,9 @@ const (
 	cMaxScanFutureSkew      = 5 * time.Minute
 )
 
-// Obj stores mirror state and diagnostics.
-// Mutations are serialized by lockObj and publish immutable SnapshotObj values atomically.
-// Readers load snapshots without locking; selfObj detects copied values.
+// Obj holds mirror state and diagnostics.
+// All mutations are serialized by lockObj; reads stay lock-free through the atomic SnapshotObj.
+// Inactive diagnostics live in an intrusive list: an entry is in the list iff !active.
 type Obj struct {
 	selfObj *Obj
 	lockObj sync.Mutex
@@ -36,7 +36,9 @@ type Obj struct {
 	keyIndex           map[string]int
 	diagnosticMap      map[diagnosticKeyObj]*diagnosticRecordObj
 	diagnosticByKey    map[string]map[diagnosticKeyObj]struct{}
-	diagnosticOrder    []diagnosticKeyObj
+	inactiveHead       *diagnosticRecordObj
+	inactiveTail       *diagnosticRecordObj
+	inactiveLen        int
 	checksums          ChecksumSetObj
 	lastRescan         time.Time
 	generation         uint64
@@ -178,4 +180,7 @@ type diagnosticRecordObj struct {
 	lastSeen  time.Time
 	count     uint64
 	active    bool
+
+	inactivePrev *diagnosticRecordObj
+	inactiveNext *diagnosticRecordObj
 }

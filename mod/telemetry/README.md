@@ -7,7 +7,7 @@ selected metric groups as JSON and, when enabled, a full Prometheus/OpenMetrics 
 
 ```mermaid
 flowchart LR
-  producers["cache, server, rescan, errors"] --> telemetry["mod/telemetry"]
+    producers["cache, server, source, rescan, errors"] --> telemetry["mod/telemetry"]
   telemetry --> json["/metrics/* JSON"]
   telemetry --> prom["Prometheus text"]
   telemetry --> push["VictoriaMetrics push"]
@@ -24,6 +24,7 @@ flowchart LR
 ## Contracts
 
 - Metric labels must stay low-cardinality. Do not label by arbitrary key, version, URL, or request id.
+- Source outbound limiter metrics must not expose raw upstream hosts.
 - Snapshot collection must be bounded and must not block hot serving paths for long.
 - Push failures are non-fatal. They should be visible in logs and error metrics, not crash the process.
 - Public JSON metric groups should remain understandable to an operator without Prometheus tooling.
@@ -37,5 +38,6 @@ flowchart LR
 
 ## Operational Notes
 
-Use `/metrics/{core,cache,errors,rescan}` for human-readable diagnostics. Enable `/metrics/internal` only when a
+Use `/metrics/{core,cache,errors,rescan}` for human-readable diagnostics. Rescan-related snapshots include source
+outbound request and limiter-wait signals, plus version failure phase counters. Enable `/metrics/internal` only when a
 scraper or trusted internal network needs the full exposition.

@@ -454,6 +454,27 @@ source:
     value: 8
     min: 1
     usage: "Maximum number of source archive downloads running concurrently."
+  download_max_duration:
+    type: time.Duration
+    value: "1h"
+    usage:
+      - "Hard wall-clock ceiling for a single source archive download attempt, independent of source.request_timeout (per-read idle) and the internal minimum-throughput floor. It bounds how long one slow upstream can hold a download slot (source.download_max_parallel)."
+      - "0 disables the ceiling. Set it above the time a legitimate largest-archive download needs: storage.archive_limits.size.compressed at your slowest expected link speed. Accepts values such as `1h`, `30m`, or a nanosecond integer."
+  rate_limit:
+    usage:
+      - "Per-host token bucket for every outgoing upstream HTTP request: provider API listings, git refs advertisements, discovery probes, public mirror JSON, and archive downloads."
+      - "The bucket key is the lowercased target host. Brother RPC has its own limiter in brother.rpc.rate_per_sec."
+      - "The wait happens inside the HTTP transport, so it also paces retries and provider API pagination."
+    requests_per_second:
+      type: uint
+      value: 8
+      usage:
+        - "Sustained per-host request rate. 0 disables outbound rate limiting."
+        - "Keep burst >= source.download_max_parallel + rescan.max_parallel_keys so parallel work does not starve against source.request_timeout."
+    burst:
+      type: uint
+      value: 16
+      usage: "Per-host burst capacity. Required to be >= 1 when requests_per_second > 0."
   retry:
     usage: "Retry policy for network and download failures. Runtime caps attempts in source code; these values shape the backoff between attempts."
     backoff_initial:
@@ -667,6 +688,10 @@ cache:
     value: "64mb"
     min: "1mb"
     usage: "RAM cap for prebuilt metadata and ETag cache. This is a hard size cap. Accepts values such as `64mb`, `256mb`, or bytes."
+  build_max_parallel:
+    type: uint
+    value: 16
+    usage: "Global cap on concurrent detached cache builds shared by the byte cache and the typed object cache. 0 disables the cap."
 
 overlay:
   usage: "Safety settings for ecosystem-specific overlay materialization."

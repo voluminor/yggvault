@@ -26,7 +26,7 @@ type SourceInterface interface {
 	Tags(ctx context.Context, sourceURL string, depth uint) ([]source.GitReleaseObj, bool, error)
 	Refs(ctx context.Context, sourceURL string) (map[string]string, error)
 	FetchArchive(ctx context.Context, reqObj source.GitFetchRequestObj) (source.GitFetchResultObj, error)
-	PublicMirrorVersions(ctx context.Context, rootURL string, remoteKey string) ([]source.PublicMirrorVersionObj, bool, error)
+	PublicMirrorVersions(ctx context.Context, rootURL string, remoteKey string, skip func(version string) bool) (source.PublicMirrorListingObj, error)
 	BrotherDial(ctx context.Context, localKey string, remoteKey string, brotherURL string) (source.BrotherSessionInterface, error)
 }
 
@@ -74,10 +74,18 @@ type Obj struct {
 	missMu  sync.Mutex
 	missMap map[missKeyObj]uint
 
-	// permFailMap remembers the tag SHA that caused a deterministic ingest failure.
-	// It is intentionally in-memory: a restart costs one retry, while steady-state avoids repeated downloads.
+	// permFailMap is the hot skip cache over durable ingest_failures quarantine.
 	permFailMu  sync.Mutex
 	permFailMap map[missKeyObj]string
+	// Keys whose startup durable load failed need one-cycle durable clears despite hot-cache misses.
+	permFailLoadMissObj map[string]struct{}
+	// quarantineDirtyObj marks keys with pending quarantine bookkeeping (in-memory entries, a failed
+	// startup load, or durable rows to reconcile). Healthy keys stay absent so the per-cycle summary skips
+	// the durable ListIngestFailures round-trip for them.
+	quarantineDirtyObj map[string]struct{}
+
+	quarantineCapMu      sync.Mutex
+	quarantineCapWarnObj map[string]uint64
 
 	composerMu        sync.RWMutex
 	composerNames     []string
@@ -131,24 +139,29 @@ func New(
 	if len(logArr) > 0 {
 		logObj = logArr[0]
 	}
-	return &Obj{
-		sourceObj:   sourceObj,
-		storageObj:  storageObj,
-		overlayObj:  overlayObj,
-		stateObj:    stateObj,
-		archiveObj:  archiveObj,
-		configObj:   configObj,
-		listenerArr: listenerArr,
-		keyArr:      keyArr,
-		rootCtx:     rootCtx,
-		rootCancel:  rootCancel,
-		loopDone:    make(chan struct{}),
-		trigger:     make(chan struct{}, 1),
-		buildSem:    make(chan struct{}, buildParallel),
-		missMap:     make(map[missKeyObj]uint),
-		permFailMap: make(map[missKeyObj]string),
-		logObj:      logObj,
+	obj := &Obj{
+		sourceObj:            sourceObj,
+		storageObj:           storageObj,
+		overlayObj:           overlayObj,
+		stateObj:             stateObj,
+		archiveObj:           archiveObj,
+		configObj:            configObj,
+		listenerArr:          listenerArr,
+		keyArr:               keyArr,
+		rootCtx:              rootCtx,
+		rootCancel:           rootCancel,
+		loopDone:             make(chan struct{}),
+		trigger:              make(chan struct{}, 1),
+		buildSem:             make(chan struct{}, buildParallel),
+		missMap:              make(map[missKeyObj]uint),
+		permFailMap:          make(map[missKeyObj]string),
+		permFailLoadMissObj:  make(map[string]struct{}),
+		quarantineDirtyObj:   make(map[string]struct{}),
+		quarantineCapWarnObj: make(map[string]uint64),
+		logObj:               logObj,
 	}
+	obj.loadPermanentFailures()
+	return obj
 }
 
 // SetSuppressed sets keys excluded by boot name-to-URL checks.

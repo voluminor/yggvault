@@ -33,6 +33,7 @@ const (
 // Artifacts, detection, and keyset APIs are not exposed to peers.
 type StoreInterface interface {
 	ListVersionsPage(ctx context.Context, key string, includeDeleted bool, limit int, offset int) ([]core.VersionObj, error)
+	ListVersionsKeyset(ctx context.Context, key string, includeDeleted bool, afterSeq int64, afterVersion string, limit int) ([]core.VersionObj, error)
 	GetVersion(ctx context.Context, key string, version string) (core.VersionObj, bool, error)
 	ReadTree(ctx context.Context, treeHashObj core.HashObj) ([]core.TreeEntryObj, error)
 	ReadBlob(ctx context.Context, hashObj core.HashObj) ([]byte, error)

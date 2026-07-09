@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/voluminor/yggvault/mod/cli"
+	"github.com/voluminor/yggvault/mod/maintenance"
 	"github.com/voluminor/yggvault/mod/mesh"
 )
 
@@ -30,7 +33,28 @@ type keygenViewObj struct {
 	Force    bool   `json:"force"`
 }
 
+type keygenErrorViewObj struct {
+	Command string `json:"command"`
+	Ok      bool   `json:"ok"`
+	Error   string `json:"error"`
+}
+
 // // // // // // // // // //
+
+func writeJSON(writerObj io.Writer, viewObj any) error {
+	dataArr, err := json.MarshalIndent(viewObj, "", "  ")
+	if err != nil {
+		return err
+	}
+	if _, err = writerObj.Write(append(dataArr, '\n')); err != nil {
+		return err
+	}
+	return nil
+}
+
+func renderErrorJSON(writerObj io.Writer, command string, err error) {
+	_ = writeJSON(writerObj, keygenErrorViewObj{Command: command, Ok: false, Error: err.Error()})
+}
 
 func ensureKeyFileWritable(filePath string, force bool) error {
 	if force {
@@ -49,7 +73,7 @@ func ensureKeyFileWritable(filePath string, force bool) error {
 func reportKeygenError(jsonOutput bool, err error) error {
 	if jsonOutput {
 		renderErrorJSON(os.Stderr, cCmdMakeYggKey, err)
-		return errAlreadyReported
+		return maintenance.ReportedErrObj{Err: err}
 	}
 	return err
 }

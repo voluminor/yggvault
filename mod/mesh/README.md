@@ -72,9 +72,10 @@ peer-specific diagnostics. It is not an authorization mechanism, a release-integ
 hashes. Treat it as public self-description attached to the Yggdrasil node identity.
 
 `mod/mesh/yggvault` implements the Ratatoskr `sigils.Interface`: it can render the block, merge it into a NodeInfo copy,
-parse the block from another node, and match only when `version`, `hash`, and `date` are present as strings. The parser
-keeps unknown sibling NodeInfo keys out of the returned fragment, so callers can reason about the yggvault block without
-accidentally depending on unrelated sigils.
+parse the block from another node, and match only when `version`, `hash`, and `date` are present as strings. Its public
+constructor accepts explicit build fields instead of importing generated `target` metadata, and `Parse` accepts foreign
+NodeInfo for diagnostics and discovery. The parser keeps unknown sibling NodeInfo keys out of the returned fragment, so
+callers can reason about the yggvault block without accidentally depending on unrelated sigils.
 
 ## Contracts
 
@@ -86,6 +87,8 @@ accidentally depending on unrelated sigils.
 - NodeInfo sigils must not contain secrets, credentials, private upstream URLs, or operator-only diagnostics.
 - The `yggvault` sigil must stay backward-compatible: peers should be able to detect the block by top-level key and read
   `version`, `hash`, and `date` as strings.
+- `mod/mesh/yggvault` is the public sigil contract. Runtime wiring may feed it generated build metadata, but the
+  package itself must stay usable without importing generated `target` code.
 
 ## Important Files
 

@@ -66,18 +66,10 @@ func (obj *Obj) ListVersions(ctx context.Context, key string, includeDeleted boo
 	}
 	defer rowsObj.Close()
 
-	resultArr := make([]core.VersionObj, 0)
-	for rowsObj.Next() {
-		versionObj, scanErr := scanVersion(rowsObj)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		resultArr = append(resultArr, versionObj)
-	}
-	if err = rowsObj.Err(); err != nil {
+	resultArr, err := scanAll(rowsObj, 0, scanVersion)
+	if err != nil {
 		return nil, err
 	}
-
 	sortVersions(resultArr)
 	return resultArr, nil
 }
@@ -120,18 +112,7 @@ func (obj *Obj) ListVersionsPage(ctx context.Context, key string, includeDeleted
 	}
 	defer rowsObj.Close()
 
-	resultArr := make([]core.VersionObj, 0, limit)
-	for rowsObj.Next() {
-		versionObj, scanErr := scanVersion(rowsObj)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		resultArr = append(resultArr, versionObj)
-	}
-	if err = rowsObj.Err(); err != nil {
-		return nil, err
-	}
-	return resultArr, nil
+	return scanAll(rowsObj, limit, scanVersion)
 }
 
 // ListVersionsKeyset returns a newest-first keyset page by afterSeq and afterVersion cursor.
@@ -156,18 +137,7 @@ func (obj *Obj) ListVersionsKeyset(ctx context.Context, key string, includeDelet
 	}
 	defer rowsObj.Close()
 
-	resultArr := make([]core.VersionObj, 0, limit)
-	for rowsObj.Next() {
-		versionObj, scanErr := scanVersion(rowsObj)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		resultArr = append(resultArr, versionObj)
-	}
-	if err = rowsObj.Err(); err != nil {
-		return nil, err
-	}
-	return resultArr, nil
+	return scanAll(rowsObj, limit, scanVersion)
 }
 
 // ListVersionsKeysetBefore returns up to limit versions strictly newer than the (beforeSeq, beforeVersion) cursor,
@@ -190,18 +160,7 @@ func (obj *Obj) ListVersionsKeysetBefore(ctx context.Context, key string, includ
 	}
 	defer rowsObj.Close()
 
-	resultArr := make([]core.VersionObj, 0, limit)
-	for rowsObj.Next() {
-		versionObj, scanErr := scanVersion(rowsObj)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		resultArr = append(resultArr, versionObj)
-	}
-	if err = rowsObj.Err(); err != nil {
-		return nil, err
-	}
-	return resultArr, nil
+	return scanAll(rowsObj, limit, scanVersion)
 }
 
 // DistinctVersionKeys returns one keyset page of unique keys with key > afterKey.
@@ -263,18 +222,7 @@ func (obj *Obj) VersionsByIngest(ctx context.Context, afterObj core.VersionObj, 
 	}
 	defer rowsObj.Close()
 
-	resultArr := make([]core.VersionObj, 0)
-	for rowsObj.Next() {
-		versionObj, scanErr := scanVersion(rowsObj)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		resultArr = append(resultArr, versionObj)
-	}
-	if err = rowsObj.Err(); err != nil {
-		return nil, err
-	}
-	return resultArr, nil
+	return scanAll(rowsObj, 0, scanVersion)
 }
 
 // LatestVersion returns the newest active version without release_notes; no row returns false, nil.

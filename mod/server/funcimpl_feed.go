@@ -14,6 +14,20 @@ func (obj *funcObj) feedSize() int {
 	return max(1, int(obj.deps.Config.Web.Pages.FeedSize))
 }
 
+func (obj *funcObj) observeFeedBuild(scopeText string, statsObj feedatom.BuildStatsObj) {
+	if !statsObj.Truncated() {
+		return
+	}
+	obj.edgeMetrics.recordFeed(statsObj)
+	obj.deps.Log.Warn().
+		Str("scope", scopeText).
+		Int("entries_written", statsObj.EntriesWritten).
+		Int("entries_dropped", statsObj.EntriesDropped).
+		Int("notes_truncated", statsObj.NotesTruncated).
+		Int("body_bytes", statsObj.BodyBytes).
+		Msg("feed truncated")
+}
+
 // // // // // // // // // //
 
 // GetFeed returns `/feed.xml`, a cached host-sensitive global Atom release feed.
@@ -25,7 +39,12 @@ func (obj *funcObj) GetFeed(ctx context.Context, params api.GetFeedParams) (api.
 		return &api.NotModifiedRespObj{}, nil
 	}
 	body, err := obj.cachedBytes(ctx, etag, func(buildCtx context.Context) ([]byte, error) {
-		return feedatom.Build(buildCtx, obj.deps.Storage, obj.deps.State, "", obj.feedSize(), obj.linkCtx(lc))
+		bodyArr, statsObj, buildErr := feedatom.Build(buildCtx, obj.deps.Storage, obj.deps.State, "", obj.feedSize(), obj.linkCtx(lc))
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		obj.observeFeedBuild("global", statsObj)
+		return bodyArr, nil
 	})
 	if err != nil {
 		return nil, err
@@ -46,7 +65,12 @@ func (obj *funcObj) GetKeyFeed(ctx context.Context, params api.GetKeyFeedParams)
 		return &api.NotModifiedRespObj{}, nil
 	}
 	body, err := obj.cachedBytes(ctx, etag, func(buildCtx context.Context) ([]byte, error) {
-		return feedatom.Build(buildCtx, obj.deps.Storage, obj.deps.State, params.Key, obj.feedSize(), obj.linkCtx(lc))
+		bodyArr, statsObj, buildErr := feedatom.Build(buildCtx, obj.deps.Storage, obj.deps.State, params.Key, obj.feedSize(), obj.linkCtx(lc))
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		obj.observeFeedBuild("key", statsObj)
+		return bodyArr, nil
 	})
 	if err != nil {
 		return nil, err

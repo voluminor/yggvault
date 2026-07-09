@@ -12,6 +12,9 @@ mkdir -p "$OUT"
 RESULT="$OUT/verify-results.txt"
 : > "$RESULT"
 PASS=0; FAIL=0
+# Seed nodes poll GitHub every 10m to stay within unauthenticated rate limits; verifier waits
+# long enough for one retry after a transient first-cycle source failure.
+WAIT_5S_TRIES=${WAIT_5S_TRIES:-150}
 
 log(){ echo "[verify] $*" | tee -a "$RESULT"; }
 ok(){   PASS=$((PASS+1)); echo "  PASS: $*" | tee -a "$RESULT"; }
@@ -163,9 +166,18 @@ check_rpc_web_data(){
 }
 
 wait_key(){ # wait until <url>/<key>/@v/list is non-empty (ingest / brother-sync settled)
-  local url=$1 key=$2 tries=${3:-72}
+  local url=$1 key=$2 tries=${3:-$WAIT_5S_TRIES}
   for i in $(seq 1 "$tries"); do
     if curl -fsS -m5 "$url/$key/@v/list" 2>/dev/null | grep -q .; then return 0; fi
+    sleep 5
+  done
+  return 1
+}
+
+wait_p2(){ # wait until <url>/p2/<pkg>.json advertises at least one version
+  local url=$1 pkg=$2 tries=${3:-$WAIT_5S_TRIES}
+  for i in $(seq 1 "$tries"); do
+    if curl -fsS -m5 "$url/p2/$pkg.json" 2>/dev/null | grep -q version; then return 0; fi
     sleep 5
   done
   return 1
@@ -194,7 +206,7 @@ check_go(){ # url key  -> copy committed Go fixture, go get + build (-tags verif
 check_composer(){ # url pkg vkey -> copy committed composer fixture, install with node as ONLY repo (+ dist sha1)
   local url=$1 pkg=$2 vkey=$3
   log "PHP $pkg  via $url"
-  if ! curl -fsS -m5 "$url/p2/$pkg.json" 2>/dev/null | grep -q version; then bad "PHP $pkg: /p2 empty at $url"; return; fi
+  if ! wait_p2 "$url" "$pkg"; then bad "PHP $pkg: /p2 never appeared at $url"; return; fi
   local d="/work/php-$(echo "$pkg" | tr / -)"; rm -rf "$d"; mkdir -p "$d"; cd "$d"
   export COMPOSER_HOME="$d/.composer" COMPOSER_NO_INTERACTION=1
   # committed require/config + per-node repository (vault only; packagist disabled)

@@ -101,6 +101,17 @@ var requiredColumnObj = map[string][]schemaColumnObj{
 		{name: "bound_ts", dataType: "TEXT", notNull: true},
 		{name: "listing_mode", dataType: "TEXT", notNull: true},
 	},
+	"ingest_failures": {
+		{name: "key", dataType: "TEXT", notNull: true, primaryKey: 1},
+		{name: "version", dataType: "TEXT", notNull: true, primaryKey: 2},
+		{name: "ref_sha", dataType: "TEXT", notNull: true},
+		{name: "code", dataType: "TEXT", notNull: true},
+		{name: "message", dataType: "TEXT", notNull: true},
+		{name: "policy", dataType: "INTEGER", notNull: true},
+		{name: "first_ts", dataType: "TEXT", notNull: true},
+		{name: "last_ts", dataType: "TEXT", notNull: true},
+		{name: "count", dataType: "INTEGER", notNull: true},
+	},
 }
 
 var requiredIndexObj = map[string][]string{
@@ -181,6 +192,10 @@ var requiredTableSQLObj = map[string][]string{
 	},
 	"key_source": {
 		"listing_mode IN ('', 'releases', 'tags')",
+		"STRICT",
+	},
+	"ingest_failures": {
+		"count INTEGER NOT NULL CHECK(count >= 1)",
 		"STRICT",
 	},
 }
@@ -405,6 +420,26 @@ func sqlChunkSize(columnCount int) int {
 		return 1
 	}
 	return sizeValue
+}
+
+// scanAll collects every row into a slice via scanFn, then reports any row-iteration error. It replaces the
+// repeated `for rows.Next() { scan; append } + rows.Err()` tail shared by the keyset/page version reads.
+func scanAll[T any](rowsObj *sql.Rows, capacity int, scanFn func(rowScannerInterface) (T, error)) ([]T, error) {
+	if capacity < 0 {
+		capacity = 0
+	}
+	resultArr := make([]T, 0, capacity)
+	for rowsObj.Next() {
+		itemObj, err := scanFn(rowsObj)
+		if err != nil {
+			return nil, err
+		}
+		resultArr = append(resultArr, itemObj)
+	}
+	if err := rowsObj.Err(); err != nil {
+		return nil, err
+	}
+	return resultArr, nil
 }
 
 func scanVersion(scannerObj rowScannerInterface) (core.VersionObj, error) {

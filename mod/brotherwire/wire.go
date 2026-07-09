@@ -47,14 +47,17 @@ type HelloReplyObj struct {
 	Protocol              string
 	MaxFetchResponseBytes uint64
 	MaxFetchBatchCount    uint32
+	IndexKeyset           bool
 }
 
 // //
 
 // IndexArgObj requests a paged version index for a key.
 type IndexArgObj struct {
-	Key  string
-	Page uint32
+	Key          string
+	Page         uint32
+	AfterSeq     int64
+	AfterVersion string
 }
 
 // IndexEntryObj is one version with upstream metadata not derivable from the tree and origin hashes for

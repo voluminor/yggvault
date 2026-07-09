@@ -121,7 +121,11 @@ func ValidateInfoConfig(info stconf.InfoObj) error {
 }
 
 func buildSigils(configObj *stconf.ConfigObj, ownHost string) ([]sigils.Interface, error) {
-	sigilArr := []sigils.Interface{yggvault.New()}
+	yggvaultObj, err := yggvault.New(target.Version, target.Hash, target.DateUpdate)
+	if err != nil {
+		return nil, fmt.Errorf("yggvault sigil: %w", err)
+	}
+	sigilArr := []sigils.Interface{yggvaultObj}
 
 	svcObj, err := sigsvc.New(map[string]uint16{"http": cWebServicePort})
 	if err != nil {

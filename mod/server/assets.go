@@ -159,7 +159,24 @@ func (obj *funcObj) GetSitemap(ctx context.Context, params api.GetSitemapParams)
 		return &api.NotModifiedRespObj{}, nil
 	}
 	body, err := obj.cachedBytes(ctx, etag, func(buildCtx context.Context) ([]byte, error) {
-		return sitemap.Build(buildCtx, obj.deps.Storage, obj.deps.State, obj.linkCtx(lc), obj.sitemapSize(), lc.publicMetricsEnabled)
+		bodyArr, statsObj, buildErr := sitemap.Build(buildCtx, obj.deps.Storage, obj.deps.State, obj.linkCtx(lc), obj.sitemapSize(), lc.publicMetricsEnabled)
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		if statsObj.Truncated() {
+			obj.edgeMetrics.recordSitemap(statsObj)
+			reasonText := "url_cap"
+			if statsObj.ByteTruncated {
+				reasonText = "byte_cap"
+			}
+			obj.deps.Log.Warn().
+				Str("reason", reasonText).
+				Int("urls_written", statsObj.URLsWritten).
+				Int("urls_dropped", statsObj.URLsDropped).
+				Int("body_bytes", len(bodyArr)).
+				Msg("sitemap truncated")
+		}
+		return bodyArr, nil
 	})
 	if err != nil {
 		return nil, err

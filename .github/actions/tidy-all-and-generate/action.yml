@@ -1,61 +1,169 @@
 name: 'Initialization of all packages'
 description: 'Install generator tools, tidy modules, and generate files'
+inputs:
+  check-clean:
+    description: 'Run a non-blocking generated tree cleanliness check'
+    required: false
+    default: 'false'
+  generator-versions:
+    description: 'Newline-separated GOMETAGEN_VERSION/GOCONFGEN_VERSION/GODEPSGEN_VERSION/GOOPENAPIGEN_VERSION assignments'
+    required: false
+    default: ''
+outputs:
+  generator-versions:
+    description: 'Resolved generator versions used by this run'
+    value: ${{ steps.generator-versions.outputs.versions }}
 
 runs:
   using: 'composite'
   steps:
-    - name: 🔧 Install generator tools (install-if-missing)
+    - name: 🧭 Resolve generator versions
+      id: generator-versions
+      shell: bash
+      env:
+        INPUT_GENERATOR_VERSIONS: ${{ inputs.generator-versions }}
+      run: |
+        set -Eeuo pipefail
+        versions_file="${RUNNER_TEMP}/yggvault-generator-versions.env"
+
+        if [ -n "$INPUT_GENERATOR_VERSIONS" ]; then
+          printf '%s\n' "$INPUT_GENERATOR_VERSIONS" > "$versions_file"
+        else
+          resolve_version() {
+            go list -m -f '{{.Version}}' "$1@latest"
+          }
+
+          {
+            echo "GOMETAGEN_VERSION=$(resolve_version github.com/amazing-generators/gometagen)"
+            echo "GOCONFGEN_VERSION=$(resolve_version github.com/amazing-generators/goconfgen)"
+            echo "GODEPSGEN_VERSION=$(resolve_version github.com/amazing-generators/godepsgen)"
+            echo "GOOPENAPIGEN_VERSION=$(resolve_version github.com/amazing-generators/goopenapigen)"
+          } > "$versions_file"
+        fi
+
+        set -a
+        . "$versions_file"
+        set +a
+
+        for name in GOMETAGEN_VERSION GOCONFGEN_VERSION GODEPSGEN_VERSION GOOPENAPIGEN_VERSION; do
+          value="${!name:-}"
+          if [ -z "$value" ]; then
+            echo "${name} is not resolved" >&2
+            exit 1
+          fi
+          echo "${name}=${value}" >> "$GITHUB_ENV"
+        done
+
+        cache_key=$(sha256sum "$versions_file" | awk '{print $1}')
+        {
+          echo "versions<<GENERATOR_VERSIONS"
+          cat "$versions_file"
+          echo "GENERATOR_VERSIONS"
+          echo "cache-key=${cache_key}"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: 🗂️ Generator binary cache
+      uses: actions/cache@v4
+      with:
+        path: ~/go/bin
+        key: gobin-${{ runner.os }}-${{ runner.arch }}-${{ steps.generator-versions.outputs.cache-key }}-${{ hashFiles('go.mod') }}
+        restore-keys: |
+          gobin-${{ runner.os }}-${{ runner.arch }}-${{ steps.generator-versions.outputs.cache-key }}-
+          gobin-${{ runner.os }}-${{ runner.arch }}-
+
+    - name: 🔧 Install generator tools
       shell: bash
       run: |
         set -Eeuo pipefail
-        gobin="$(go env GOPATH)/bin"
-
-        # ogen is pinned in go.mod because goopenapigen shells out to the `ogen`
-        # binary (PATH -> ~/go/bin -> GOPATH/bin), not via `go run`. The generated
-        # ogen code must match that version, so it is not @latest.
         ogen_ver=$(awk '$1=="github.com/ogen-go/ogen"{print $2}' go.mod)
         [ -n "$ogen_ver" ] || { echo "ogen version not found in go.mod" >&2; exit 1; }
 
-        # bin|module@version — install only if the binary is not already resolvable.
         tools=(
-          "ogen|github.com/ogen-go/ogen/cmd/ogen@${ogen_ver}"
-          "gometagen|github.com/amazing-generators/gometagen/cmd/gometagen@latest"
-          "goconfgen|github.com/amazing-generators/goconfgen/cmd/goconfgen@latest"
-          "godepsgen|github.com/amazing-generators/godepsgen/cmd/godepsgen@latest"
-          "goopenapigen|github.com/amazing-generators/goopenapigen/cmd/goopenapigen@latest"
+          "github.com/ogen-go/ogen/cmd/ogen@${ogen_ver}"
+          "github.com/amazing-generators/gometagen/cmd/gometagen@${GOMETAGEN_VERSION}"
+          "github.com/amazing-generators/goconfgen/cmd/goconfgen@${GOCONFGEN_VERSION}"
+          "github.com/amazing-generators/godepsgen/cmd/godepsgen@${GODEPSGEN_VERSION}"
+          "github.com/amazing-generators/goopenapigen/cmd/goopenapigen@${GOOPENAPIGEN_VERSION}"
         )
-        for entry in "${tools[@]}"; do
-          bin="${entry%%|*}"; mod="${entry#*|}"
-          if command -v "$bin" >/dev/null 2>&1 || [ -x "${gobin}/${bin}" ]; then
-            echo "✔ ${bin} already present"
-          else
-            echo "→ installing ${bin} (${mod})"
-            go install "${mod}"
-          fi
+        for tool in "${tools[@]}"; do
+          echo "Installing ${tool}"
+          go install "${tool}"
         done
 
-    - name: 🛠️ generate bootstrap
+    - name: 🛠️ Generate bootstrap
       shell: bash
       run: |
         set -Eeuo pipefail
+        normalize_generated_timestamps() {
+          [ -d target ] || return 0
+          while IFS= read -r -d '' file; do
+            sed -i -E '/^\/\/ (Generated at|Generation time):/d' "$file"
+          done < <(find target -type f -name '*.go' -print0)
+        }
+
         mkdir -p target tmp
         go generate .
+        normalize_generated_timestamps
 
-    - name: 📥 go mod tidy-all
+    - name: 📥 Go mod tidy-all
+      id: tidy
       shell: bash
       run: |
         set -Eeuo pipefail
+        hash_module_state() {
+          find . \
+            -path './.git' -prune -o \
+            -path './target' -prune -o \
+            -path './tmp' -prune -o \
+            \( -name go.mod -o -name go.sum -o -name go.work -o -name go.work.sum \) \
+            -type f -print0 \
+            | sort -z \
+            | xargs -0 sha256sum \
+            | sha256sum \
+            | awk '{print $1}'
+        }
+
+        before_hash=$(hash_module_state)
         go work sync
         go list -m -f '{{if .Main}}{{.Dir}}{{end}}' all | while read -r dir; do
           [ -n "$dir" ] || continue
           case "$dir" in */_generate/*) continue;; esac
-          echo "  -> $dir"
+          echo "Tidying ${dir}"
           go -C "$dir" mod tidy
         done
+        after_hash=$(hash_module_state)
 
-    - name: 🛠️ go generate
+        if [ "$before_hash" != "$after_hash" ]; then
+          echo "modules-changed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "modules-changed=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: 🛠️ Regenerate after tidy
+      if: steps.tidy.outputs.modules-changed == 'true'
       shell: bash
       run: |
         set -Eeuo pipefail
+        normalize_generated_timestamps() {
+          [ -d target ] || return 0
+          while IFS= read -r -d '' file; do
+            sed -i -E '/^\/\/ (Generated at|Generation time):/d' "$file"
+          done < <(find target -type f -name '*.go' -print0)
+        }
+
         mkdir -p target tmp
         go generate .
+        normalize_generated_timestamps
+
+    - name: 🧹 Check generated tree
+      if: inputs.check-clean == 'true'
+      continue-on-error: true
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+        git diff --exit-code
+        status=$(git status --porcelain --untracked-files=no)
+        if [ -n "$status" ]; then
+          printf '%s\n' "$status"
+          exit 1
+        fi

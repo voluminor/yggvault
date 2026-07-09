@@ -86,7 +86,6 @@ var smallIDPatternObj = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 // //
 
 // Obj combines the durable SQLite index, the Pebble blob/tree store and the hot artifact cache.
-// writeMu serializes all durable-state mutations.
 type Obj struct {
 	configObj *stcfg.ConfigObj
 	rootPath  string
@@ -102,11 +101,11 @@ type Obj struct {
 	closedFlag    bool
 	closeDoneChan chan struct{}
 	closeErr      error
-	closeMu       sync.RWMutex
+	closeMu       sync.RWMutex // leaf lifecycle lock; no storage locks may be taken under it
 	activeWG      sync.WaitGroup
 	rootCtx       context.Context
 	rootCancel    context.CancelFunc
-	writeMu       sync.Mutex
+	writeMu       sync.Mutex // serializes durable/hot mutations; hotActiveMu is the only lock allowed underneath
 	publishSem    chan struct{}
 
 	// lastHardLimitCompact debounces backstop compaction storms under writeMu.
@@ -122,7 +121,7 @@ type Obj struct {
 	hotBytesCache uint64
 	hotBytesAt    time.Time
 
-	hotActiveMu  sync.Mutex
+	hotActiveMu  sync.Mutex // leaf lock for active hot files; taken alone or under writeMu only
 	hotActiveObj map[string]int
 	hotDeleteObj map[string]struct{}
 
@@ -131,14 +130,14 @@ type Obj struct {
 	hotEnforceWalks     atomic.Int64
 	hotEnforceWalkNanos atomic.Int64
 
-	flightMu  sync.Mutex
+	flightMu  sync.Mutex // leaf lock for the hot-build singleflight map
 	flightMap map[string]*artifactFlightObj
 	buildSem  chan struct{}
 
 	gcLoopDone chan struct{}
 	gcTrigger  chan struct{}
 
-	metricRegMu  sync.Mutex
+	metricRegMu  sync.Mutex // leaf lock for OTel callback registrations
 	metricRegArr []metric.Registration
 
 	verifySampleCounter atomic.Uint64

@@ -426,9 +426,16 @@ brother:
     rate_per_sec: 16
     max_fetch_response_bytes: "256MiB"
     max_fetch_batch_count: 256
+
+source:
+  rate_limit:
+    requests_per_second: 8
+    burst: 16
 ```
 
 `requests_per_second: 0` disables a specific bucket. Public web nodes should usually keep at least per-peer limits.
+`source.rate_limit` is an outbound per-host limiter for git providers, archive downloads, brother RPC HTTP transports,
+and public brother fallback reads. It protects the node and upstreams from cold-start fan-out.
 See [Security and Limits](#security-and-limits) for the threat model.
 
 ### Storage Quota and Archive Limits
@@ -459,6 +466,7 @@ storage:
 
 cache:
   metadata_max_size: "64mb"
+  build_max_parallel: 16
 ```
 
 Durable quota limits the source of truth. `storage.hot.max_size` limits regenerable `.zip`/`.tar.gz` and Go/Composer
@@ -489,6 +497,7 @@ storage:
 
 cache:
   metadata_max_size: "16mb"
+  build_max_parallel: 2
 ```
 
 This profile lowers baseline memory and parallelism, but it rebuilds artifacts more often and makes rescans slower.
@@ -839,6 +848,8 @@ flowchart TB
 
 Archive safety is in [mod/archive](mod/archive/README.md). Artifact detection and Go/Composer materialization are in
 [mod/overlay](mod/overlay/README.md). Storage commit semantics are in [mod/storage](mod/storage/README.md).
+Unsafe symlink targets are dropped before publication, and storage records ingest failures/quarantine state in SQLite
+for rescan diagnostics. A rejected version must not become visible or leave indexed blobs behind.
 
 ### Serving a Client Request
 
@@ -901,6 +912,9 @@ pulls index pages, trees, and blob batches through `CONNECT /rpc`. If RPC is clo
 can fall back to public `releases.json`, release detail, and universal archives. Fallback is slower than RPC, but it
 reads the same read-only data ordinary clients can see.
 
+When a brother advertises keyset pagination, index reads advance by cursor instead of page offset. Older nodes keep the
+page-number path, so mixed deployments can synchronize during rolling upgrades.
+
 In nested mode, a follower can point at a brother URL with a prefix, for example `https://seed.example.org/pkg/errors`.
 The new node reads `route_prefix` from the seed's `/info` and strips the remote prefix when deriving the key `errors`.
 If the remote node is old and does not return `route_prefix`, the previous fallback is used: the local
@@ -961,7 +975,8 @@ Brother wire DTOs are in [mod/brotherwire](mod/brotherwire/README.md). The serve
 | `--help` or `-h`                                                                     | show help                                                                     |
 
 Maintenance commands require exclusive access to storage. Stop the running server before `inspect`, `prune`, `vacuum`,
-and `rebuild-cache`.
+and `rebuild-cache`. The command implementation lives in [mod/maintenance](mod/maintenance/README.md); root files only
+adapt CLI input, context cancellation, and output envelopes.
 
 ### History, Deletions, and Degraded Upstreams
 
@@ -983,10 +998,14 @@ unavailable. An error for one key does not cancel the cycle for other keys.
 - `web.ingress.*` limits request URI size, header read timeout, and idle sockets.
 - `rate_limit.web.*` and `rate_limit.ygg.*` provide global and per-peer token buckets.
 - `mod/source` blocks SSRF into private addresses after DNS resolution, limits redirects, and uses bounded reads.
+- `source.rate_limit` caps outbound upstream fan-out per host and reports low-cardinality limiter metrics.
 - Provider credentials apply only to matching provider hosts.
 - `brother.rpc.*` limits public read-only RPC.
 - Public brother fallback reads only public metadata/artifact routes and verifies the tree hash before publishing.
-- `mod/archive` checks traversal, archive type, entry count, compressed/unpacked/per-file sizes.
+- Artifact URLs are resolved against the exact listener context; web and Yggdrasil listener keys do not fall back to
+  each other.
+- `mod/archive` checks traversal, archive type, entry count, compressed/unpacked/per-file sizes, and drops escaping
+  symlink targets.
 - `storage.in_flight_read_bytes`, `storage.archive_limits`, `storage.quota`, and `storage.hot.*` define the main
   resource budgets.
 - `profiling.listen` must be loopback.
@@ -1132,6 +1151,7 @@ After `go mod tidy`, run `go generate .` again so `target/dependencies_gen.go` m
 | Module                                       | Responsibility                                                           |
 |----------------------------------------------|--------------------------------------------------------------------------|
 | [mod/cli](mod/cli/README.md)                 | argv parsing, presets, validation, keygen, maintenance, runtime start    |
+| [mod/maintenance](mod/maintenance/README.md) | inspect, prune, vacuum, rebuild-cache, and maintenance output envelopes  |
 | [mod/config](mod/config/README.md)           | YAML/JSON/HJSON loading, defaults, business validation                   |
 | [mod/logger](mod/logger/README.md)           | console/file/VictoriaLogs logging                                        |
 | [mod/server](mod/server/README.md)           | web/Ygg HTTP listeners, request frame, API handlers, static, brother RPC |
@@ -1143,7 +1163,7 @@ After `go mod tidy`, run `go generate .` again so `target/dependencies_gen.go` m
 | [mod/source](mod/source/README.md)           | git provider access, brother discovery/RPC/public fallback, egress guard |
 | [mod/archive](mod/archive/README.md)         | safe unpacking of zip/tar/tar.gz release archives                        |
 | [mod/overlay](mod/overlay/README.md)         | Go/Composer detection, Go rewrite, artifact planning/building            |
-| [mod/storage](mod/storage/README.md)         | Pebble blobs, SQLite metadata, hot cache, quotas, maintenance            |
+| [mod/storage](mod/storage/README.md)         | Pebble blobs, SQLite metadata/quarantine, hot cache, quotas              |
 | [mod/cache](mod/cache/README.md)             | RAM byte-cache for small metadata responses                              |
 | [mod/state](mod/state/README.md)             | runtime snapshots visible to serving paths                               |
 | [mod/brotherwire](mod/brotherwire/README.md) | wire DTOs and protocol constants for brother RPC                         |

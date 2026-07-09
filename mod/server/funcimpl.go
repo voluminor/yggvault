@@ -29,6 +29,7 @@ type funcObj struct {
 	objCache      *objCacheObj           // RAM cache for typed bodies: composer-p2 and go-latest
 	assets        *assetSnapshotObj      // favicon + whitelisted logos pre-rendered once at startup
 	contactGroups []view.ContactGroupObj // sorted contacts from immutable config
+	edgeMetrics   *edgeMetricsObj
 }
 
 var _ api.FuncInterface = (*funcObj)(nil)

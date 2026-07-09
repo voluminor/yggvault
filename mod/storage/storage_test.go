@@ -397,6 +397,74 @@ func TestPublishStagedRejectsBlobOutsideSpool(t *testing.T) {
 	}
 }
 
+func TestPublishStagedRejectsEscapingSymlinkFromSpool(t *testing.T) {
+	obj := newTestObj(t, newTestConfigObj(t))
+	spoolObj, err := obj.NewBlobSpool(context.Background())
+	if err != nil {
+		t.Fatalf("NewBlobSpool returned error: %v", err)
+	}
+	spoolPath := spoolObj.RootPath()
+	goModObj := writeStagedBlob(t, spoolObj, "go.mod.blob", []byte("module example.com/core-lib\n"))
+	linkObj := writeStagedBlob(t, spoolObj, "link.blob", []byte("../escape"))
+
+	_, err = obj.PublishStaged(context.Background(), spoolObj, core.StagedPublishObj{
+		Key:             "core-lib",
+		Version:         "v1.0.0",
+		SourceHash:      core.HashBytes([]byte("source")),
+		SourceSizeBytes: 1,
+		Entries: []core.StagedEntryObj{
+			{Path: "go.mod", Mode: cModeFile, BlobHash: goModObj.BlobHash, SizeBytes: goModObj.SizeBytes},
+			{Path: "link", Mode: cModeSymlink, BlobHash: linkObj.BlobHash, SizeBytes: linkObj.SizeBytes},
+		},
+		Blobs: []core.StagedBlobObj{goModObj, linkObj},
+	})
+	if err == nil {
+		t.Fatal("PublishStaged accepted escaping symlink")
+	}
+	if !strings.Contains(err.Error(), "symlink target") {
+		t.Fatalf("error=%v, want symlink target", err)
+	}
+	if !errors.Is(err, ErrStagedSymlinkRejected) {
+		t.Fatalf("error=%v, want errors.Is(ErrStagedSymlinkRejected) so rescan can classify it as rejected content", err)
+	}
+	if _, ok, getErr := obj.GetVersion(context.Background(), "core-lib", "v1.0.0"); getErr != nil || ok {
+		t.Fatalf("GetVersion after reject: ok=%v err=%v", ok, getErr)
+	}
+	if _, statErr := os.Stat(spoolPath); !os.IsNotExist(statErr) {
+		t.Fatalf("spool was not cleaned: %v", statErr)
+	}
+}
+
+func TestPublishStagedRejectsOversizeSymlinkTargetWithSentinel(t *testing.T) {
+	configObj := newTestConfigObj(t)
+	configObj.Storage.ArchiveLimits.Entries.PathBytes = 8
+	obj := newTestObj(t, configObj)
+	spoolObj, err := obj.NewBlobSpool(context.Background())
+	if err != nil {
+		t.Fatalf("NewBlobSpool returned error: %v", err)
+	}
+	goModObj := writeStagedBlob(t, spoolObj, "go.mod.blob", []byte("module example.com/core-lib\n"))
+	linkObj := writeStagedBlob(t, spoolObj, "link.blob", []byte(strings.Repeat("a", 9)))
+
+	_, err = obj.PublishStaged(context.Background(), spoolObj, core.StagedPublishObj{
+		Key:             "core-lib",
+		Version:         "v1.0.0",
+		SourceHash:      core.HashBytes([]byte("source")),
+		SourceSizeBytes: 1,
+		Entries: []core.StagedEntryObj{
+			{Path: "go.mod", Mode: cModeFile, BlobHash: goModObj.BlobHash, SizeBytes: goModObj.SizeBytes},
+			{Path: "link", Mode: cModeSymlink, BlobHash: linkObj.BlobHash, SizeBytes: linkObj.SizeBytes},
+		},
+		Blobs: []core.StagedBlobObj{goModObj, linkObj},
+	})
+	if err == nil {
+		t.Fatal("PublishStaged accepted oversize symlink target")
+	}
+	if !errors.Is(err, ErrStagedSymlinkRejected) {
+		t.Fatalf("error=%v, want errors.Is(ErrStagedSymlinkRejected)", err)
+	}
+}
+
 func TestPublishRejectsNonAdjacentFileChildConflict(t *testing.T) {
 	obj := newTestObj(t, newTestConfigObj(t))
 
@@ -413,6 +481,76 @@ func TestPublishRejectsNonAdjacentFileChildConflict(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("Publish accepted file/child path conflict")
+	}
+}
+
+func TestIngestFailureQuarantineRoundTrip(t *testing.T) {
+	obj := newTestObj(t, newTestConfigObj(t))
+	ctx := context.Background()
+	failureObj := core.IngestFailureObj{
+		Key:     "core-lib",
+		Version: "v1.0.0",
+		RefSHA:  core.HashBytes([]byte("tree")).Hex(),
+		Code:    "archive_invalid",
+		Message: "broken archive",
+	}
+	if err := obj.PutIngestFailure(ctx, failureObj); err != nil {
+		t.Fatalf("PutIngestFailure returned error: %v", err)
+	}
+	if err := obj.PutIngestFailure(ctx, failureObj); err != nil {
+		t.Fatalf("second PutIngestFailure returned error: %v", err)
+	}
+	failureArr, err := obj.ListIngestFailures(ctx, "core-lib")
+	if err != nil {
+		t.Fatalf("ListIngestFailures returned error: %v", err)
+	}
+	if len(failureArr) != 1 {
+		t.Fatalf("failure count=%d, want 1", len(failureArr))
+	}
+	if failureArr[0].Count != 2 || failureArr[0].Policy != core.IngestFailurePolicy {
+		t.Fatalf("failure row=%+v, want count=2 policy=%d", failureArr[0], core.IngestFailurePolicy)
+	}
+	if failureArr[0].FirstTS.IsZero() || failureArr[0].LastTS.IsZero() {
+		t.Fatalf("failure timestamps were not persisted: %+v", failureArr[0])
+	}
+	if err = obj.DeleteIngestFailure(ctx, "core-lib", "v1.0.0"); err != nil {
+		t.Fatalf("DeleteIngestFailure returned error: %v", err)
+	}
+	failureArr, err = obj.ListIngestFailures(ctx, "core-lib")
+	if err != nil {
+		t.Fatalf("ListIngestFailures after delete returned error: %v", err)
+	}
+	if len(failureArr) != 0 {
+		t.Fatalf("failure count after delete=%d, want 0", len(failureArr))
+	}
+}
+
+func TestIngestFailureKeysListAndPrune(t *testing.T) {
+	obj := newTestObj(t, newTestConfigObj(t))
+	ctx := context.Background()
+	for _, keyText := range []string{"core-lib", "other-lib"} {
+		if err := obj.PutIngestFailure(ctx, core.IngestFailureObj{
+			Key:     keyText,
+			Version: "v1.0.0",
+			Code:    "archive_invalid",
+			Message: "broken archive",
+		}); err != nil {
+			t.Fatalf("PutIngestFailure(%s) returned error: %v", keyText, err)
+		}
+	}
+	keyArr, err := obj.ListIngestFailureKeys(ctx)
+	if err != nil {
+		t.Fatalf("ListIngestFailureKeys returned error: %v", err)
+	}
+	if len(keyArr) != 2 || keyArr[0] != "core-lib" || keyArr[1] != "other-lib" {
+		t.Fatalf("quarantine keys=%v, want [core-lib other-lib]", keyArr)
+	}
+	if err = obj.DeleteKeyIngestFailures(ctx, "core-lib"); err != nil {
+		t.Fatalf("DeleteKeyIngestFailures returned error: %v", err)
+	}
+	keyArr, err = obj.ListIngestFailureKeys(ctx)
+	if err != nil || len(keyArr) != 1 || keyArr[0] != "other-lib" {
+		t.Fatalf("quarantine keys after prune=%v err=%v, want [other-lib]", keyArr, err)
 	}
 }
 
@@ -1970,7 +2108,7 @@ func TestEnsureArtifactFileRebuildsCorruptHotFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureArtifactFile returned error: %v", err)
 	}
-	defer fileObj.Close()
+	defer func() { _ = fileObj.Close() }()
 	if firstBuilderObj.count.Load() != 1 {
 		t.Fatalf("builder calls=%d, want 1", firstBuilderObj.count.Load())
 	}
@@ -1995,7 +2133,7 @@ func TestEnsureArtifactFileRebuildsCorruptHotFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second EnsureArtifactFile returned error: %v", err)
 	}
-	defer secondFileObj.Close()
+	defer func() { _ = secondFileObj.Close() }()
 	if secondBuilderObj.count.Load() != 1 {
 		_ = secondFileObj.Close()
 		t.Fatalf("second builder calls=%d, want 1", secondBuilderObj.count.Load())
@@ -2036,7 +2174,7 @@ func TestEnsureArtifactFileUsesContentAddressedPathAfterReregister(t *testing.T)
 	if err != nil {
 		t.Fatalf("EnsureArtifactFile old returned error: %v", err)
 	}
-	defer oldFileObj.Close()
+	defer func() { _ = oldFileObj.Close() }()
 
 	artifactObj.BodyHash = core.HashBytes(newBodyArr)
 	artifactObj.SizeBytes = uint64(len(newBodyArr))
@@ -2047,7 +2185,7 @@ func TestEnsureArtifactFileUsesContentAddressedPathAfterReregister(t *testing.T)
 	if err != nil {
 		t.Fatalf("EnsureArtifactFile new returned error: %v", err)
 	}
-	defer newFileObj.Close()
+	defer func() { _ = newFileObj.Close() }()
 
 	if oldFileObj.Path == newFileObj.Path {
 		t.Fatal("re-registered artifact reused the old hot path")
@@ -2358,6 +2496,79 @@ func TestVerifyOnReadModes(t *testing.T) {
 	}
 }
 
+// TestValidateSharedHotFileEnforcesVerifyOnRead covers the shared-flight waiter path: a hot file whose
+// bytes drifted but whose size is unchanged passes the cheap metadata checks, so only content
+// verification can catch it. Under verify_on_read=always the drift must be rejected and the file removed;
+// under never the cheap size/type guard still serves it.
+func TestValidateSharedHotFileEnforcesVerifyOnRead(t *testing.T) {
+	ctx := context.Background()
+	bodyArr := []byte("correct-artifact-body-0123456789")
+	corruptArr := []byte("CORRUPT-artifact-body-0123456789")
+	if len(bodyArr) != len(corruptArr) {
+		t.Fatalf("test setup: body and corrupt lengths differ")
+	}
+	hashObj := core.HashBytes(bodyArr)
+
+	setup := func(mode stcfg.HotVerifyOnReadEnum) (*Obj, core.ArtifactObj) {
+		configObj := newTestConfigObj(t)
+		configObj.Storage.Hot.VerifyOnRead = mode
+		obj := newTestObj(t, configObj)
+		publishTestVersion(t, obj, "v1.0.0", []core.InputEntryObj{{Path: "f.txt", Content: []byte("x")}})
+
+		hotPath := filepath.Join(obj.hotDir, "shared.zip")
+		if err := os.WriteFile(hotPath, bodyArr, 0o644); err != nil {
+			t.Fatalf("WriteFile returned error: %v", err)
+		}
+		artifactObj := core.ArtifactObj{
+			MaterializerID: "universal",
+			ArtifactKind:   "zip",
+			ListenerID:     cListenerGlobal,
+			Key:            "core-lib",
+			Version:        "v1.0.0",
+			BodyHash:       hashObj,
+			SizeBytes:      uint64(len(bodyArr)),
+			FilePath:       hotPath,
+		}
+		if err := obj.RegisterArtifact(ctx, artifactObj); err != nil {
+			t.Fatalf("RegisterArtifact returned error: %v", err)
+		}
+		// Same-size corruption: mirrors a shared build whose on-disk bytes drifted after registration.
+		if err := os.WriteFile(hotPath, corruptArr, 0o644); err != nil {
+			t.Fatalf("corrupt WriteFile returned error: %v", err)
+		}
+		return obj, artifactObj
+	}
+
+	// hotFileObj() copies the build metadata hash/size, so a shared HotFileObj carries the expected
+	// hash; only content verification can detect the drift. Reproduce that here.
+	openShared := func(art core.ArtifactObj) *HotFileObj {
+		fileObj, err := os.Open(art.FilePath)
+		if err != nil {
+			t.Fatalf("Open returned error: %v", err)
+		}
+		return &HotFileObj{Path: art.FilePath, File: fileObj, SizeBytes: art.SizeBytes, BodyHash: art.BodyHash}
+	}
+
+	objAlways, artAlways := setup(stcfg.HotVerifyOnReadAlways)
+	sharedAlways := openShared(artAlways)
+	if err := objAlways.validateSharedHotFile(ctx, artifactKeyFromObj(artAlways), sharedAlways, artAlways); err == nil {
+		_ = sharedAlways.Close()
+		t.Fatal("always: shared-path validation accepted content-drifted hot file")
+	}
+	_ = sharedAlways.Close()
+	if _, statErr := os.Stat(artAlways.FilePath); !os.IsNotExist(statErr) {
+		t.Fatalf("always: corrupt hot file was not removed, stat err=%v", statErr)
+	}
+
+	objNever, artNever := setup(stcfg.HotVerifyOnReadNever)
+	sharedNever := openShared(artNever)
+	if err := objNever.validateSharedHotFile(ctx, artifactKeyFromObj(artNever), sharedNever, artNever); err != nil {
+		_ = sharedNever.Close()
+		t.Fatalf("never: shared-path validation rejected same-size file: %v", err)
+	}
+	_ = sharedNever.Close()
+}
+
 func TestRegisterArtifactRejectsHotPathHashMismatch(t *testing.T) {
 	obj := newTestObj(t, newTestConfigObj(t))
 	publishTestVersion(t, obj, "v1.0.0", []core.InputEntryObj{{Path: "file.txt", Content: []byte("data")}})
@@ -2551,12 +2762,12 @@ func TestHotRetainModes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("EnsureArtifactFile old returned error: %v", err)
 		}
-		defer oldFileObj.Close()
+		defer func() { _ = oldFileObj.Close() }()
 		newFileObj, err := obj.EnsureArtifactFile(context.Background(), artifactKeyFromObj(newObj), &artifactBuilderObj{dataArr: newBodyArr})
 		if err != nil {
 			t.Fatalf("EnsureArtifactFile new returned error: %v", err)
 		}
-		defer newFileObj.Close()
+		defer func() { _ = newFileObj.Close() }()
 		storedOldObj, _, err := obj.GetArtifact(context.Background(), artifactKeyFromObj(oldObj))
 		if err != nil {
 			t.Fatalf("GetArtifact old returned error: %v", err)
@@ -2676,7 +2887,7 @@ func TestRecoverCleansTempDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen New returned error: %v", err)
 	}
-	defer reopenedObj.Close(context.Background())
+	defer func() { _ = reopenedObj.Close(context.Background()) }()
 
 	_, err = os.Stat(filepath.Join(reopenedObj.tempDir, "leftover"))
 	if !errors.Is(err, os.ErrNotExist) {

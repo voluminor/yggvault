@@ -65,8 +65,9 @@ func newGitVerifyEnv(t *testing.T, configObj *stconf.ConfigObj, fakeSrc *fakeSou
 
 // // // // // // // // // //
 
-// Steady cycle: with matching SHAs, only latest is downloaded again because rank 0 verifies every cycle.
-func TestGitSecondCycleSkipsAllButLatest(t *testing.T) {
+// Steady cycle: with matching SHAs every version is skipped on the second cycle, including the latest,
+// because a confirmed matching SHA already proves content identity (no wasteful re-download).
+func TestGitSecondCycleSkipsAllOnMatchingSha(t *testing.T) {
 	configObj := rescanTestConfig(t)
 	ctx := context.Background()
 	fakeSrc := &fakeSourceObj{
@@ -84,8 +85,8 @@ func TestGitSecondCycleSkipsAllButLatest(t *testing.T) {
 	if got := fakeSrc.fetchCount("v1.0.0"); got != 1 {
 		t.Fatalf("cycle2 v1.0.0 fetches=%d, want 1 (skip on matching sha)", got)
 	}
-	if got := fakeSrc.fetchCount("v1.1.0"); got != 2 {
-		t.Fatalf("cycle2 v1.1.0 fetches=%d, want 2 (latest deep-verified every cycle)", got)
+	if got := fakeSrc.fetchCount("v1.1.0"); got != 1 {
+		t.Fatalf("cycle2 v1.1.0 fetches=%d, want 1 (latest skipped: confirmed sha matches)", got)
 	}
 
 	versionObj, ok, err := storageObj.GetVersion(ctx, "core-lib", "v1.0.0")
@@ -166,8 +167,9 @@ func TestGitReappearedDeletedVersionRefetched(t *testing.T) {
 	}
 }
 
-// Tiered schedule: latest verifies every cycle, rank 1 only after recent_interval expires.
-func TestGitTierScheduleRefetchesRank1AfterInterval(t *testing.T) {
+// Tiered schedule with confirmed SHAs: both the latest and rank 1 are re-verified only after
+// recent_interval expires, since a matching SHA lets the latest skip the every-cycle re-download too.
+func TestGitTierScheduleRefetchesAfterInterval(t *testing.T) {
 	configObj := rescanTestConfig(t)
 	configObj.Rescan.Verify.RecentInterval = 300 * time.Millisecond
 	configObj.Rescan.Verify.ArchiveInterval = time.Hour
@@ -183,8 +185,8 @@ func TestGitTierScheduleRefetchesRank1AfterInterval(t *testing.T) {
 	if got := fakeSrc.fetchCount("v1.0.0"); got != 1 {
 		t.Fatalf("rank1 before interval fetches=%d, want 1", got)
 	}
-	if got := fakeSrc.fetchCount("v1.1.0"); got != 2 {
-		t.Fatalf("latest fetches=%d, want 2 (every cycle)", got)
+	if got := fakeSrc.fetchCount("v1.1.0"); got != 1 {
+		t.Fatalf("latest before interval fetches=%d, want 1 (confirmed sha skips re-download)", got)
 	}
 
 	time.Sleep(350 * time.Millisecond)
@@ -192,8 +194,8 @@ func TestGitTierScheduleRefetchesRank1AfterInterval(t *testing.T) {
 	if got := fakeSrc.fetchCount("v1.0.0"); got != 2 {
 		t.Fatalf("rank1 after interval fetches=%d, want 2 (deep verify due)", got)
 	}
-	if got := fakeSrc.fetchCount("v1.1.0"); got != 3 {
-		t.Fatalf("latest fetches=%d, want 3", got)
+	if got := fakeSrc.fetchCount("v1.1.0"); got != 2 {
+		t.Fatalf("latest after interval fetches=%d, want 2 (deep verify due)", got)
 	}
 }
 

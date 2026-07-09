@@ -76,9 +76,14 @@ type Obj struct {
 	maxFetchBytes  uint64
 	maxFetchCount  uint
 	requestTimeout time.Duration
-	routingPrefix  string
+	// maxDownloadDuration is a hard wall-clock ceiling per download attempt; 0 disables it. It bounds
+	// how long a slow upstream can hold a download slot, independent of the idle timer and rate floor.
+	maxDownloadDuration time.Duration
+	routingPrefix       string
 
-	rpcLimiter *rate.Limiter
+	rpcLimiter      *rate.Limiter
+	upstreamLimiter *hostLimiterObj
+	metricsObj      *sourceMetricsObj
 
 	// cred matches authorization headers for upstream providers by host.
 	cred *credentialMatcherObj
@@ -149,6 +154,7 @@ type HelloResultObj struct {
 	Protocol              string
 	MaxFetchResponseBytes uint64
 	MaxFetchBatchCount    uint
+	IndexKeyset           bool
 }
 
 // BrotherVersionObj carries the canonical version tree bytes; their hash24 is verified against the
@@ -222,21 +228,23 @@ func New(configObj *stconf.ConfigObj, meshNode MeshInterface, optArr ...Option) 
 	}
 
 	obj := &Obj{
-		mesh:           meshNode,
-		downloadSem:    make(chan struct{}, downloadParallel),
-		maxArchiveSize: effectiveArchiveCap(uint64(configObj.Storage.ArchiveLimits.Size.Compressed)),
-		maxBlobBytes:   effectiveBlobCap(uint64(configObj.Storage.ArchiveLimits.Size.PerFile)),
-		maxFetchBytes:  effectiveFetchBytes(uint64(configObj.Brother.Rpc.MaxFetchResponseBytes)),
-		maxFetchCount:  effectiveFetchCount(configObj.Brother.Rpc.MaxFetchBatchCount),
-		requestTimeout: floorRequestTimeout(configObj.Source.RequestTimeout),
-		routingPrefix:  configObj.Web.Routing.Prefix,
+		mesh:                meshNode,
+		downloadSem:         make(chan struct{}, downloadParallel),
+		maxArchiveSize:      effectiveArchiveCap(uint64(configObj.Storage.ArchiveLimits.Size.Compressed)),
+		maxBlobBytes:        effectiveBlobCap(uint64(configObj.Storage.ArchiveLimits.Size.PerFile)),
+		maxFetchBytes:       effectiveFetchBytes(uint64(configObj.Brother.Rpc.MaxFetchResponseBytes)),
+		maxFetchCount:       effectiveFetchCount(configObj.Brother.Rpc.MaxFetchBatchCount),
+		requestTimeout:      floorRequestTimeout(configObj.Source.RequestTimeout),
+		maxDownloadDuration: configObj.Source.DownloadMaxDuration,
+		routingPrefix:       configObj.Web.Routing.Prefix,
 		retry: retryObj{
 			maxAttempts:    cMaxAttempts,
 			backoffInitial: configObj.Source.Retry.BackoffInitial,
 			backoffMax:     configObj.Source.Retry.BackoffMax,
 			jitterPercent:  configObj.Source.Retry.JitterPercent,
 		},
-		rpcLimiter: buildRPCLimiter(configObj.Brother.Rpc.RatePerSec),
+		rpcLimiter:      buildRPCLimiter(configObj.Brother.Rpc.RatePerSec),
+		upstreamLimiter: newHostLimiterObj(configObj.Source.RateLimit),
 	}
 
 	for _, optFn := range optArr {

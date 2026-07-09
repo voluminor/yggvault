@@ -326,7 +326,7 @@ func withRawNewestVersion() testOptionFunc {
 
 // // // // // // // // // //
 
-func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listenerCtxObj) {
+func newTestServer(t *testing.T, optArr ...testOptionFunc) (*Obj, listenerCtxObj) {
 	t.Helper()
 
 	optionsObj := testOptionsObj{}
@@ -347,7 +347,7 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 		detections: map[string]core.DetectionObj{vkey("lib", "v1.0.0"): {IsGo: true, EvidenceJSON: `{"go_module_path":"mirror.example/lib"}`}},
 		artifacts: map[string][]core.ArtifactObj{vkey("lib", "v1.0.0"): {
 			{MaterializerID: stcode.MaterializerUniversal.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v1.0.0", BodyHash: core.HashBytes([]byte("z")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.UniversalZipFormatVersion, ETag: cArtifactETag, BodySha1: []byte{0x01, 0x02}},
-			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v1.0.0", BodyHash: core.HashBytes([]byte("gz")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.GoZipFormatVersion, ETag: `"goz"`, BodySha1: []byte{0x03, 0x04}},
+			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerWeb.String(), Key: "lib", Version: "v1.0.0", BodyHash: core.HashBytes([]byte("gz")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.GoZipFormatVersion, ETag: `"goz"`, BodySha1: []byte{0x03, 0x04}},
 		}},
 		feed:        []core.FeedEventObj{{Key: "lib", Version: "v1.0.0", EventTS: now, TreeHash: treeHash, ReleaseNotes: "release **notes**", FirstPublish: true}},
 		artifactRaw: []byte(cArtifactBytes),
@@ -407,7 +407,7 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 		}, storeObj.versions["lib"]...)
 		storeObj.detections[vkey("lib", "v2.44.0")] = core.DetectionObj{IsGo: true, EvidenceJSON: `{"go_module_path":"mirror.example/lib"}`}
 		storeObj.artifacts[vkey("lib", "v2.44.0")] = []core.ArtifactObj{
-			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v2.44.0", BodyHash: core.HashBytes([]byte("gz2")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.GoZipFormatVersion, ETag: `"goz2"`, BodySha1: []byte{0x05, 0x06}},
+			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerWeb.String(), Key: "lib", Version: "v2.44.0", BodyHash: core.HashBytes([]byte("gz2")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.GoZipFormatVersion, ETag: `"goz2"`, BodySha1: []byte{0x05, 0x06}},
 		}
 		keyStateObj := stateObj.keyStates["lib"]
 		keyStateObj.LatestVersion = "v2.44.0"
@@ -472,7 +472,7 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 	return serverObj, serverObj.webListenerCtx(false)
 }
 
-func stateFor(t *testing.T, serverObj *ServerObj) *fakeStateObj {
+func stateFor(t *testing.T, serverObj *Obj) *fakeStateObj {
 	t.Helper()
 	stateObj, ok := serverObj.funcImplObj.deps.State.(*fakeStateObj)
 	if !ok {
@@ -481,7 +481,7 @@ func stateFor(t *testing.T, serverObj *ServerObj) *fakeStateObj {
 	return stateObj
 }
 
-func storeFor(t *testing.T, serverObj *ServerObj) *fakeStoreObj {
+func storeFor(t *testing.T, serverObj *Obj) *fakeStoreObj {
 	t.Helper()
 	storeObj, ok := serverObj.funcImplObj.deps.Storage.(*fakeStoreObj)
 	if !ok {

@@ -55,6 +55,20 @@ func TestValidateAcceptsValidConfig(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsSourceRateLimitBurstZero(t *testing.T) {
+	configObj := newValidConfigObjForTest(t)
+	configObj.Source.RateLimit.RequestsPerSecond = 1
+	configObj.Source.RateLimit.Burst = 0
+
+	err := validate(configObj)
+	if err == nil {
+		t.Fatal("validate returned nil error")
+	}
+	if !strings.Contains(err.Error(), "source.rate_limit.burst must be >= 1") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestNewLoadsValidConfig(t *testing.T) {
 	configObj := newValidConfigObjForTest(t)
 	pathToFile := writeConfigFileForTest(t, configObj)

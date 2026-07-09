@@ -24,13 +24,17 @@ import (
 const cSpoolCleanupTimeout = 30 * time.Second
 const cMaxStagedReadBytes = uint64(1<<63 - 2)
 
+// ErrStagedSymlinkRejected marks a deterministic symlink-target rejection by the staged publish gate.
+// Callers (rescan) rely on errors.Is to classify the failure as rejected content, not a system error.
+var ErrStagedSymlinkRejected = errors.New("staged symlink target rejected")
+
 // //
 
 // BlobSpoolObj is a temporary directory under temp/ for staged blobs of one publication.
 // Close removes it best-effort even when publish fails.
 type BlobSpoolObj struct {
 	rootPath   string
-	closeMu    sync.Mutex
+	closeMu    sync.Mutex // independent temp-spool lock, unrelated to Obj.closeMu
 	closedFlag bool
 }
 
@@ -62,14 +66,19 @@ func stagedPublishToPublishObj(stagedObj core.StagedPublishObj) core.PublishObj 
 	}
 }
 
-// symlinkTargetFromBytes bounds a symlink target's length. Hygiene and the per-path escape check run in
-// verifySymlinkTargets, the authoritative publish gate that knows each symlink's final path (a target is
-// resolved relative to the symlink's own directory, so it may legitimately contain "..").
+// symlinkTargetFromBytes bounds the target size; root escape is path-dependent and checked later.
 func symlinkTargetFromBytes(dataArr []byte, maxPathBytes uint) error {
 	if maxPathBytes > 0 && uint(len(dataArr)) > maxPathBytes {
 		return errors.New("symlink target exceeds path limit")
 	}
 	return nil
+}
+
+func stagedSymlinkRejectErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %w", ErrStagedSymlinkRejected, err)
 }
 
 func (obj *Obj) cleanupSpool(spoolObj *BlobSpoolObj) {
@@ -200,13 +209,16 @@ func readStagedFileBytes(fileObj *os.File, sizeBytes uint64) ([]byte, error) {
 
 func validateStagedSymlinkFile(fileObj *os.File, sizeBytes uint64, maxPathBytes uint) error {
 	if uint64(maxPathBytes) > 0 && sizeBytes > uint64(maxPathBytes) {
-		return errors.New("symlink target exceeds path limit")
+		return stagedSymlinkRejectErr(errors.New("symlink target exceeds path limit"))
 	}
 	dataArr, err := readStagedFileBytes(fileObj, sizeBytes)
 	if err != nil {
 		return err
 	}
-	return symlinkTargetFromBytes(dataArr, maxPathBytes)
+	if err = symlinkTargetFromBytes(dataArr, maxPathBytes); err != nil {
+		return stagedSymlinkRejectErr(err)
+	}
+	return nil
 }
 
 func (obj *Obj) verifySymlinkTargets(ctx context.Context, treeArr []core.TreeEntryObj, contentByHashObj map[core.HashObj][]byte, maxPathBytes uint) error {
@@ -231,11 +243,11 @@ func (obj *Obj) verifySymlinkTargets(ctx context.Context, treeArr []core.TreeEnt
 			targetByHashObj[entryObj.BlobHash] = targetArr
 		}
 		if err := symlinkTargetFromBytes(targetArr, maxPathBytes); err != nil {
-			return err
+			return fmt.Errorf("symlink target for %s: %w: %w", entryObj.Path, ErrStagedSymlinkRejected, err)
 		}
 		// Escape checks are per path: the same target bytes can be safe or unsafe at different depths.
 		if err := util.SymlinkTargetWithinRoot(entryObj.Path, string(targetArr)); err != nil {
-			return fmt.Errorf("symlink target for %s: %w", entryObj.Path, err)
+			return fmt.Errorf("symlink target for %s: %w: %w", entryObj.Path, ErrStagedSymlinkRejected, err)
 		}
 	}
 	return nil
@@ -411,6 +423,9 @@ func (obj *Obj) prepareStagedBlobs(ctx context.Context, spoolObj *BlobSpoolObj, 
 		if _, ok := symlinkHashObj[blobObj.BlobHash]; ok {
 			if err = validateStagedSymlinkFile(fileObj, blobObj.SizeBytes, maxPathBytes); err != nil {
 				_ = fileObj.Close()
+				if errors.Is(err, ErrStagedSymlinkRejected) {
+					return nil, fmt.Errorf("staged symlink blob %s: %w", blobObj.BlobHash.Hex(), err)
+				}
 				return nil, err
 			}
 		}
@@ -453,16 +468,53 @@ func (obj *Obj) verifyStagedReferences(ctx context.Context, treeArr []core.TreeE
 				return fmt.Errorf("referenced blob %s size mismatch", entryObj.BlobHash.Hex())
 			}
 			if _, ok := symlinkHashObj[entryObj.BlobHash]; ok {
-				return symlinkTargetFromBytes(blobArr, maxPathBytes)
+				if rejectErr := symlinkTargetFromBytes(blobArr, maxPathBytes); rejectErr != nil {
+					return stagedSymlinkRejectErr(rejectErr)
+				}
 			}
 			return nil
 		})
 		if err != nil {
+			if errors.Is(err, ErrStagedSymlinkRejected) {
+				return fmt.Errorf("referenced symlink blob %s: %w", entryObj.BlobHash.Hex(), err)
+			}
 			return fmt.Errorf("missing referenced blob %s: %w", entryObj.BlobHash.Hex(), err)
 		}
 		verifiedObj[entryObj.BlobHash] = entryObj.SizeBytes
 	}
 	return nil
+}
+
+func (obj *Obj) stagedSymlinkContent(ctx context.Context, spoolObj *BlobSpoolObj, blobFileObj map[core.HashObj]stagedBlobFileObj, symlinkHashObj map[core.HashObj]struct{}) (map[core.HashObj][]byte, error) {
+	if len(symlinkHashObj) == 0 {
+		return nil, nil
+	}
+	resultObj := make(map[core.HashObj][]byte, len(symlinkHashObj))
+	for hashObj := range symlinkHashObj {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+		blobObj, ok := blobFileObj[hashObj]
+		if !ok {
+			continue
+		}
+		fileObj, sizeBytes, err := obj.openPreparedStagedBlob(spoolObj, blobObj)
+		if err != nil {
+			return nil, err
+		}
+		dataArr, readErr := readStagedFileBytes(fileObj, sizeBytes)
+		closeErr := fileObj.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		resultObj[hashObj] = dataArr
+	}
+	return resultObj, nil
 }
 
 // CanonicalTree normalizes staged entries and computes the tree_hash exactly like PublishStaged.
@@ -509,9 +561,7 @@ func (obj *Obj) NewBlobSpool(ctx context.Context) (*BlobSpoolObj, error) {
 	return &BlobSpoolObj{rootPath: rootPath}, nil
 }
 
-// PublishStaged stores a version from staged spool blobs.
-// It normalizes the tree, verifies blobs and symlinks, writes missing Pebble objects under durable budget, and commits.
-// The spool is removed in all cases; the tree is written last, so the version is unreachable before commit.
+// PublishStaged persists a version from spool blobs, verifying references before the durable write, then removes the spool.
 func (obj *Obj) PublishStaged(ctx context.Context, spoolObj *BlobSpoolObj, stagedObj core.StagedPublishObj) (core.PublishResultObj, error) {
 	defer obj.cleanupSpool(spoolObj)
 
@@ -553,11 +603,18 @@ func (obj *Obj) PublishStaged(ctx context.Context, spoolObj *BlobSpoolObj, stage
 	if err = obj.validatePublishMetadata(ctx, &publishObj); err != nil {
 		return core.PublishResultObj{}, err
 	}
+	symlinkContentObj, err := obj.stagedSymlinkContent(ctx, spoolObj, blobFileObj, symlinkHashObj)
+	if err != nil {
+		return core.PublishResultObj{}, err
+	}
 
 	obj.writeMu.Lock()
 	defer obj.writeMu.Unlock()
 
 	protectedObj := protectTreeObjects(treeHashObj, treeArr)
+	if err = obj.verifySymlinkTargets(ctx, treeArr, symlinkContentObj, maxPathBytes); err != nil {
+		return core.PublishResultObj{}, err
+	}
 	if err = obj.verifyStagedReferences(ctx, treeArr, blobFileObj, symlinkHashObj, maxPathBytes); err != nil {
 		return core.PublishResultObj{}, err
 	}

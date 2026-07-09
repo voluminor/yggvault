@@ -69,7 +69,7 @@ func TestBlobsFetchVerifiesAndWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BrotherDial returned error: %v", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	destDir := t.TempDir()
 	res, err := session.BlobsFetch(context.Background(), "v1.0.0", []BlobReqObj{{Hash: hashObj, SizeBytes: uint64(len(value))}}, destDir)
@@ -101,7 +101,7 @@ func TestHelloNegotiatesFetchLimits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BrotherDial returned error: %v", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	helloObj, err := session.Hello(context.Background())
 	if err != nil {
@@ -293,6 +293,53 @@ func TestIndexReturnsEntriesWithNotes(t *testing.T) {
 	}
 	if srcInfo.SourceURL != "https://upstream.example/core-lib/" {
 		t.Fatalf("unexpected source info: %+v", srcInfo)
+	}
+}
+
+func TestIndexUsesKeysetCursorWhenAdvertised(t *testing.T) {
+	callValue := 0
+	fake := &fakeBrotherObj{
+		helloReply: brotherwire.HelloReplyObj{Protocol: brotherwire.Protocol, IndexKeyset: true},
+		indexFunc: func(_ brotherwire.IndexArgObj, reply *brotherwire.IndexReplyObj) error {
+			callValue++
+			switch callValue {
+			case 1:
+				reply.Entries = []brotherwire.IndexEntryObj{{Version: "v2.0.0", UpstreamSeq: 2}}
+				reply.NextPage = 2
+			default:
+				reply.Entries = []brotherwire.IndexEntryObj{{Version: "v1.0.0", UpstreamSeq: 1}}
+			}
+			return nil
+		},
+	}
+	ts := startFakeBrother(t, fake, true)
+	obj := newTestObj(t, testConfigObj(t))
+
+	session, err := obj.BrotherDial(context.Background(), "core-lib", "core-lib", ts.URL)
+	if err != nil {
+		t.Fatalf("BrotherDial returned error: %v", err)
+	}
+	defer func() { _ = session.Close() }()
+	if _, err = session.Hello(context.Background()); err != nil {
+		t.Fatalf("Hello returned error: %v", err)
+	}
+
+	_, next, _, err := session.Index(context.Background(), 1)
+	if err != nil || next != 2 {
+		t.Fatalf("first Index next=%d err=%v", next, err)
+	}
+	_, next, _, err = session.Index(context.Background(), next)
+	if err != nil || next != 0 {
+		t.Fatalf("second Index next=%d err=%v", next, err)
+	}
+	if len(fake.indexArgs) != 2 {
+		t.Fatalf("index args=%d want 2", len(fake.indexArgs))
+	}
+	if fake.indexArgs[0].AfterVersion != "" || fake.indexArgs[0].AfterSeq != 0 {
+		t.Fatalf("first page must not carry cursor: %+v", fake.indexArgs[0])
+	}
+	if fake.indexArgs[1].AfterVersion != "v2.0.0" || fake.indexArgs[1].AfterSeq != 2 {
+		t.Fatalf("second page cursor=%+v", fake.indexArgs[1])
 	}
 }
 

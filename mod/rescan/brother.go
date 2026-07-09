@@ -138,7 +138,9 @@ func (obj *Obj) ingestBrother(ctx context.Context, key string, sourceURL string,
 		}
 	}
 
-	_ = obj.stateObj.MarkAvailable(key, len(indexArr) > 0, cycleStart)
+	if err := obj.stateObj.MarkAvailable(key, len(indexArr) > 0, cycleStart); err == nil {
+		obj.clearKeyUnavailable(key)
+	}
 	upstreamSet := make(map[string]struct{}, len(indexArr))
 	for i := range indexArr {
 		upstreamSet[indexArr[i].Version] = struct{}{}
@@ -155,12 +157,12 @@ func (obj *Obj) ingestBrother(ctx context.Context, key string, sourceURL string,
 			continue
 		}
 		ingestedSet[entryObj.Version] = struct{}{}
-		if !forceRefresh && obj.canSkipBrotherVersion(ctx, key, entryObj) {
+		if !forceRefresh && obj.canSkipKnownTree(ctx, key, entryObj.Version, entryObj.TreeHash) {
 			continue
 		}
 		// Do not retry a deterministic failure for the same tree hash; a bad brother could force endless downloads.
 		if forceRefresh {
-			obj.clearPermanentFailure(key, entryObj.Version)
+			obj.forceClearPermanentFailure(ctx, key, entryObj.Version)
 		} else if !entryObj.TreeHash.IsZero() && obj.permanentFailureSkip(key, entryObj.Version, entryObj.TreeHash.Hex()) {
 			continue
 		}
@@ -282,49 +284,31 @@ func (obj *Obj) brotherFallbackSeqs(ctx context.Context, key string, indexArr []
 	return obj.assignUpstreamSeqs(ctx, key, versionArr, nil)
 }
 
-func (obj *Obj) canSkipBrotherVersion(ctx context.Context, key string, entryObj source.BrotherIndexEntryObj) bool {
-	if entryObj.TreeHash.IsZero() {
+// canSkipKnownTree reports terminal success for a stored version whose advertised tree hash matches.
+func (obj *Obj) canSkipKnownTree(ctx context.Context, key string, version string, treeHashObj core.HashObj) bool {
+	if treeHashObj.IsZero() {
 		return false
 	}
-	existingObj, ok, err := obj.storageObj.GetVersion(ctx, key, entryObj.Version)
+	existingObj, ok, err := obj.storageObj.GetVersion(ctx, key, version)
 	if err != nil || !ok {
 		return false
 	}
 	if existingObj.UpstreamDeleted {
 		return false
 	}
-	if existingObj.TreeHash != entryObj.TreeHash {
+	if existingObj.TreeHash != treeHashObj {
 		return false
 	}
 	if existingObj.HealPending {
 		// A blocked Go zip can heal without resync; other heal cases require normal resync.
-		return obj.clearBlockedGoHeal(ctx, key, entryObj.Version, existingObj)
+		return obj.clearBlockedGoHeal(ctx, key, version, existingObj)
 	}
+	obj.markVersionTerminalSuccess(ctx, key, version)
 	return true
 }
 
 func dropUnstorablePublicMirrorVersions(entryArr []source.PublicMirrorVersionObj) []source.PublicMirrorVersionObj {
-	storable := func(version string) bool {
-		return util.IsStorableSemver(version) || util.IsStorableRawVersion(version)
-	}
-	firstBad := -1
-	for i := range entryArr {
-		if !storable(entryArr[i].Version) {
-			firstBad = i
-			break
-		}
-	}
-	if firstBad < 0 {
-		return entryArr
-	}
-	outArr := make([]source.PublicMirrorVersionObj, 0, len(entryArr)-1)
-	outArr = append(outArr, entryArr[:firstBad]...)
-	for i := firstBad + 1; i < len(entryArr); i++ {
-		if storable(entryArr[i].Version) {
-			outArr = append(outArr, entryArr[i])
-		}
-	}
-	return outArr
+	return dropUnstorableVersions(entryArr, func(entryObj source.PublicMirrorVersionObj) string { return entryObj.Version })
 }
 
 func publicMirrorFailureRef(entryObj source.PublicMirrorVersionObj) string {
@@ -355,21 +339,58 @@ func (obj *Obj) ingestBrotherPublicFallback(ctx context.Context, key string, rem
 	return false, lastErr
 }
 
+// publicMirrorDetailSkip builds the detail-skip predicate for the public fallback: it skips unstorable names and
+// versions already stored in a healthy, non-deleted state, so their per-version detail (and its request) is not
+// fetched every cycle. Skipped healthy versions are still marked terminal-success to clear stale diagnostics,
+// matching the pre-existing canSkipKnownTree behavior. Because the public list carries no tree hash, an
+// already-stored version's upstream re-publish is not detected on this fallback path; the authoritative
+// brother/git paths detect it once reachable again.
+func (obj *Obj) publicMirrorDetailSkip(ctx context.Context, key string, forceRefresh bool) func(string) bool {
+	return func(version string) bool {
+		if !util.IsStorableSemver(version) && !util.IsStorableRawVersion(version) {
+			return true
+		}
+		if forceRefresh {
+			return false
+		}
+		existingObj, ok, err := obj.storageObj.GetVersion(ctx, key, version)
+		if err != nil || !ok || existingObj.UpstreamDeleted || existingObj.HealPending {
+			return false
+		}
+		obj.markVersionTerminalSuccess(ctx, key, version)
+		return true
+	}
+}
+
 func (obj *Obj) ingestBrotherPublic(ctx context.Context, key string, remoteKey string, brotherURL string, forceRefresh bool, cycleStart time.Time) (bool, error) {
-	entryArr, truncated, err := obj.sourceObj.PublicMirrorVersions(ctx, brotherURL, remoteKey)
+	listingObj, err := obj.sourceObj.PublicMirrorVersions(ctx, brotherURL, remoteKey, obj.publicMirrorDetailSkip(ctx, key, forceRefresh))
 	if err != nil {
 		return false, err
 	}
-	entryArr = dropUnstorablePublicMirrorVersions(entryArr)
-	_ = obj.stateObj.MarkAvailable(key, len(entryArr) > 0, cycleStart)
-	if truncated {
+	if err := obj.stateObj.MarkAvailable(key, len(listingObj.Names) > 0, cycleStart); err == nil {
+		obj.clearKeyUnavailable(key)
+	}
+	if listingObj.Truncated {
 		obj.raiseReleasesTruncated(key, errors.New("public mirror releases exceeded the processing cap; deletion disabled this cycle"))
 	}
+	if listingObj.Unresolved > 0 {
+		obj.logObj.Warn().
+			Str("component", "rescan").
+			Str("key", key).
+			Int("unresolved", listingObj.Unresolved).
+			Msg("public mirror: some versions could not be resolved this cycle; they are retried next cycle")
+	}
 
-	upstreamSet := make(map[string]struct{}, len(entryArr))
+	// Names is the full upstream set (including versions skipped as already-present), so deletion grace stays
+	// safe even when only a subset resolved this cycle.
+	upstreamSet := make(map[string]struct{}, len(listingObj.Names))
+	for _, nameText := range listingObj.Names {
+		upstreamSet[nameText] = struct{}{}
+	}
+
+	entryArr := dropUnstorablePublicMirrorVersions(listingObj.Versions)
 	versionArr := make([]string, len(entryArr))
 	for i := range entryArr {
-		upstreamSet[entryArr[i].Version] = struct{}{}
 		versionArr[i] = entryArr[i].Version
 	}
 	seqByVersion := obj.assignUpstreamSeqs(ctx, key, versionArr, nil)
@@ -383,12 +404,12 @@ func (obj *Obj) ingestBrotherPublic(ctx context.Context, key string, remoteKey s
 			continue
 		}
 		ingestedSet[entryObj.Version] = struct{}{}
-		if !forceRefresh && obj.canSkipPublicMirrorVersion(ctx, key, entryObj) {
+		if !forceRefresh && obj.canSkipKnownTree(ctx, key, entryObj.Version, entryObj.TreeHash) {
 			continue
 		}
 		failureRef := publicMirrorFailureRef(entryObj)
 		if forceRefresh {
-			obj.clearPermanentFailure(key, entryObj.Version)
+			obj.forceClearPermanentFailure(ctx, key, entryObj.Version)
 		} else if failureRef != "" && obj.permanentFailureSkip(key, entryObj.Version, failureRef) {
 			continue
 		}
@@ -397,30 +418,10 @@ func (obj *Obj) ingestBrotherPublic(ctx context.Context, key string, remoteKey s
 	if ctx.Err() != nil {
 		return true, nil
 	}
-	if !truncated && len(entryArr) > 0 {
+	if !listingObj.Truncated && len(listingObj.Names) > 0 {
 		obj.applyDeletionGrace(ctx, key, upstreamSet, "", 0)
 	}
 	return true, nil
-}
-
-func (obj *Obj) canSkipPublicMirrorVersion(ctx context.Context, key string, entryObj source.PublicMirrorVersionObj) bool {
-	if entryObj.TreeHash.IsZero() {
-		return false
-	}
-	existingObj, ok, err := obj.storageObj.GetVersion(ctx, key, entryObj.Version)
-	if err != nil || !ok {
-		return false
-	}
-	if existingObj.UpstreamDeleted {
-		return false
-	}
-	if existingObj.TreeHash != entryObj.TreeHash {
-		return false
-	}
-	if existingObj.HealPending {
-		return obj.clearBlockedGoHeal(ctx, key, entryObj.Version, existingObj)
-	}
-	return true
 }
 
 func (obj *Obj) ingestPublicMirrorVersion(ctx context.Context, key string, entryObj source.PublicMirrorVersionObj, upstreamSeq int64) bool {
@@ -445,21 +446,20 @@ func (obj *Obj) ingestPublicMirrorVersion(ctx context.Context, key string, entry
 		if phaseText == "fetch_failed" {
 			var limitErr *stcode.ErrArchiveLimitExceededObj
 			if failureRef != "" && errors.As(err, &limitErr) {
-				obj.recordPermanentFailure(key, entryObj.Version, failureRef)
+				obj.recordPermanentFailure(ctx, key, entryObj.Version, failureRef, "fetch_failed", err.Error())
 			}
 		}
 		if phaseText == "archive_invalid" && failureRef != "" {
-			obj.recordPermanentFailure(key, entryObj.Version, failureRef)
+			obj.recordPermanentFailure(ctx, key, entryObj.Version, failureRef, "archive_invalid", err.Error())
 		}
 		obj.raiseVersionDegraded(key, entryObj.Version, phaseText, err)
 		return false
 	}
 
-	obj.clearPermanentFailure(key, entryObj.Version)
 	return obj.publishVersion(ctx, publishInputObj{
 		key:                  key,
 		version:              entryObj.Version,
-		releaseNotes:         entryObj.ReleaseNotes,
+		releaseNotes:         truncateReleaseNotes(entryObj.ReleaseNotes),
 		sourceHash:           archiveObj.sourceHash,
 		sourceSize:           archiveObj.sourceSize,
 		upstreamSeq:          upstreamSeq,
@@ -469,6 +469,7 @@ func (obj *Obj) ingestPublicMirrorVersion(ctx context.Context, key string, entry
 		permanentFailureRef:  publicMirrorFailureRef(entryObj),
 		entries:              archiveObj.entries,
 		blobs:                archiveObj.blobs,
+		droppedSymlinks:      archiveObj.droppedSymlinks,
 		spool:                spoolObj,
 	}, &committed)
 }
@@ -604,13 +605,12 @@ func (obj *Obj) brotherFetchBlobs(ctx context.Context, sessionObj source.Brother
 	return allBlobArr, nil
 }
 
-// recordBrotherPermanentFailure remembers deterministic brother-version failures by advertised tree hash.
-// Legacy zero tree hashes are not keyed and keep normal retry behavior.
-func (obj *Obj) recordBrotherPermanentFailure(key string, entryObj source.BrotherIndexEntryObj) {
+// recordBrotherPermanentFailure keys the quarantine row by advertised tree hash; legacy zero hashes are not keyed.
+func (obj *Obj) recordBrotherPermanentFailure(ctx context.Context, key string, entryObj source.BrotherIndexEntryObj, code string, message string) {
 	if entryObj.TreeHash.IsZero() {
 		return
 	}
-	obj.recordPermanentFailure(key, entryObj.Version, entryObj.TreeHash.Hex())
+	obj.recordPermanentFailure(ctx, key, entryObj.Version, entryObj.TreeHash.Hex(), code, message)
 }
 
 func (obj *Obj) ingestBrotherVersion(ctx context.Context, key string, sessionObj source.BrotherSessionInterface, entryObj source.BrotherIndexEntryObj, upstreamSeq int64) {
@@ -639,22 +639,22 @@ func (obj *Obj) ingestBrotherVersion(ctx context.Context, key string, sessionObj
 	// or inconsistent brother; reject deterministically or the same version would redownload every cycle.
 	if !entryObj.TreeHash.IsZero() {
 		if pulledHashObj := core.HashBytes(versionObj.TreeBytes); pulledHashObj != entryObj.TreeHash {
-			obj.recordBrotherPermanentFailure(key, entryObj)
-			obj.raiseVersionDegraded(key, entryObj.Version, "brother_index_hash_mismatch",
-				fmt.Errorf("index tree hash %s does not match pulled tree %s", entryObj.TreeHash.Hex(), pulledHashObj.Hex()))
+			hashErr := fmt.Errorf("index tree hash %s does not match pulled tree %s", entryObj.TreeHash.Hex(), pulledHashObj.Hex())
+			obj.recordBrotherPermanentFailure(ctx, key, entryObj, "brother_index_hash_mismatch", hashErr.Error())
+			obj.raiseVersionDegraded(key, entryObj.Version, "brother_index_hash_mismatch", hashErr)
 			return
 		}
 	}
 	treeArr, err := treecodec.Decode(versionObj.TreeBytes)
 	if err != nil {
-		obj.recordBrotherPermanentFailure(key, entryObj)
+		obj.recordBrotherPermanentFailure(ctx, key, entryObj, "tree_decode_failed", err.Error())
 		obj.raiseVersionDegraded(key, entryObj.Version, "tree_decode_failed", err)
 		return
 	}
 	// Check archive count/size/path limits on the cheap tree before downloading blobs.
 	stagedArr := toStagedEntries(treeArr)
 	if _, _, limErr := obj.storageObj.CanonicalTree(stagedArr, key, entryObj.Version); limErr != nil {
-		obj.recordBrotherPermanentFailure(key, entryObj)
+		obj.recordBrotherPermanentFailure(ctx, key, entryObj, "tree_invalid", limErr.Error())
 		obj.raiseVersionDegraded(key, entryObj.Version, "tree_invalid", limErr)
 		return
 	}
@@ -674,17 +674,16 @@ func (obj *Obj) ingestBrotherVersion(ctx context.Context, key string, sessionObj
 		sourceHashObj = core.HashBytes(versionObj.TreeBytes)
 	}
 
-	// Publication path accepted the content; clear previous permanent failure memory.
-	obj.clearPermanentFailure(key, entryObj.Version)
 	obj.publishVersion(ctx, publishInputObj{
-		key:          key,
-		version:      entryObj.Version,
-		releaseNotes: entryObj.ReleaseNotes,
-		sourceHash:   sourceHashObj,
-		sourceSize:   uint64(len(versionObj.TreeBytes)),
-		upstreamSeq:  upstreamSeq,
-		entries:      stagedArr,
-		blobs:        blobArr,
-		spool:        spoolObj,
+		key:                 key,
+		version:             entryObj.Version,
+		releaseNotes:        truncateReleaseNotes(entryObj.ReleaseNotes),
+		sourceHash:          sourceHashObj,
+		sourceSize:          uint64(len(versionObj.TreeBytes)),
+		upstreamSeq:         upstreamSeq,
+		permanentFailureRef: entryObj.TreeHash.Hex(),
+		entries:             stagedArr,
+		blobs:               blobArr,
+		spool:               spoolObj,
 	}, &committed)
 }

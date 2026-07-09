@@ -400,3 +400,85 @@ func TestPermanentIngestFailureSkipsUntilShaChanges(t *testing.T) {
 		t.Fatalf("fixed archive must publish: ok=%v err=%v", ok, err)
 	}
 }
+
+func TestTerminalSuccessClearsDurableQuarantineAfterLoadMiss(t *testing.T) {
+	refText := verifySHA('a')
+	fakeSrc := &fakeSourceObj{
+		tagArr:       []source.GitReleaseObj{{Version: "v1.0.0", ArchiveURL: "https://x/a.zip", Format: "zip"}},
+		archiveBytes: buildZip(t, map[string]string{"core-lib-1.0.0/README.md": "ok"}),
+		refsMap:      map[string]string{"v1.0.0": refText},
+	}
+	obj, storageObj, _, ctx := gitStand(t, fakeSrc)
+
+	obj.RunOnce(ctx)
+	if _, ok, err := storageObj.GetVersion(ctx, "core-lib", "v1.0.0"); err != nil || !ok {
+		t.Fatalf("precondition publish: ok=%v err=%v", ok, err)
+	}
+	if err := storageObj.PutIngestFailure(ctx, core.IngestFailureObj{
+		Key:     "core-lib",
+		Version: "v1.0.0",
+		RefSHA:  refText,
+		Code:    "archive_invalid",
+		Message: "stale quarantine row from missed startup load",
+	}); err != nil {
+		t.Fatalf("PutIngestFailure returned error: %v", err)
+	}
+
+	obj.permFailMu.Lock()
+	obj.permFailLoadMissObj["core-lib"] = struct{}{}
+	obj.permFailMu.Unlock()
+
+	obj.RunOnce(ctx)
+	failureArr, err := storageObj.ListIngestFailures(ctx, "core-lib")
+	if err != nil {
+		t.Fatalf("ListIngestFailures returned error: %v", err)
+	}
+	if len(failureArr) != 0 {
+		t.Fatalf("stale durable quarantine rows=%+v, want none", failureArr)
+	}
+	if obj.permanentFailureSkip("core-lib", "v1.0.0", refText) {
+		t.Fatal("stale quarantine row must not be reloaded into permanent failure memory")
+	}
+	obj.permFailMu.Lock()
+	_, loadMiss := obj.permFailLoadMissObj["core-lib"]
+	obj.permFailMu.Unlock()
+	if loadMiss {
+		t.Fatal("load-miss marker must be cleared after a successful quarantine summary")
+	}
+}
+
+// TestQuarantineSummarySkipsCleanKeys covers the dirty gate that lets raiseQuarantineSummary skip the
+// per-cycle durable ListIngestFailures round-trip for healthy keys: a key with no quarantine history stays
+// clean, a recorded failure marks it dirty, and reconciliation drops the mark again.
+func TestQuarantineSummarySkipsCleanKeys(t *testing.T) {
+	refText := verifySHA('a')
+	fakeSrc := &fakeSourceObj{
+		tagArr:       []source.GitReleaseObj{{Version: "v1.0.0", ArchiveURL: "https://x/a.zip", Format: "zip"}},
+		archiveBytes: buildZip(t, map[string]string{"core-lib-1.0.0/README.md": "ok"}),
+		refsMap:      map[string]string{"v1.0.0": refText},
+	}
+	obj, _, _, ctx := gitStand(t, fakeSrc)
+
+	isDirty := func() bool {
+		obj.permFailMu.Lock()
+		defer obj.permFailMu.Unlock()
+		_, ok := obj.quarantineDirtyObj["core-lib"]
+		return ok
+	}
+
+	obj.RunOnce(ctx)
+	if isDirty() {
+		t.Fatal("healthy key must not be dirty: quarantine summary would run every cycle")
+	}
+
+	obj.recordPermanentFailure(ctx, "core-lib", "v1.0.0", refText, "archive_invalid", "bad archive")
+	if !isDirty() {
+		t.Fatal("recorded failure must mark the key dirty so the summary reconciles it")
+	}
+
+	obj.clearPermanentFailure(ctx, "core-lib", "v1.0.0")
+	obj.raiseQuarantineSummary(ctx, "core-lib")
+	if isDirty() {
+		t.Fatal("key must be clean after quarantine reconciliation drains all failures")
+	}
+}

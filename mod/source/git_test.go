@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/voluminor/yggvault/mod/archive"
 	"github.com/voluminor/yggvault/target/stcode"
@@ -117,6 +118,46 @@ func TestFetchArchive404Permanent(t *testing.T) {
 	var typedErr *stcode.ErrSourceDownloadFailedObj
 	if !errors.As(err, &typedErr) {
 		t.Fatalf("expected ErrSourceDownloadFailed, got %v", err)
+	}
+}
+
+// TestFetchArchiveMaxDurationAborts checks that source.download_max_duration bounds a single attempt: a
+// server that streams a first chunk and then holds the body open past the ceiling must be aborted well
+// before the server would release, so one slow upstream cannot hold a download slot indefinitely.
+func TestFetchArchiveMaxDurationAborts(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(1<<20))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("start"))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		// Hold the body past the ceiling; return promptly once the client aborts so Close does not block.
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	}))
+	t.Cleanup(ts.Close)
+
+	configObj := testConfigObj(t)
+	configObj.Source.DownloadMaxDuration = 150 * time.Millisecond
+	obj := newTestObj(t, configObj)
+
+	start := time.Now()
+	_, err := obj.FetchArchive(context.Background(), GitFetchRequestObj{
+		Key: "core-lib", Version: "v1.0.0", ArchiveURL: ts.URL + "/slow.zip", Format: cFormatZip, DestDir: t.TempDir(),
+	})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected download to be aborted by the max_duration ceiling")
+	}
+	var typedErr *stcode.ErrSourceDownloadFailedObj
+	if !errors.As(err, &typedErr) {
+		t.Fatalf("expected ErrSourceDownloadFailed, got %v", err)
+	}
+	if elapsed > 4*time.Second {
+		t.Fatalf("download took %v; the per-attempt ceiling did not abort", elapsed)
 	}
 }
 

@@ -100,7 +100,7 @@ func parseKeyCursor(q url.Values) (webui.PageCursorObj, string) {
 
 // // // // // // // // // //
 
-func (obj *ServerObj) notFound(w http.ResponseWriter, r *http.Request) {
+func (obj *Obj) notFound(w http.ResponseWriter, r *http.Request) {
 	lc := listenerCtxFrom(r.Context())
 	if lc.rateLimited(r) {
 		writeError(w, r, http.StatusTooManyRequests, "rate_limited", "rate limit exceeded")

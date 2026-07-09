@@ -128,7 +128,7 @@ func writeTarSourceObj(t testing.TB, sourcePath string, gzipFlag bool, trailingA
 		if headerObj.Typeflag == 0 {
 			headerObj.Typeflag = tar.TypeReg
 		}
-		if headerObj.Typeflag != tar.TypeReg && headerObj.Typeflag != tar.TypeRegA {
+		if headerObj.Typeflag != tar.TypeReg {
 			headerObj.Size = 0
 		}
 		if err = tarWriterObj.WriteHeader(headerObj); err != nil {
@@ -359,16 +359,25 @@ func TestExtractZipRejectsNonAdjacentFileChildConflict(t *testing.T) {
 	}
 }
 
-func TestExtractTarGzRejectsUnsafeSymlink(t *testing.T) {
+func TestExtractTarGzDropsUnsafeSymlink(t *testing.T) {
 	archiveObj := newTestObj(t, testLimitsObj())
 	sourcePath := filepath.Join(t.TempDir(), "source.tar.gz")
 	writeTarSourceObj(t, sourcePath, true, nil, []tarTestEntryObj{
+		{path: "repo/file.txt", body: []byte("body")},
 		{path: "repo/link", linkPath: "../escape", typeFlag: tar.TypeSymlink},
 	})
 	spoolPath := t.TempDir()
 
-	_, err := extractSourceObj(t, archiveObj, FormatTarGz, sourcePath, spoolPath)
-	expectRejectedCheckObj(t, err, cCheckSymlinkTarget)
+	resultObj, err := extractSourceObj(t, archiveObj, FormatTarGz, sourcePath, spoolPath)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if len(resultObj.Entries) != 1 || resultObj.Entries[0].Path != "file.txt" {
+		t.Fatalf("entries=%+v, want only safe file", resultObj.Entries)
+	}
+	if len(resultObj.DroppedSymlinks) != 1 || resultObj.DroppedSymlinks[0] != "link" {
+		t.Fatalf("dropped=%+v, want link", resultObj.DroppedSymlinks)
+	}
 }
 
 // Forgejo regression: a relative symlink inside the archive must be accepted. After common top-dir stripping,
@@ -397,9 +406,8 @@ func TestExtractTarGzAcceptsInRootRelativeSymlink(t *testing.T) {
 	}
 }
 
-// Security: a depth-1 symlink under a common top-dir whose target escapes after strip must be rejected.
-// Escape checks use the final post-strip path, not the pre-strip path.
-func TestExtractTarGzRejectsStripDepthSymlinkEscape(t *testing.T) {
+// The escape check uses the path after stripCommonTopDir and drops only the dangerous symlink.
+func TestExtractTarGzDropsStripDepthSymlinkEscape(t *testing.T) {
 	archiveObj := newTestObj(t, testLimitsObj())
 	sourcePath := filepath.Join(t.TempDir(), "source.tar.gz")
 	writeTarSourceObj(t, sourcePath, true, nil, []tarTestEntryObj{
@@ -408,8 +416,16 @@ func TestExtractTarGzRejectsStripDepthSymlinkEscape(t *testing.T) {
 	})
 	spoolPath := t.TempDir()
 
-	_, err := extractSourceObj(t, archiveObj, FormatTarGz, sourcePath, spoolPath)
-	expectRejectedCheckObj(t, err, cCheckSymlinkTarget)
+	resultObj, err := extractSourceObj(t, archiveObj, FormatTarGz, sourcePath, spoolPath)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if len(resultObj.Entries) != 1 || resultObj.Entries[0].Path != "file.txt" {
+		t.Fatalf("entries=%+v, want only safe file", resultObj.Entries)
+	}
+	if len(resultObj.DroppedSymlinks) != 1 || resultObj.DroppedSymlinks[0] != "shallow" {
+		t.Fatalf("dropped=%+v, want shallow", resultObj.DroppedSymlinks)
+	}
 }
 
 func TestExtractTarRejectsHiddenPAXMetadataLimit(t *testing.T) {

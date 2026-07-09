@@ -122,7 +122,7 @@ func splitSegments(pathText string) []string {
 	return strings.Split(trimmed, "/")
 }
 
-func (obj *ServerObj) splitNested(reqPath string) (string, bool) {
+func (obj *Obj) splitNested(reqPath string) (string, bool) {
 	if route.IsService(reqPath) {
 		return reqPath, true
 	}
@@ -136,7 +136,7 @@ func (obj *ServerObj) splitNested(reqPath string) (string, bool) {
 	return reqPath, false
 }
 
-func (obj *ServerObj) brotherRPCEnabled(lc listenerCtxObj) bool {
+func (obj *Obj) brotherRPCEnabled(lc listenerCtxObj) bool {
 	switch lc.listenerID {
 	case stcode.ListenerWeb:
 		return obj.cfg.Brother.Rpc.WebEnabled
@@ -156,7 +156,7 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, code string,
 // Handler is the outer handler for one entry listener.
 // It injects listener context, applies RPC/ingress/method gates, request ID, and go-proxy host/major stripping.
 // HEAD is routed as GET because ogen only defines GET operations here.
-func (obj *ServerObj) Handler(lc listenerCtxObj) http.Handler {
+func (obj *Obj) Handler(lc listenerCtxObj) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(context.WithValue(r.Context(), listenerCtxKeyObj{}, lc))
 		r = withRequestID(r, newRequestID())
@@ -169,7 +169,14 @@ func (obj *ServerObj) Handler(lc listenerCtxObj) http.Handler {
 				writeError(logWriterObj, r, http.StatusNotFound, "not_found", "resource not found")
 				return
 			}
+			// Hijacked RPC sessions never reach logAccess; log the session envelope instead.
+			sessionStart := time.Now()
 			obj.brotherObj.Handler().ServeHTTP(w, r)
+			obj.logObj.Info().
+				Str("listener", string(lc.listenerID)).
+				Str("remote", r.RemoteAddr).
+				Dur("elapsed", time.Since(sessionStart)).
+				Msg("brother rpc session finished")
 			return
 		}
 

@@ -4,12 +4,18 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/voluminor/yggvault/mod/archive"
 	"github.com/voluminor/yggvault/mod/core"
@@ -29,6 +35,7 @@ type fakeSourceObj struct {
 	archiveByKey          map[string][]byte // per-key archive override for multi-key tests
 	archiveByVersion      map[string][]byte // per-version archive override for multi-version tests
 	discoverClass         stcode.SourceClassType
+	discoverErr           error
 	publicMirrorArr       []source.PublicMirrorVersionObj
 	publicMirrorErr       error
 	publicMirrorTruncated bool
@@ -78,6 +85,9 @@ func (f *fakeSourceObj) publicMirrorCallCount() int {
 }
 
 func (f *fakeSourceObj) Discover(_ context.Context, key string, rootURL string) (source.DiscoveryResultObj, error) {
+	if f.discoverErr != nil {
+		return source.DiscoveryResultObj{}, f.discoverErr
+	}
 	classObj := f.discoverClass
 	if classObj == stcode.UndefSourceClass {
 		classObj = stcode.SourceClassGit
@@ -144,15 +154,24 @@ func (f *fakeSourceObj) FetchArchive(_ context.Context, reqObj source.GitFetchRe
 	return source.GitFetchResultObj{ArchivePath: pathText, Format: reqObj.Format, SizeBytes: uint64(len(dataArr))}, nil
 }
 
-func (f *fakeSourceObj) PublicMirrorVersions(_ context.Context, rootURL string, _ string) ([]source.PublicMirrorVersionObj, bool, error) {
+func (f *fakeSourceObj) PublicMirrorVersions(_ context.Context, rootURL string, _ string, skip func(string) bool) (source.PublicMirrorListingObj, error) {
 	f.listMu.Lock()
 	f.publicMirrorCalls++
 	f.publicMirrorRoots = append(f.publicMirrorRoots, rootURL)
 	f.listMu.Unlock()
 	if f.publicMirrorErr != nil {
-		return nil, false, f.publicMirrorErr
+		return source.PublicMirrorListingObj{}, f.publicMirrorErr
 	}
-	return f.publicMirrorArr, f.publicMirrorTruncated, nil
+	listingObj := source.PublicMirrorListingObj{Truncated: f.publicMirrorTruncated}
+	for i := range f.publicMirrorArr {
+		versionObj := f.publicMirrorArr[i]
+		listingObj.Names = append(listingObj.Names, versionObj.Version)
+		if skip != nil && skip(versionObj.Version) {
+			continue
+		}
+		listingObj.Versions = append(listingObj.Versions, versionObj)
+	}
+	return listingObj, nil
 }
 
 func (f *fakeSourceObj) BrotherDial(_ context.Context, _ string, _ string, _ string) (source.BrotherSessionInterface, error) {
@@ -301,6 +320,151 @@ func TestIngestGitPublishesVersionAndArtifacts(t *testing.T) {
 	}
 	if len(versionArr) != 1 {
 		t.Fatalf("versions=%d want 1 (idempotent rescan)", len(versionArr))
+	}
+}
+
+func TestKeyUnavailableDiagnosticClearsAfterGitRecovery(t *testing.T) {
+	archiveBytes := buildZip(t, map[string]string{"core-lib-1.0.0/README.md": "ok"})
+	fakeSrc := &fakeSourceObj{
+		releasesErr:  errors.New("temporary upstream outage"),
+		releaseArr:   []source.GitReleaseObj{{Version: "v1.0.0", ArchiveURL: "https://x/a.zip", Format: "zip"}},
+		archiveBytes: archiveBytes,
+	}
+	obj, storageObj, stateObj, ctx := gitStand(t, fakeSrc)
+
+	obj.RunOnce(ctx)
+	if !hasDiagnostic(stateObj, "upstream_unavailable") {
+		t.Fatalf("expected upstream_unavailable diagnostic after listing failure, got %+v", stateObj.ActiveDiagnostics())
+	}
+
+	fakeSrc.releasesErr = nil
+	obj.RunOnce(ctx)
+	if _, ok, err := storageObj.GetVersion(ctx, "core-lib", "v1.0.0"); err != nil || !ok {
+		t.Fatalf("GetVersion after recovery: ok=%v err=%v", ok, err)
+	}
+	if hasDiagnostic(stateObj, "upstream_unavailable") {
+		t.Fatalf("upstream_unavailable diagnostic stayed active after recovery: %+v", stateObj.ActiveDiagnostics())
+	}
+}
+
+func TestIngestGitTruncatesOversizeReleaseNotes(t *testing.T) {
+	archiveBytes := buildZip(t, map[string]string{
+		"core-lib-1.0.0/README.md": "hello world",
+	})
+	hugeNotes := strings.Repeat("я", cMaxReleaseNotesBytes)
+	fakeSrc := &fakeSourceObj{
+		releaseArr:   []source.GitReleaseObj{{Version: "v1.0.0", BodyMD: hugeNotes, ArchiveURL: "https://x/a.zip", Format: "zip"}},
+		archiveBytes: archiveBytes,
+	}
+	obj, storageObj, _, ctx := gitStand(t, fakeSrc)
+
+	obj.RunOnce(ctx)
+
+	versionObj, ok, err := storageObj.GetVersion(ctx, "core-lib", "v1.0.0")
+	if err != nil || !ok {
+		t.Fatalf("GetVersion: ok=%v err=%v", ok, err)
+	}
+	if len(versionObj.ReleaseNotes) > cMaxReleaseNotesBytes {
+		t.Fatalf("release notes bytes=%d, want <= %d", len(versionObj.ReleaseNotes), cMaxReleaseNotesBytes)
+	}
+	if !strings.Contains(versionObj.ReleaseNotes, "[notes truncated]") {
+		t.Fatalf("release notes missing truncation marker")
+	}
+}
+
+func TestClassifyDegradedDictionary(t *testing.T) {
+	contentArr := []string{
+		"archive_invalid",
+		"tree_invalid",
+		"tree_hash_mismatch",
+		"public_mirror_hash_mismatch",
+		"brother_index_hash_mismatch",
+		"tree_decode_failed",
+		"heal_failed",
+		"go_symlink_in_module",
+		"go_manifest_missing",
+		"go_manifest_too_large",
+		"rewritten_file_too_large",
+		"invalid_artifact_ref",
+		"invalid_go_version",
+		// Unknown codes must default to degraded so a future deterministic code cannot pin node health in error.
+		"some_future_code",
+	}
+	for _, codeText := range contentArr {
+		impactObj, reasonObj := classifyDegraded(codeText)
+		if impactObj != stcode.OperationalStatusDegraded || reasonObj != stcode.LogReasonContentRejected {
+			t.Fatalf("%s classified as %s/%s, want degraded/content_rejected", codeText, impactObj.String(), reasonObj.String())
+		}
+	}
+	transientArr := []string{"fetch_failed", "source_hash_failed", "brother_version_failed", "brother_blobs_failed", "brother_blob_filter_failed"}
+	for _, codeText := range transientArr {
+		impactObj, reasonObj := classifyDegraded(codeText)
+		if impactObj != stcode.OperationalStatusDegraded || reasonObj != stcode.LogReasonUpstreamUnavailable {
+			t.Fatalf("%s classified as %s/%s, want degraded/upstream_unavailable", codeText, impactObj.String(), reasonObj.String())
+		}
+	}
+	systemArr := []string{
+		"spool_failed", "publish_failed", "detect_failed", "resurrect_failed",
+		"artifact_register_failed", "materialization_error",
+	}
+	for _, codeText := range systemArr {
+		impactObj, reasonObj := classifyDegraded(codeText)
+		if impactObj != stcode.OperationalStatusError || reasonObj != stcode.LogReasonArtifactMaterializationFailed {
+			t.Fatalf("%s classified as %s/%s, want error/artifact_materialization_failed", codeText, impactObj.String(), reasonObj.String())
+		}
+	}
+}
+
+func TestHealQuarantineCodeFallbackIsTransient(t *testing.T) {
+	codeText, permanentFlag := healQuarantineCode(errors.New("temporary disk failure"))
+	if codeText != cOverlayFallbackCode || permanentFlag {
+		t.Fatalf("code=%s permanent=%v, want %s/permanent=false", codeText, permanentFlag, cOverlayFallbackCode)
+	}
+}
+
+func TestVersionFailureMetricCarriesPhase(t *testing.T) {
+	readerObj := sdkmetric.NewManualReader()
+	providerObj := sdkmetric.NewMeterProvider(sdkmetric.WithReader(readerObj))
+	obj := &Obj{}
+	if err := obj.RegisterMetrics(providerObj.Meter("rescan")); err != nil {
+		t.Fatalf("RegisterMetrics returned error: %v", err)
+	}
+
+	obj.metricsObj.recordVersionFailure("archive_invalid")
+
+	var rmObj metricdata.ResourceMetrics
+	if err := readerObj.Collect(context.Background(), &rmObj); err != nil {
+		t.Fatalf("Collect returned error: %v", err)
+	}
+	foundMetric := false
+	foundPoint := false
+	for _, scopeObj := range rmObj.ScopeMetrics {
+		for _, metricObj := range scopeObj.Metrics {
+			if metricObj.Name != "rescan_version_failures_total" {
+				continue
+			}
+			foundMetric = true
+			sumObj, ok := metricObj.Data.(metricdata.Sum[int64])
+			if !ok {
+				t.Fatalf("rescan_version_failures_total data type=%T, want Sum[int64]", metricObj.Data)
+			}
+			for _, pointObj := range sumObj.DataPoints {
+				attrObj, ok := pointObj.Attributes.Value(attribute.Key("phase"))
+				if !ok || attrObj.AsString() != "archive_invalid" {
+					continue
+				}
+				if pointObj.Value != 1 {
+					t.Fatalf("archive_invalid point=%d want 1", pointObj.Value)
+				}
+				foundPoint = true
+			}
+		}
+	}
+	if !foundMetric {
+		t.Fatal("rescan_version_failures_total metric not collected")
+	}
+	if !foundPoint {
+		t.Fatal("rescan_version_failures_total missing phase=archive_invalid datapoint")
 	}
 }
 

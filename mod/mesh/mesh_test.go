@@ -43,7 +43,7 @@ func writeGeneratedPEM(t *testing.T) string {
 // // // // // // // // // //
 
 func TestDisabledNode(t *testing.T) {
-	obj, err := New(context.Background(), meshConfig(t, ""))
+	obj, err := New(meshConfig(t, ""))
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -88,17 +88,14 @@ func TestRatatoskrLoggerUsesZerolog(t *testing.T) {
 }
 
 func TestMissingPemFileErrors(t *testing.T) {
-	_, err := New(context.Background(), meshConfig(t, filepath.Join(t.TempDir(), "absent.pem")))
+	_, err := New(meshConfig(t, filepath.Join(t.TempDir(), "absent.pem")))
 	if err == nil {
 		t.Fatal("expected error for missing pem file")
 	}
 }
 
 func TestEnabledNodeStartsAndCloses(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	obj, err := New(ctx, meshConfig(t, writeGeneratedPEM(t)))
+	obj, err := New(meshConfig(t, writeGeneratedPEM(t)))
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}

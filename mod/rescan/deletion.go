@@ -59,10 +59,21 @@ func (obj *Obj) applyDeletionGrace(ctx context.Context, key string, upstreamSet 
 		if obj.incMiss(key, version) < graceCycles {
 			continue
 		}
+		var applyErr error
 		if deleteMode {
-			_ = obj.storageObj.DeleteVersion(ctx, key, version)
+			applyErr = obj.storageObj.DeleteVersion(ctx, key, version)
 		} else {
-			_ = obj.storageObj.MarkUpstreamDeleted(ctx, key, version)
+			applyErr = obj.storageObj.MarkUpstreamDeleted(ctx, key, version)
+		}
+		if applyErr != nil {
+			// The miss counter is kept so a failed apply retries next cycle instead of earning extra grace.
+			obj.logObj.Warn().
+				Str("component", "rescan").
+				Str("key", key).
+				Str("version", version).
+				Str("error", applyErr.Error()).
+				Msg("failed to apply upstream deletion")
+			continue
 		}
 		obj.resetMiss(key, version)
 	}

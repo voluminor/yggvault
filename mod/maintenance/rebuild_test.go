@@ -1,4 +1,4 @@
-package main
+package maintenance
 
 import (
 	"context"
@@ -126,10 +126,10 @@ func TestRebuildAndSelfTest(t *testing.T) {
 		t.Fatalf("Publish: %v", err)
 	}
 
-	listenerArr := listenerContextsFromConfig(cfgObj, "")
+	listenerArr := ListenersFromConfig(cfgObj, "")
 	planCount := materializeFromStorage(t, ctx, storeObj, overlayObj, listenerArr, key, version)
 
-	driftArr, err := selfTestFormats(ctx, storeObj, overlayObj, listenerArr)
+	driftArr, err := SelfTestFormats(ctx, storeObj, overlayObj, listenerArr)
 	if err != nil {
 		t.Fatalf("selfTestFormats: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestRebuildAndSelfTest(t *testing.T) {
 		t.Fatalf("unexpected drift on fresh store: %+v", driftArr)
 	}
 
-	resultObj, err := rebuildAllArtifacts(ctx, storeObj, overlayObj, listenerArr)
+	resultObj, err := RebuildArtifacts(ctx, storeObj, overlayObj, listenerArr)
 	if err != nil {
 		t.Fatalf("rebuildAllArtifacts: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestRebuildAndSelfTest(t *testing.T) {
 		t.Fatalf("corrupt RegisterArtifact: %v", err)
 	}
 
-	repairObj, err := rebuildAllArtifacts(ctx, storeObj, overlayObj, listenerArr)
+	repairObj, err := RebuildArtifacts(ctx, storeObj, overlayObj, listenerArr)
 	if err != nil {
 		t.Fatalf("rebuild after corruption: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestRebuildAndSelfTest(t *testing.T) {
 		t.Fatalf("rebuild must fix corruption: %+v", repairObj)
 	}
 
-	driftArr2, err := selfTestFormats(ctx, storeObj, overlayObj, listenerArr)
+	driftArr2, err := SelfTestFormats(ctx, storeObj, overlayObj, listenerArr)
 	if err != nil {
 		t.Fatalf("selfTestFormats post-repair: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestUpgradeReconcilePrunesLegacyUniversalAndCreatesMissing(t *testing.T) {
 		t.Fatalf("Publish: %v", err)
 	}
 
-	listenerArr := listenerContextsFromConfig(cfgObj, "")
+	listenerArr := ListenersFromConfig(cfgObj, "")
 	materializeFromStorage(t, ctx, storeObj, overlayObj, listenerArr, key, version)
 
 	storedArr, err := storeObj.ListArtifacts(ctx, key, version)
@@ -285,16 +285,26 @@ func TestUpgradeReconcilePrunesLegacyUniversalAndCreatesMissing(t *testing.T) {
 	if err = storeObj.RegisterArtifact(ctx, legacy); err != nil {
 		t.Fatalf("register legacy row: %v", err)
 	}
+	// Legacy global go-zip row: never planned (go-zip is per-listener) and unreachable after the
+	// exact-listener LocateKey change, so reconcile must prune it.
+	legacyGoGlobal := zipGlobal
+	legacyGoGlobal.MaterializerID = stcode.MaterializerGo.String()
+	legacyGoGlobal.FormatVersion = 1
+	legacyGoGlobal.BodyHash = core.HashBytes([]byte("OLD-GO-GLOBAL"))
+	legacyGoGlobal.SizeBytes = 555
+	if err = storeObj.RegisterArtifact(ctx, legacyGoGlobal); err != nil {
+		t.Fatalf("register legacy global go-zip row: %v", err)
+	}
 	if err = storeObj.DeleteArtifact(ctx, artifactKeyOf(targzGlobal)); err != nil {
 		t.Fatalf("delete planned row: %v", err)
 	}
 
-	resultObj, err := rebuildAllArtifacts(ctx, storeObj, overlayObj, listenerArr)
+	resultObj, err := RebuildArtifacts(ctx, storeObj, overlayObj, listenerArr)
 	if err != nil {
 		t.Fatalf("rebuildAllArtifacts: %v", err)
 	}
-	if resultObj.Pruned < 1 {
-		t.Fatalf("legacy per-listener universal row must be pruned: %+v", resultObj)
+	if resultObj.Pruned < 2 {
+		t.Fatalf("legacy per-listener universal and global go-zip rows must be pruned: %+v", resultObj)
 	}
 	if resultObj.Created < 1 {
 		t.Fatalf("deleted planned row must be re-created: %+v", resultObj)
@@ -302,6 +312,9 @@ func TestUpgradeReconcilePrunesLegacyUniversalAndCreatesMissing(t *testing.T) {
 
 	if _, ok, gErr := storeObj.GetArtifact(ctx, artifactKeyOf(legacy)); gErr != nil || ok {
 		t.Fatalf("legacy per-listener universal row must be gone: ok=%v err=%v", ok, gErr)
+	}
+	if _, ok, gErr := storeObj.GetArtifact(ctx, artifactKeyOf(legacyGoGlobal)); gErr != nil || ok {
+		t.Fatalf("legacy global go-zip row must be gone: ok=%v err=%v", ok, gErr)
 	}
 	gotZip, ok, err := storeObj.GetArtifact(ctx, artifactKeyOf(zipGlobal))
 	if err != nil || !ok || gotZip.BodyHash != zipGlobal.BodyHash {
@@ -312,7 +325,7 @@ func TestUpgradeReconcilePrunesLegacyUniversalAndCreatesMissing(t *testing.T) {
 		t.Fatalf("global tar.gz must be re-created with the raw digest: ok=%v err=%v hashMatch=%v", ok, err, gotTargz.BodyHash == targzGlobal.BodyHash)
 	}
 
-	driftArr, err := selfTestFormats(ctx, storeObj, overlayObj, listenerArr)
+	driftArr, err := SelfTestFormats(ctx, storeObj, overlayObj, listenerArr)
 	if err != nil || len(driftArr) != 0 {
 		t.Fatalf("post-reconcile drift: len=%d err=%v", len(driftArr), err)
 	}
@@ -348,7 +361,7 @@ func TestRebuildCreatesCompletelyMissingArtifactSet(t *testing.T) {
 		t.Fatalf("Publish: %v", err)
 	}
 
-	listenerArr := listenerContextsFromConfig(cfgObj, "")
+	listenerArr := ListenersFromConfig(cfgObj, "")
 	planCount := materializeFromStorage(t, ctx, storeObj, overlayObj, listenerArr, key, version)
 	storedArr, err := storeObj.ListArtifacts(ctx, key, version)
 	if err != nil {
@@ -360,7 +373,7 @@ func TestRebuildCreatesCompletelyMissingArtifactSet(t *testing.T) {
 		}
 	}
 
-	resultObj, err := rebuildAllArtifacts(ctx, storeObj, overlayObj, listenerArr)
+	resultObj, err := RebuildArtifacts(ctx, storeObj, overlayObj, listenerArr)
 	if err != nil {
 		t.Fatalf("rebuildAllArtifacts: %v", err)
 	}

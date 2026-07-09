@@ -34,6 +34,8 @@ flowchart LR
 - Detection must be deterministic from tree contents and listener/domain context.
 - Go zip validity follows `golang.org/x/mod/zip` constraints, including fold collisions and invalid names.
 - Symlink trees are not Go-publishable.
+- Go module path rewrite is size-stable by contract: the size reported to `modzip.Create` must equal the length of the
+  content later opened for the same file. `rewriteContent` and `rewrittenSize` share one scanner to keep this invariant.
 - Builders must not trust staged files after validation; storage reopens and verifies staged content before commit.
 - Artifact identifiers include listener id when output depends on host or scheme; raw universal archives use the global
   listener id.
@@ -52,3 +54,8 @@ flowchart LR
 Overlay code is intentionally strict. A tree that is valid as a universal archive can still be blocked for Go if it
 would produce a module zip that Go tooling rejects. The version remains published; only Go-specific artifacts are
 disabled.
+
+Go zip block reasons are grouped into stable categories before they are persisted. Known `x/mod/zip` invalid-path,
+collision, and size-limit errors keep their existing labels. Unknown future invalid errors use
+`unclassified module zip errors`; `mod/rescan` counts that label with `rescan_go_zip_unclassified_total` so dependency
+wording drift is visible after upgrades instead of being silently merged into invalid paths.

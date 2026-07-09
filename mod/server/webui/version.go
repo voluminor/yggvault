@@ -8,7 +8,7 @@ import (
 	"github.com/voluminor/yggvault/mod/internal/util"
 	"github.com/voluminor/yggvault/mod/overlay"
 	"github.com/voluminor/yggvault/mod/server/artifactio"
-	"github.com/voluminor/yggvault/mod/server/pager"
+	"github.com/voluminor/yggvault/mod/server/link"
 	"github.com/voluminor/yggvault/mod/view"
 	"github.com/voluminor/yggvault/target/stcode"
 )
@@ -40,7 +40,7 @@ func artifactHashes(artifactObj core.ArtifactObj) []view.ArtifactHashObj {
 // found=false means 404; listenerID keeps host-sensitive artifacts in sync.
 // altOv/altListenerID bind the opposite entry. nil altOv disables alternate snippets to avoid mixing
 // host-sensitive artifacts and current-entry module paths with a different host.
-func Version(ctx context.Context, st StateReaderInterface, store DetailReaderInterface, ov OverlayInterface, lnk LinkInterface, ctxObj view.ContextObj, key string, version string, listenerID string, altOv OverlayInterface, altListenerID string) ([]byte, bool, error) {
+func Version(ctx context.Context, st StateReaderInterface, store DetailReaderInterface, ov OverlayInterface, lnk link.Obj, ctxObj view.ContextObj, key string, version string, listenerID string, altOv OverlayInterface, altListenerID string) ([]byte, bool, error) {
 	rnd, err := renderer()
 	if err != nil {
 		return nil, false, err
@@ -127,7 +127,7 @@ func Version(ctx context.Context, st StateReaderInterface, store DetailReaderInt
 		altArr := versionSnippets(ctx, store, altOv, lnk, key, version, altObj.Scheme, altObj.CopyHost, altListenerID, detectionObj, detectionOK)
 		viewModel.AltInstall = dropDuplicateSnippets(altArr, viewModel.Install)
 	}
-	fillHistoryNav(ctx, store, key, version, &viewModel)
+	fillHistoryNav(ctx, store, versionObj, &viewModel)
 
 	bodyArr, err := rnd.Version(viewModel)
 	if err != nil {
@@ -136,7 +136,7 @@ func Version(ctx context.Context, st StateReaderInterface, store DetailReaderInt
 	return bodyArr, true, nil
 }
 
-func versionSnippets(ctx context.Context, store DetailReaderInterface, ov OverlayInterface, lnk LinkInterface, key string, version string, scheme string, host string, listenerID string, detectionObj core.DetectionObj, detectionOK bool) []view.CodeSnippetObj {
+func versionSnippets(ctx context.Context, store DetailReaderInterface, ov OverlayInterface, lnk link.Obj, key string, version string, scheme string, host string, listenerID string, detectionObj core.DetectionObj, detectionOK bool) []view.CodeSnippetObj {
 	var snippetArr []view.CodeSnippetObj
 
 	var goCand, composerCand *overlay.CandidateObj
@@ -187,20 +187,14 @@ func universalSha256(ctx context.Context, store DetailReaderInterface, key strin
 
 // fillHistoryNav finds immediate newer/older neighbors by newest-first keyset walk.
 // It stops after the match and two neighbors; history navigation errors must not fail the whole page.
-func fillHistoryNav(ctx context.Context, store DetailReaderInterface, key string, version string, viewModel *view.VersionObj) {
-	previousVer := ""
-	matched := false
-	_ = pager.EachVersion(ctx, store, key, func(versionObj core.VersionObj) (bool, error) {
-		if matched {
-			viewModel.History.OlderVersion = versionObj.Version
-			return true, nil
-		}
-		if versionObj.Version == version {
-			viewModel.History.NewerVersion = previousVer
-			matched = true
-			return false, nil
-		}
-		previousVer = versionObj.Version
-		return false, nil
-	})
+// fillHistoryNav sets the immediate newer/older neighbors of versionObj with two bounded keyset lookups
+// (LIMIT 1 each) around its (upstream_seq, version) cursor, instead of scanning the whole history from the
+// head. This keeps the version page O(1) in history length and avoids the O(N^2) enumeration amplification.
+func fillHistoryNav(ctx context.Context, store DetailReaderInterface, versionObj core.VersionObj, viewModel *view.VersionObj) {
+	if olderArr, err := store.ListVersionsKeyset(ctx, versionObj.Key, false, versionObj.UpstreamSeq, versionObj.Version, 1); err == nil && len(olderArr) > 0 {
+		viewModel.History.OlderVersion = olderArr[0].Version
+	}
+	if newerArr, err := store.ListVersionsKeysetBefore(ctx, versionObj.Key, false, versionObj.UpstreamSeq, versionObj.Version, 1); err == nil && len(newerArr) > 0 {
+		viewModel.History.NewerVersion = newerArr[0].Version
+	}
 }

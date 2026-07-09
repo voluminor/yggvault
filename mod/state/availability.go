@@ -88,7 +88,9 @@ func applyUnavailable(preparedObj availabilityPreparedObj, permanentAt uint32) b
 	previousScan := preparedObj.mutObj.lastScan
 	previousReclass := preparedObj.mutObj.reclassAllowed
 
-	if preparedObj.mutObj.unavailableCycles < ^uint32(0) {
+	// Freeze the counter at permanentAt: once permanent-down, further increments only churn the snapshot
+	// (a changed count under an unchanged status) without adding information.
+	if preparedObj.mutObj.unavailableCycles < permanentAt {
 		preparedObj.mutObj.unavailableCycles++
 	}
 

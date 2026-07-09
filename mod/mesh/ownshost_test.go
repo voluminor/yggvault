@@ -1,14 +1,13 @@
 package mesh
 
 import (
-	"context"
 	"testing"
 )
 
 // // // // // // // // // //
 
 func TestOwnsHostYggLiteral(t *testing.T) {
-	obj, err := New(context.Background(), meshConfig(t, ""))
+	obj, err := New(meshConfig(t, ""))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

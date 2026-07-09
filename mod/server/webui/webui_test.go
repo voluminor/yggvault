@@ -79,6 +79,9 @@ func (f *fakeDetailStoreObj) GetArtifact(_ context.Context, keyObj core.Artifact
 func (f *fakeDetailStoreObj) ListVersionsKeyset(_ context.Context, key string, _ bool, afterSeq int64, afterVersion string, limit int) ([]core.VersionObj, error) {
 	return keysetForward(f.versions[key], afterSeq, afterVersion, limit), nil
 }
+func (f *fakeDetailStoreObj) ListVersionsKeysetBefore(_ context.Context, key string, _ bool, beforeSeq int64, beforeVersion string, limit int) ([]core.VersionObj, error) {
+	return keysetBefore(f.versions[key], beforeSeq, beforeVersion, limit), nil
+}
 
 // keysetForward returns the newest-first slice strictly after the (seq,version) cursor; empty starts at head.
 func keysetForward(arr []core.VersionObj, afterSeq int64, afterVersion string, limit int) []core.VersionObj {
@@ -361,17 +364,21 @@ func TestFillHistoryNavNeighbors(t *testing.T) {
 	store := &fakeDetailStoreObj{versions: map[string][]core.VersionObj{
 		key: {mk("v3.0.0", 3), mk("v2.0.0", 2), mk("v1.0.0", 1)},
 	}}
-	cases := []struct{ version, newer, older string }{
-		{"v3.0.0", "", "v2.0.0"},
-		{"v2.0.0", "v3.0.0", "v1.0.0"},
-		{"v1.0.0", "v2.0.0", ""},
+	cases := []struct {
+		target core.VersionObj
+		newer  string
+		older  string
+	}{
+		{mk("v3.0.0", 3), "", "v2.0.0"},
+		{mk("v2.0.0", 2), "v3.0.0", "v1.0.0"},
+		{mk("v1.0.0", 1), "v2.0.0", ""},
 	}
 	for _, tc := range cases {
 		var viewModel view.VersionObj
-		fillHistoryNav(context.Background(), store, key, tc.version, &viewModel)
+		fillHistoryNav(context.Background(), store, tc.target, &viewModel)
 		if viewModel.History.NewerVersion != tc.newer || viewModel.History.OlderVersion != tc.older {
 			t.Errorf("%s: got newer=%q older=%q, want newer=%q older=%q",
-				tc.version, viewModel.History.NewerVersion, viewModel.History.OlderVersion, tc.newer, tc.older)
+				tc.target.Version, viewModel.History.NewerVersion, viewModel.History.OlderVersion, tc.newer, tc.older)
 		}
 	}
 }

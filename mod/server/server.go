@@ -9,16 +9,17 @@ import (
 	"github.com/voluminor/yggvault/mod/mesh"
 	"github.com/voluminor/yggvault/mod/server/brother"
 	"github.com/voluminor/yggvault/mod/server/static"
+	"github.com/voluminor/yggvault/mod/telemetry"
 	"github.com/voluminor/yggvault/target/api"
 	"github.com/voluminor/yggvault/target/stconf"
 )
 
 // // // // // // // // // //
 
-// ServerObj holds the edge server.
+// Obj holds the edge server.
 // A single ogen router serves per-listener http.Server instances on web and Yggdrasil sockets.
 // Routing and response encoding stay in the router; listeners and lifecycle live here and in listener.go.
-type ServerObj struct {
+type Obj struct {
 	cfg         *stconf.ConfigObj
 	router      *api.Server
 	meshObj     mesh.NodeInterface
@@ -49,16 +50,22 @@ func loadTLS(certFile string, keyFile string) (*tls.Config, error) {
 // New assembles the edge server in three steps: funcObj, sub-services, then the ogen router.
 // The router receives telemetry, middleware, error handling and not-found pages.
 // Listener sockets are bound separately in Start from listener.go.
-func New(depsObj DepsObj) (*ServerObj, error) {
+func New(depsObj DepsObj) (*Obj, error) {
 	assetSnapshotObj, err := buildAssetSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	// telemetry methods are nil-tolerant and fall back to a noop provider, so no guard is needed here.
+	edgeMetricsObj, err := newEdgeMetrics(depsObj.Telemetry.Meter(telemetry.GroupCore))
 	if err != nil {
 		return nil, err
 	}
 	funcImplObj := &funcObj{
 		deps:          depsObj,
-		objCache:      newObjCache(),
+		objCache:      newObjCache(depsObj.BuildGate),
 		assets:        assetSnapshotObj,
 		contactGroups: sortedContactGroups(depsObj.Config.Info.Contacts),
+		edgeMetrics:   edgeMetricsObj,
 	}
 
 	specObj, err := newOpenAPISpec(depsObj.Config)
@@ -82,7 +89,7 @@ func New(depsObj DepsObj) (*ServerObj, error) {
 		return nil, err
 	}
 
-	serverObj := &ServerObj{
+	serverObj := &Obj{
 		cfg:         depsObj.Config,
 		meshObj:     depsObj.Mesh,
 		tlsConfig:   tlsConfigObj,
@@ -123,7 +130,7 @@ func buildStaticSnapshot(cfgObj *stconf.ConfigObj) (*static.SnapshotObj, error) 
 }
 
 // Shutdown first closes brother sessions, then drains http.Server until the ctx deadline.
-func (obj *ServerObj) Shutdown(ctx context.Context) error {
+func (obj *Obj) Shutdown(ctx context.Context) error {
 	obj.brotherObj.Close()
 	return obj.shutdownListeners(ctx)
 }

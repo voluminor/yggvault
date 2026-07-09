@@ -107,8 +107,10 @@ func loadNodeConfig(pemPath string) (*yggconfig.NodeConfig, error) {
 // // // // // // // // // //
 
 // New starts a node when pem_key is set and returns a disabled Obj when it is empty.
+// The node lifetime is owned by Close, never by a caller context: tying it to the signal context
+// would begin mesh self-shutdown at SIGTERM, before the HTTP listeners drain ygg requests.
 // With a logger, ratatoskr events go through the shared pipeline; otherwise library noise is discarded.
-func New(ctx context.Context, configObj *stconf.ConfigObj, logArr ...zerolog.Logger) (*Obj, error) {
+func New(configObj *stconf.ConfigObj, logArr ...zerolog.Logger) (*Obj, error) {
 	yg := configObj.Ygg
 	if yg.PemKey == "" {
 		return &Obj{enabled: false}, nil
@@ -124,8 +126,8 @@ func New(ctx context.Context, configObj *stconf.ConfigObj, logArr ...zerolog.Log
 		return nil, fmt.Errorf("build node sigils: %w", err)
 	}
 
+	// Ctx stays nil: ratatoskr then requires a manual Close, which runtime shutdown guarantees.
 	nodeConfigObj := ratatoskr.ConfigObj{
-		Ctx:             ctx,
 		Config:          cfg,
 		CoreStopTimeout: cCoreStopTimeout,
 		Peers:           buildPeerManager(yg),

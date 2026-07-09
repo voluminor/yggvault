@@ -4,8 +4,6 @@ package sqliteindex
 
 import (
 	"net/url"
-	"path/filepath"
-	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -27,12 +25,4 @@ func sqliteDSN(pathToFile string) string {
 	valueObj.Add("_pragma", "synchronous(NORMAL)")
 	dsnObj.RawQuery = valueObj.Encode()
 	return dsnObj.String()
-}
-
-func sqliteURIPath(pathToFile string) string {
-	pathText := filepath.ToSlash(pathToFile)
-	if filepath.VolumeName(pathToFile) != "" && !strings.HasPrefix(pathText, "/") {
-		return "/" + pathText
-	}
-	return pathText
 }

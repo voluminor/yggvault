@@ -110,7 +110,7 @@ func (obj *Obj) finishCycle(ctx context.Context) {
 	obj.composerKeyByName = nameToKey
 	obj.composerMu.Unlock()
 
-	obj.pruneMissMap()
+	obj.pruneMissMap(ctx)
 
 	if contentHashObj, err := obj.storageObj.ContentChecksum(ctx); err == nil {
 		obj.stateObj.SetContentChecksum(contentHashObj)
@@ -142,7 +142,7 @@ func (obj *Obj) reconcileKeyStats(ctx context.Context, key string) {
 	})
 }
 
-func (obj *Obj) pruneMissMap() {
+func (obj *Obj) pruneMissMap(ctx context.Context) {
 	validSet := make(map[string]struct{}, len(obj.keyArr))
 	for _, keyText := range obj.keyArr {
 		validSet[keyText] = struct{}{}
@@ -162,7 +162,37 @@ func (obj *Obj) pruneMissMap() {
 			delete(obj.permFailMap, failObj)
 		}
 	}
+	for keyText := range obj.permFailLoadMissObj {
+		if _, ok := validSet[keyText]; !ok {
+			delete(obj.permFailLoadMissObj, keyText)
+		}
+	}
 	obj.permFailMu.Unlock()
+
+	// Durable quarantine follows configured keys too; removed keys must not keep rows forever.
+	if obj.storageObj == nil || ctx.Err() != nil {
+		return
+	}
+	quarantineKeyArr, err := obj.storageObj.ListIngestFailureKeys(ctx)
+	if err != nil {
+		obj.logObj.Warn().
+			Str("component", "rescan").
+			Str("error", err.Error()).
+			Msg("failed to list ingest quarantine keys for pruning")
+		return
+	}
+	for _, keyText := range quarantineKeyArr {
+		if _, ok := validSet[keyText]; ok {
+			continue
+		}
+		if delErr := obj.storageObj.DeleteKeyIngestFailures(ctx, keyText); delErr != nil {
+			obj.logObj.Warn().
+				Str("component", "rescan").
+				Str("key", keyText).
+				Str("error", delErr.Error()).
+				Msg("failed to prune ingest quarantine for removed key")
+		}
+	}
 }
 
 // // // // // // // // // //

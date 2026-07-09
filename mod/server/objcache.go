@@ -7,16 +7,19 @@ import (
 	"time"
 
 	"golang.org/x/sync/singleflight"
+
+	"github.com/voluminor/yggvault/mod/cache"
+	"github.com/voluminor/yggvault/mod/internal/util"
 )
 
 // // // // // // // // // //
 
 const (
-	// cObjCacheCap caps live object-cache entries.
-	// Two generations make the real cap about 2*cap without per-entry eviction.
+	// cObjCacheCap bounds the typed cache by entries, not bytes: serializing just to weigh entries costs more than it saves.
+	// Two generations give an effective ceiling of about 2*cap without per-entry eviction.
 	cObjCacheCap = 4096
 
-	// cObjBuildBudget caps detached builds so abandoned singleflight calls do not run forever.
+	// cObjBuildBudget limits detached builds abandoned by cancelled clients.
 	cObjBuildBudget = 60 * time.Second
 )
 
@@ -29,36 +32,32 @@ type objEntryObj struct {
 
 type objCacheObj struct {
 	muObj     sync.Mutex
-	curMap    map[string]objEntryObj
-	prevMap   map[string]objEntryObj
+	genMap    *util.GenMapObj[objEntryObj]
 	flightObj singleflight.Group
+	buildGate *cache.BuildGateObj
 }
 
 // // // //
 
-func newObjCache() *objCacheObj {
-	return &objCacheObj{curMap: make(map[string]objEntryObj, cObjCacheCap), prevMap: map[string]objEntryObj{}}
+func newObjCache(gateObj *cache.BuildGateObj) *objCacheObj {
+	return &objCacheObj{
+		genMap:    util.NewGenMap[objEntryObj](cObjCacheCap),
+		buildGate: gateObj,
+	}
 }
 
 func (obj *objCacheObj) lookup(key string, nowNano int64) (any, bool) {
 	obj.muObj.Lock()
 	defer obj.muObj.Unlock()
-	if entryObj, ok := obj.curMap[key]; ok {
-		if nowNano >= entryObj.expiry {
-			delete(obj.curMap, key)
-			return nil, false
-		}
-		return entryObj.value, true
+	entryObj, ok := obj.genMap.Get(key)
+	if !ok {
+		return nil, false
 	}
-	if entryObj, ok := obj.prevMap[key]; ok {
-		if nowNano >= entryObj.expiry {
-			delete(obj.prevMap, key)
-			return nil, false
-		}
-		obj.curMap[key] = entryObj
-		return entryObj.value, true
+	if nowNano >= entryObj.expiry {
+		obj.genMap.Delete(key)
+		return nil, false
 	}
-	return nil, false
+	return entryObj.value, true
 }
 
 func (obj *objCacheObj) store(key string, value any, ttl time.Duration, nowNano int64) {
@@ -67,11 +66,7 @@ func (obj *objCacheObj) store(key string, value any, ttl time.Duration, nowNano 
 	}
 	obj.muObj.Lock()
 	defer obj.muObj.Unlock()
-	if len(obj.curMap) >= cObjCacheCap {
-		obj.prevMap = obj.curMap
-		obj.curMap = make(map[string]objEntryObj, cObjCacheCap)
-	}
-	obj.curMap[key] = objEntryObj{value: value, expiry: nowNano + ttl.Nanoseconds()}
+	obj.genMap.Put(key, objEntryObj{value: value, expiry: nowNano + ttl.Nanoseconds()})
 }
 
 func (obj *objCacheObj) getOrBuild(ctx context.Context, key string, ttl time.Duration, build func(context.Context) (any, error)) (any, error) {
@@ -89,6 +84,10 @@ func (obj *objCacheObj) getOrBuild(ctx context.Context, key string, ttl time.Dur
 		}
 		buildCtx, cancelBuild := context.WithTimeout(context.WithoutCancel(ctx), cObjBuildBudget)
 		defer cancelBuild()
+		if err := obj.buildGate.Acquire(buildCtx); err != nil {
+			return nil, err
+		}
+		defer obj.buildGate.Release()
 		builtValue, buildErr := build(buildCtx)
 		if buildErr != nil {
 			return nil, buildErr

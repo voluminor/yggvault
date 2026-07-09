@@ -16,6 +16,8 @@ flowchart LR
 
 - Provide filesystem helpers for atomic writes, directory sizing, path checks, and system memory inspection.
 - Provide shared version-name predicates that do not belong to `mod/core`.
+- Provide small shared building blocks reused across packages (FNV string hashing, a generational map) so map
+  sharding and bounded-eviction logic is written once instead of duplicated.
 - Keep implementation helpers out of public package surfaces.
 
 ## Contracts
@@ -27,7 +29,7 @@ flowchart LR
 ## Important Files
 
 - `osfs/`: filesystem and OS-level helpers.
-- `util/`: version and path predicates.
+- `util/`: version/path predicates plus small shared helpers (`hash.go` FNV, `genmap.go` generational map).
 
 ## Operational Notes
 

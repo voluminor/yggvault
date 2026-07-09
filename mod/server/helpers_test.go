@@ -171,12 +171,12 @@ func TestStripMajor(t *testing.T) {
 
 // // // // // // // // // //
 
-func nestedServer(t *testing.T) *ServerObj {
+func nestedServer(t *testing.T) *Obj {
 	t.Helper()
 	cfgObj := stconf.FullConfig()
 	cfgObj.Web.Static.Dir = t.TempDir()
 	cfgObj.Web.Routing.Prefix = "pkg"
-	return &ServerObj{cfg: cfgObj, funcImplObj: &funcObj{deps: DepsObj{Config: cfgObj}}}
+	return &Obj{cfg: cfgObj, funcImplObj: &funcObj{deps: DepsObj{Config: cfgObj}}}
 }
 
 func TestSplitNested(t *testing.T) {

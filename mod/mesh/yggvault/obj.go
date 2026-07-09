@@ -1,9 +1,9 @@
 package yggvault
 
 import (
-	"github.com/voluminor/ratatoskr/mod/sigils"
+	"fmt"
 
-	"github.com/voluminor/yggvault/target"
+	"github.com/voluminor/ratatoskr/mod/sigils"
 )
 
 // // // // // // // // // //
@@ -17,13 +17,37 @@ type Obj struct {
 
 var _ sigils.Interface = (*Obj)(nil)
 
-// New builds the sigil from generated target build metadata.
-func New() *Obj {
-	return &Obj{
-		version: target.Version,
-		hash:    target.Hash,
-		date:    target.DateUpdate,
+// New validates and creates the publisher sigil with node build metadata.
+func New(version string, hash string, date string) (*Obj, error) {
+	if err := validateFields(version, hash, date); err != nil {
+		return nil, err
 	}
+	return &Obj{version: version, hash: hash, date: date}, nil
+}
+
+// // // // // // // // // //
+
+func validateField(name string, value string, required bool) error {
+	if required && value == "" {
+		return fmt.Errorf("%s must not be empty", name)
+	}
+	if len(value) > cMaxValueBytes {
+		return fmt.Errorf("%s exceeds %d bytes", name, cMaxValueBytes)
+	}
+	return nil
+}
+
+func validateFields(version string, hash string, date string) error {
+	if err := validateField(cKeyVersion, version, true); err != nil {
+		return err
+	}
+	if err := validateField(cKeyHash, hash, false); err != nil {
+		return err
+	}
+	if err := validateField(cKeyDate, date, false); err != nil {
+		return err
+	}
+	return nil
 }
 
 // // // // // // // // // //

@@ -272,12 +272,15 @@ func (obj *Obj) enforceDurableHardLimitLocked(ctx context.Context) error {
 			return err
 		}
 		obj.lastHardLimitCompact = time.Now()
-		if obj.realDurableBytes() <= maxBytes {
-			return nil
-		}
+	}
+	// Authoritative fresh measurement, computed once and reused for both the decision and the error payload.
+	// RealDiskBytes walks the LSM under the global Pebble mutex, so it must not be recomputed per use.
+	currentBytes := obj.realDurableBytes()
+	if currentBytes <= maxBytes {
+		return nil
 	}
 	obj.triggerGC()
-	return newCacheQuotaErr(cCacheAreaDurable, cQuotaCheckHardLimit, nil, obj.realDurableBytes(), 0, 0, 0, maxBytes, uint32(obj.configObj.Storage.Quota.RetainLatestPerKey))
+	return newCacheQuotaErr(cCacheAreaDurable, cQuotaCheckHardLimit, nil, currentBytes, 0, 0, 0, maxBytes, uint32(obj.configObj.Storage.Quota.RetainLatestPerKey))
 }
 
 func (obj *Obj) hotBudgetUnderLimitLocked(incomingBytes uint64, maxBytes uint64) bool {

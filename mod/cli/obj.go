@@ -15,7 +15,7 @@ const (
 	cCommandMakeYggKey = "make-ygg-key"
 	cCommandValidate   = "validate-config"
 
-	// Maintenance command names are public and shared by cli flags/validation/help and root main JSON rendering.
+	// Maintenance command names are public and shared by cli flags/validation/help and mod/maintenance rendering.
 	CommandInspect      = "inspect"
 	CommandPrune        = "prune"
 	CommandVacuum       = "vacuum"

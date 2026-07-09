@@ -138,7 +138,7 @@ func requestEvent(logObj *zerolog.Logger, r *http.Request, status int) *zerolog.
 	return eventObj
 }
 
-func (obj *ServerObj) logAccess(w *accessWriterObj, r *http.Request, startedAt time.Time) {
+func (obj *Obj) logAccess(w *accessWriterObj, r *http.Request, startedAt time.Time) {
 	status := w.status()
 	requestEvent(&obj.logObj, r, status).
 		Dur("duration", time.Since(startedAt)).

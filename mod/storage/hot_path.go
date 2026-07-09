@@ -247,3 +247,34 @@ func (obj *Obj) openValidHotFile(ctx context.Context, artifactObj core.ArtifactO
 	}
 	return &HotFileObj{Path: filePath, File: fileObj, SizeBytes: artifactObj.SizeBytes, BodyHash: artifactObj.BodyHash, cleanup: releaseFunc}, true, nil
 }
+
+// validateSharedHotFile re-checks a hot file handed back from an artifact flight against the current
+// artifact metadata. Waiters that join a shared build reopen the file independently and never pass through
+// openValidHotFile, so this is where their fd gets its type/size check and the verify_on_read policy. A
+// content mismatch removes the corrupt hot file so the next request rebuilds it.
+func (obj *Obj) validateSharedHotFile(ctx context.Context, keyObj core.ArtifactKeyObj, fileObj *HotFileObj, artifactObj core.ArtifactObj) error {
+	if fileObj == nil || fileObj.File == nil {
+		return errors.New("artifact hot file is nil")
+	}
+	infoObj, err := fileObj.File.Stat()
+	if err != nil {
+		return err
+	}
+	if !osfs.IsRegularFile(infoObj) || uint64(infoObj.Size()) != artifactObj.SizeBytes {
+		return newArtifactBuildErr(keyObj, nil, cArtifactCheckStaleSize, "", "", artifactObj.SizeBytes, uint64(infoObj.Size()))
+	}
+	if fileObj.BodyHash != artifactObj.BodyHash {
+		return newArtifactBuildErr(keyObj, nil, cArtifactCheckStaleHash, artifactObj.BodyHash.Hex(), fileObj.BodyHash.Hex(), 0, 0)
+	}
+	if !obj.shouldVerifyHotRead() {
+		return nil
+	}
+	if err = hotverify.VerifyOpenHotFile(ctx, fileObj.File, infoObj, artifactObj.BodyHash, artifactObj.SizeBytes); err != nil {
+		if errors.Is(err, hotverify.ErrHashMismatch) {
+			_ = obj.removeHotPath(fileObj.Path)
+			return newArtifactBuildErr(keyObj, err, cArtifactCheckStaleHash, artifactObj.BodyHash.Hex(), fileObj.BodyHash.Hex(), 0, 0)
+		}
+		return err
+	}
+	return nil
+}

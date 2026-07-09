@@ -50,6 +50,7 @@ func (h *handlerObj) Hello(_ brotherwire.HelloArgObj, reply *brotherwire.HelloRe
 	reply.Protocol = brotherwire.Protocol
 	reply.MaxFetchResponseBytes = h.fetchResponseBytes()
 	reply.MaxFetchBatchCount = uint32(h.fetchBatchCount())
+	reply.IndexKeyset = true
 	return nil
 }
 
@@ -60,12 +61,22 @@ func (h *handlerObj) Index(arg brotherwire.IndexArgObj, reply *brotherwire.Index
 	if pageNum < 1 {
 		pageNum = 1
 	}
-	if pageNum > cMaxIndexPage {
+	useKeyset := arg.AfterVersion != "" || pageNum == 1
+	if !useKeyset && pageNum > cMaxIndexPage {
 		reply.Source = h.sourceInfo(arg.Key)
 		return nil
 	}
-	offset := int(pageNum-1) * cIndexPageSize
-	versionArr, err := h.storeObj.ListVersionsPage(h.ctx, arg.Key, false, cIndexPageSize+1, offset)
+
+	var (
+		versionArr []core.VersionObj
+		err        error
+	)
+	if useKeyset {
+		versionArr, err = h.storeObj.ListVersionsKeyset(h.ctx, arg.Key, false, arg.AfterSeq, arg.AfterVersion, cIndexPageSize+1)
+	} else {
+		offset := int(pageNum-1) * cIndexPageSize
+		versionArr, err = h.storeObj.ListVersionsPage(h.ctx, arg.Key, false, cIndexPageSize+1, offset)
+	}
 	if err != nil {
 		return err
 	}

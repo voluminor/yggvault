@@ -76,7 +76,7 @@ func listenerCtxFrom(ctx context.Context) listenerCtxObj {
 	return lc
 }
 
-func (obj *ServerObj) webListenerCtx(protoHTTPS bool) listenerCtxObj {
+func (obj *Obj) webListenerCtx(protoHTTPS bool) listenerCtxObj {
 	limiterObj := newLimiter(obj.cfg.RateLimit.Web.Http.RequestsPerSecond, obj.cfg.RateLimit.Web.Http.Burst)
 	peerObj := newPeerLimiter(obj.cfg.RateLimit.Web.Http.PerPeer.RequestsPerSecond, obj.cfg.RateLimit.Web.Http.PerPeer.Burst, obj.cfg.RateLimit.Web.Http.PerPeer.MaxTracked)
 	if protoHTTPS {
@@ -95,7 +95,7 @@ func (obj *ServerObj) webListenerCtx(protoHTTPS bool) listenerCtxObj {
 	}
 }
 
-func (obj *ServerObj) yggListenerCtx() listenerCtxObj {
+func (obj *Obj) yggListenerCtx() listenerCtxObj {
 	return listenerCtxObj{
 		listenerID:             stcode.ListenerYgg,
 		entryHost:              obj.meshObj.Host(),
@@ -108,7 +108,7 @@ func (obj *ServerObj) yggListenerCtx() listenerCtxObj {
 	}
 }
 
-func (obj *ServerObj) newHTTPServer(lc listenerCtxObj) *http.Server {
+func (obj *Obj) newHTTPServer(lc listenerCtxObj) *http.Server {
 	return &http.Server{
 		Handler:           obj.Handler(lc),
 		MaxHeaderBytes:    int(obj.cfg.Web.Ingress.ReadBufferSize),
@@ -117,14 +117,14 @@ func (obj *ServerObj) newHTTPServer(lc listenerCtxObj) *http.Server {
 	}
 }
 
-func (obj *ServerObj) addListener(label string, serverObj *http.Server, netListener net.Listener, httpsListener bool) {
+func (obj *Obj) addListener(label string, serverObj *http.Server, netListener net.Listener, httpsListener bool) {
 	if httpsListener && obj.tlsConfig != nil {
 		netListener = tls.NewListener(netListener, obj.tlsConfig)
 	}
 	obj.listenerArr = append(obj.listenerArr, &listenerObj{label: label, httpServer: serverObj, netListener: netListener})
 }
 
-func (obj *ServerObj) closeListeners() {
+func (obj *Obj) closeListeners() {
 	for _, entryObj := range obj.listenerArr {
 		if entryObj.netListener != nil {
 			_ = entryObj.netListener.Close()
@@ -133,7 +133,7 @@ func (obj *ServerObj) closeListeners() {
 	obj.listenerArr = nil
 }
 
-func (obj *ServerObj) buildListeners() (err error) {
+func (obj *Obj) buildListeners() (err error) {
 	defer func() {
 		if err != nil {
 			obj.closeListeners()
@@ -179,7 +179,7 @@ func (obj *ServerObj) buildListeners() (err error) {
 // // // // // // // // // //
 
 // Start binds sockets and serves each listener in its own goroutine.
-func (obj *ServerObj) Start() error {
+func (obj *Obj) Start() error {
 	if err := obj.buildListeners(); err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func (obj *ServerObj) Start() error {
 	return nil
 }
 
-func (obj *ServerObj) shutdownListeners(ctx context.Context) error {
+func (obj *Obj) shutdownListeners(ctx context.Context) error {
 	var wgObj sync.WaitGroup
 	errChan := make(chan error, len(obj.listenerArr))
 	for i := range obj.listenerArr {
