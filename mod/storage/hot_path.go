@@ -172,7 +172,7 @@ func (obj *Obj) shouldVerifyHotRead() bool {
 	}
 }
 
-func (obj *Obj) shouldRetainArtifactLocked(ctx context.Context, keyObj core.ArtifactKeyObj) (bool, error) {
+func (obj *Obj) shouldRetainArtifact(ctx context.Context, keyObj core.ArtifactKeyObj) (bool, error) {
 	switch obj.configObj.Storage.Hot.Retain {
 	case stcfg.CacheRetainModeAll:
 		return true, nil

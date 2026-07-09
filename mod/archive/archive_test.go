@@ -476,6 +476,52 @@ func TestExtractTarGzRejectsTrailingData(t *testing.T) {
 	}
 }
 
+func TestExtractTarGzAcceptsRecordPadding(t *testing.T) {
+	// GNU tar, git archive and bsdtar pad the tar stream to a full record with zero blocks inside the
+	// single gzip member; tar.Reader leaves that padding undecoded. It must not be rejected as trailing data.
+	var tarBufObj bytes.Buffer
+	tarWriterObj := tar.NewWriter(&tarBufObj)
+	bodyArr := []byte("hello record padding\n")
+	if err := tarWriterObj.WriteHeader(&tar.Header{Name: "repo/a.txt", Mode: 0o644, Size: int64(len(bodyArr)), Typeflag: tar.TypeReg}); err != nil {
+		t.Fatalf("WriteHeader returned error: %v", err)
+	}
+	if _, err := tarWriterObj.Write(bodyArr); err != nil {
+		t.Fatalf("tar Write returned error: %v", err)
+	}
+	if err := tarWriterObj.Close(); err != nil {
+		t.Fatalf("tar Close returned error: %v", err)
+	}
+	const recordSize = 10240
+	if padCount := recordSize - tarBufObj.Len()%recordSize; padCount != recordSize {
+		tarBufObj.Write(make([]byte, padCount))
+	}
+
+	sourcePath := filepath.Join(t.TempDir(), "padded.tar.gz")
+	fileObj, err := os.Create(sourcePath)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	gzipWriterObj := gzip.NewWriter(fileObj)
+	if _, err = gzipWriterObj.Write(tarBufObj.Bytes()); err != nil {
+		t.Fatalf("gzip Write returned error: %v", err)
+	}
+	if err = gzipWriterObj.Close(); err != nil {
+		t.Fatalf("gzip Close returned error: %v", err)
+	}
+	if err = fileObj.Close(); err != nil {
+		t.Fatalf("file Close returned error: %v", err)
+	}
+
+	archiveObj := newTestObj(t, testLimitsObj())
+	spoolPath := t.TempDir()
+	if _, err = extractSourceObj(t, archiveObj, FormatTarGz, sourcePath, spoolPath); err != nil {
+		t.Fatalf("extract of record-padded tar.gz returned error: %v", err)
+	}
+	if countValue := spoolEntryCount(t, spoolPath); countValue != 1 {
+		t.Fatalf("spool entries=%d, want 1", countValue)
+	}
+}
+
 func TestExtractCountsDirectoryHeaders(t *testing.T) {
 	limitsObj := testLimitsObj()
 	limitsObj.MaxArchiveFiles = 1

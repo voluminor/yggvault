@@ -20,8 +20,9 @@ func sqliteDSN(pathToFile string) string {
 	valueObj.Add("_pragma", "busy_timeout(5000)")
 	valueObj.Add("_pragma", "foreign_keys(ON)")
 	valueObj.Add("_pragma", "journal_mode(WAL)")
-	// NORMAL under WAL fsyncs WAL on commit, but skips FULL's extra checkpoint sync.
-	// There is no corruption risk; power loss can only lose the latest committed transaction.
+	// WAL + synchronous=NORMAL fsyncs the WAL only at checkpoint, not on each commit (that is FULL).
+	// No corruption risk, but power loss can roll back any transaction committed since the last
+	// checkpoint; a commit is durable across a process crash, not across power loss.
 	valueObj.Add("_pragma", "synchronous(NORMAL)")
 	dsnObj.RawQuery = valueObj.Encode()
 	return dsnObj.String()

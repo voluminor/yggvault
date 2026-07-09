@@ -230,16 +230,17 @@ func (obj *Obj) buildHotFile(ctx context.Context, keyObj core.ArtifactKeyObj, ar
 	artifactObj.BodySha256 = writerObj.sha256Obj.Sum(nil)
 	artifactObj.BodySha1 = writerObj.sha1Obj.Sum(nil)
 
+	retainFlag, err := obj.shouldRetainArtifact(ctx, keyObj)
+	if err != nil {
+		return nil, err
+	}
+
 	obj.writeMu.Lock()
 	defer obj.writeMu.Unlock()
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
-	}
-	retainFlag, err := obj.shouldRetainArtifactLocked(ctx, keyObj)
-	if err != nil {
-		return nil, err
 	}
 	hotTargetText := hotArtifactPath(obj.hotDir, artifactObj)
 	if !retainFlag {

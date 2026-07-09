@@ -123,6 +123,10 @@ web:
       value: "120s"
       min: "1s"
       usage: "Keep-alive idle timeout for incoming connections. Limits how long slow or idle clients can hold sockets. Accepts values such as `120s`, `1m`, or a nanosecond integer."
+    max_connections:
+      type: uint
+      value: 0
+      usage: "Maximum number of simultaneously accepted connections per listener, applied to every HTTP listener including web and Yggdrasil. 0 disables the limit. When set, connections beyond the limit wait in the accept backlog until a slot frees."
   static:
     usage:
       - "Optional user static tree served by the web listener."

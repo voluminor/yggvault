@@ -118,6 +118,7 @@ func (obj *Obj) newHTTPServer(lc listenerCtxObj) *http.Server {
 }
 
 func (obj *Obj) addListener(label string, serverObj *http.Server, netListener net.Listener, httpsListener bool) {
+	netListener = newLimitListener(netListener, obj.cfg.Web.Ingress.MaxConnections)
 	if httpsListener && obj.tlsConfig != nil {
 		netListener = tls.NewListener(netListener, obj.tlsConfig)
 	}

@@ -17,11 +17,16 @@ func (obj *funcObj) GetComposerPackages(ctx context.Context, params api.GetCompo
 	if condMatch(params.IfNoneMatch, etag) {
 		return &api.NotModifiedRespObj{}, nil
 	}
-	body := composer.BuildPackages(obj.deps.Overlay, obj.deps.Composer)
+	built, err := obj.cachedObj(ctx, etag, func(context.Context) (any, error) {
+		return composer.BuildPackages(obj.deps.Overlay, obj.deps.Composer), nil
+	})
+	if err != nil {
+		return nil, err
+	}
 	return &api.ComposerPackagesObjHeaders{
 		ETag:         api.NewOptString(etag),
 		CacheControl: api.NewOptString(obj.cacheControlData()),
-		Response:     *body,
+		Response:     *built.(*api.ComposerPackagesObj),
 	}, nil
 }
 
@@ -37,11 +42,16 @@ func (obj *funcObj) GetComposerPackageList(ctx context.Context, params api.GetCo
 	if condMatch(params.IfNoneMatch, etag) {
 		return &api.NotModifiedRespObj{}, nil
 	}
-	body := composer.BuildPackageList(obj.deps.Overlay, obj.deps.Composer, filter)
+	built, err := obj.cachedObj(ctx, etag, func(context.Context) (any, error) {
+		return composer.BuildPackageList(obj.deps.Overlay, obj.deps.Composer, filter), nil
+	})
+	if err != nil {
+		return nil, err
+	}
 	return &api.ComposerPackageListObjHeaders{
 		ETag:         api.NewOptString(etag),
 		CacheControl: api.NewOptString(obj.cacheControlData()),
-		Response:     *body,
+		Response:     *built.(*api.ComposerPackageListObj),
 	}, nil
 }
 
