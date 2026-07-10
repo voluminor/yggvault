@@ -22,6 +22,7 @@ import (
 	"github.com/voluminor/yggvault/mod/state"
 	"github.com/voluminor/yggvault/mod/storage"
 	"github.com/voluminor/yggvault/mod/telemetry"
+	"github.com/voluminor/yggvault/target"
 	"github.com/voluminor/yggvault/target/stcode"
 	"github.com/voluminor/yggvault/target/stconf"
 )
@@ -89,6 +90,8 @@ func runRuntime(bootObj *cli.Obj) error {
 	}
 
 	rt.loggerObj.Zero().Info().
+		Str("version", target.Version).
+		Str("hash", target.Hash[len(target.Hash)-8:]).
 		Str("domain", rt.configObj.Web.Server.Domain).
 		Bool("ygg", rt.mesh.Enabled()).
 		Bool("metrics", rt.telemetry.Enabled()).

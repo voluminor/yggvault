@@ -541,6 +541,43 @@ func TestVersionAltBazelUsesAltArtifactSha(t *testing.T) {
 	}
 }
 
+func TestVersionAltDownloadUsesAltArtifactSha(t *testing.T) {
+	key, version := "pkg/alpha", "v2.0.0"
+	webSha := bytes.Repeat([]byte{0xAA}, 32)
+	yggSha := bytes.Repeat([]byte{0xBB}, 32)
+	vObj := core.VersionObj{Key: key, Version: version, IngestTS: time.Now(), SourceSizeBytes: 200, TreeHash: core.HashBytes([]byte("tree"))}
+	store := &fakeDetailStoreObj{
+		found:     true,
+		versionOf: map[string]core.VersionObj{key + "@" + version: vObj},
+		versions:  map[string][]core.VersionObj{key: {vObj}},
+		artifacts: []core.ArtifactObj{
+			{MaterializerID: cUniversalMatzer, ArtifactKind: "zip", ListenerID: stcode.ListenerWeb.String(), Key: key, Version: version, BodyHash: core.HashBytes([]byte("web-body")), BodySha256: webSha, SizeBytes: 100},
+			{MaterializerID: cUniversalMatzer, ArtifactKind: "zip", ListenerID: stcode.ListenerYgg.String(), Key: key, Version: version, BodyHash: core.HashBytes([]byte("ygg-body")), BodySha256: yggSha, SizeBytes: 100},
+		},
+	}
+	lnk := link.Obj{Scheme: "https", EntryHost: "vault.test"}
+	st := seedState()
+	ctxObj := testContext(st, lnk)
+	ctxObj.Alternate = view.AlternateObj{Channel: "ygg", Scheme: "http", Host: "[200:1::1]", CopyHost: "node.pk.ygg"}
+
+	bodyArr, found, err := Version(context.Background(), st, store, fakeOverlayObj{}, lnk, ctxObj, key, version, stcode.ListenerWeb.String(), nil, stcode.ListenerYgg.String())
+	if err != nil || !found {
+		t.Fatalf("Version: err=%v found=%v", err, found)
+	}
+	body := string(bodyArr)
+	webHex := strings.Repeat("aa", 32)
+	yggHex := strings.Repeat("bb", 32)
+	if !strings.Contains(body, "download via yggdrasil mesh") {
+		t.Error("version page must expose alternate download commands when alternate artifacts are available")
+	}
+	if !strings.Contains(body, "http://node.pk.ygg/pkg/alpha/v2.0.0.zip") || !strings.Contains(body, yggHex) {
+		t.Error("alternate download command must use the alternate host and artifact sha256")
+	}
+	if strings.Contains(body, "http://node.pk.ygg/pkg/alpha/v2.0.0.zip\nprintf '%s  %s\\n' '"+webHex) {
+		t.Error("alternate download command must not reuse the current-listener sha256")
+	}
+}
+
 // Without artifact or publishability on the alternate entry, matching snippets disappear silently.
 func TestVersionAltSnippetsSkippedWhenAltUnavailable(t *testing.T) {
 	body := altSnippetFixture(t, false, false)

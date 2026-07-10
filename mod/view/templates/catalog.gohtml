@@ -20,6 +20,18 @@
         {{end}}
     </div>
 {{end}}
+<div class="origin-row">
+    <dl class="kv">
+        <dt>mirror health</dt>
+        <dd><span class="status st-{{.HealthStatus}}"><span
+                        class="dot"></span>{{if .ProblemCount}}attention{{else}}ok{{end}}</span>
+        </dd>
+        <dt>sources</dt>
+        <dd>{{.OnlineCount}} available &middot; {{.ProblemCount}} need attention</dd>
+        <dt>catalog</dt>
+        <dd>{{.Count}} key{{if ne .Count 1}}s{{end}} mirrored</dd>
+    </dl>
+</div>
 {{if .Keys}}
     <div class="only-js filter"><input type="search" data-filter placeholder="filter packages&hellip;"
                                        aria-label="filter packages" autocomplete="off"></div>

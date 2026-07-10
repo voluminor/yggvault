@@ -101,29 +101,35 @@ func Version(ctx context.Context, st StateReaderInterface, store DetailReaderInt
 	if err != nil {
 		return nil, false, err
 	}
+	altObj := ctxObj.Alternate
 	for i := range artifactArr {
 		artifactObj := artifactArr[i]
-		// Host-sensitive archives exist per entry; show current-entry variants plus host-independent artifacts.
-		if artifactObj.ListenerID != cListenerGlobal && artifactObj.ListenerID != listenerID {
-			continue
-		}
 		nameText, suffix := artifactio.NameSuffix(artifactObj)
-		viewModel.Downloads = append(viewModel.Downloads, view.ArtifactEntryObj{
+		pathText := lnk.Key(artifactObj.Key, suffix)
+		entryObj := view.ArtifactEntryObj{
 			Name:      nameText,
 			Kind:      artifactObj.ArtifactKind,
 			SizeBytes: artifactObj.SizeBytes,
 			Hashes:    artifactHashes(artifactObj),
-			URL:       lnk.Key(artifactObj.Key, suffix),
+			URL:       pathText,
 			GoModule:  artifactObj.MaterializerID == cGoMatzer,
-		})
-		if artifactObj.DegradedReason != "" {
-			viewModel.Degraded = append(viewModel.Degraded, artifactObj.DegradedReason)
+		}
+		// Host-sensitive archives exist per entry; show each block only with its own listener hashes.
+		if artifactObj.ListenerID == cListenerGlobal || artifactObj.ListenerID == listenerID {
+			viewModel.Downloads = append(viewModel.Downloads, entryObj)
+			if artifactObj.DegradedReason != "" {
+				viewModel.Degraded = append(viewModel.Degraded, artifactObj.DegradedReason)
+			}
+		}
+		if altObj.CopyHost != "" && (artifactObj.ListenerID == cListenerGlobal || artifactObj.ListenerID == altListenerID) {
+			entryObj.AbsURL = absURL(altObj.Scheme, altObj.CopyHost, pathText)
+			viewModel.AltDownloads = append(viewModel.AltDownloads, entryObj)
 		}
 	}
 
 	scheme, host := schemeHost(lnk)
 	viewModel.Install = versionSnippets(ctx, store, ov, lnk, key, version, scheme, host, listenerID, detectionObj, detectionOK)
-	if altObj := ctxObj.Alternate; altObj.CopyHost != "" && altOv != nil {
+	if altObj.CopyHost != "" && altOv != nil {
 		altArr := versionSnippets(ctx, store, altOv, lnk, key, version, altObj.Scheme, altObj.CopyHost, altListenerID, detectionObj, detectionOK)
 		viewModel.AltInstall = dropDuplicateSnippets(altArr, viewModel.Install)
 	}
