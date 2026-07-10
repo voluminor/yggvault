@@ -359,7 +359,9 @@ jobs:
           set -Eeuo pipefail
           ORIG_SHA=$(git rev-parse HEAD)
 
-          git add -f target tmp
+          # go.sum is gitignored but must ship in the tag: the release source
+          # archive is built without go.work/firststart, so `go build` needs it.
+          git add -f target tmp go.sum
 
           paths_arr=()
           while IFS= read -r -d '' path; do
@@ -374,6 +376,14 @@ jobs:
 
           git commit -m "release(${BUILD_VER}): embed generated assets, strip dev assets"
           git tag -a "${BUILD_VER}" -m "Release ${BUILD_VER}"
+
+          # Smoke-check before push: the tag tree must build standalone from a bare
+          # archive, exactly like a user following the source-archive instructions.
+          verify_dir="${RUNNER_TEMP}/tag-verify"
+          mkdir -p "$verify_dir"
+          git archive "${BUILD_VER}" | tar -x -C "$verify_dir"
+          (cd "$verify_dir" && CGO_ENABLED=0 go build -o /dev/null .)
+
           git push origin "${BUILD_VER}"
 
           git reset --hard "$ORIG_SHA"

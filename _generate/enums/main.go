@@ -71,13 +71,13 @@ func main() {
 	raw, err := os.ReadFile(*sourcePath)
 	if err != nil {
 		fmt.Println("Error reading enums config:", err)
-		return
+		os.Exit(1)
 	}
 
 	data, err := buildTemplateObj(string(raw))
 	if err != nil {
 		fmt.Println("Error loading enums config:", err)
-		return
+		os.Exit(1)
 	}
 
 	outPath := filepath.Join("target", packageName)
@@ -87,6 +87,7 @@ func main() {
 	err = dep.WriteFileFromTemplate(outPath, templateText, data)
 	if err != nil {
 		fmt.Println("Error saving generated file:", err)
+		os.Exit(1)
 	}
 }
 

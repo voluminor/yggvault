@@ -195,7 +195,7 @@ ygg:
   pem_key:
     type: string
     usage:
-      - "Path to the node private key in PEM format."
+      - "Path to the node private key in PEM format. Create a key with `yggvault --make-ygg-key`."
       - "Relative paths are resolved against the process working directory."
       - "Empty value fully disables Yggdrasil ingress."
       - "When enabled, the node publishes HTTP on fixed Yggdrasil service port 80. Its host is `<PublicKey>.pk.ygg`; its transport address is an IPv6 address in 200::/7."
@@ -318,8 +318,8 @@ metrics:
     usage: "Metrics exposed on the web ingress."
     public:
       type: bool
-      value: true
-      usage: "Publishes the HTML metrics index at /metrics and the JSON metric groups on web routes: /metrics/core, /metrics/cache, /metrics/errors, and /metrics/rescan."
+      value: false
+      usage: "Publishes the HTML metrics index at /metrics and the JSON metric groups on web routes: /metrics/core, /metrics/cache, /metrics/errors, and /metrics/rescan. Disabled by default: metrics stay operator-only until explicitly exposed."
     internal:
       type: bool
       value: false
@@ -328,8 +328,8 @@ metrics:
     usage: "Metrics exposed on the Yggdrasil ingress."
     public:
       type: bool
-      value: true
-      usage: "Publishes the HTML metrics index and JSON metric groups on Yggdrasil routes. Same group set as metrics.web.public."
+      value: false
+      usage: "Publishes the HTML metrics index and JSON metric groups on Yggdrasil routes. Same group set as metrics.web.public. Disabled by default."
     internal:
       type: bool
       value: false
@@ -707,6 +707,7 @@ overlay:
       usage:
         - "Allows yggvault to rewrite go.mod and Go imports when the upstream module path differs from the public target module path."
         - "If rewrite is required and this flag is false, the Go overlay for that version is not published."
+        - "Universal `.zip`/`.tar.gz` archives are always raw and unaffected by this flag."
 
 history_policy:
   usage: "Version mutation and deletion policy for the local history chain."

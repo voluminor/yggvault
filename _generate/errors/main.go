@@ -77,19 +77,20 @@ func main() {
 	raw, err := os.ReadFile(*sourcePath)
 	if err != nil {
 		fmt.Println("Error reading errors config:", err)
-		return
+		os.Exit(1)
 	}
 
 	data, err := buildTemplateObj(string(raw))
 	if err != nil {
 		fmt.Println("Error loading errors config:", err)
-		return
+		os.Exit(1)
 	}
 
 	outPath := filepath.Join("target", packageName, fileName)
 	err = dep.WriteFileFromTemplate(outPath, templateText, data)
 	if err != nil {
 		fmt.Println("Error saving generated file:", err)
+		os.Exit(1)
 	}
 }
 

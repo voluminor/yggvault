@@ -50,7 +50,7 @@ Common CLI commands such as `--make-preset`, `--make-ygg-key`, `--validate-confi
 - [Ready Config Fragments](#ready-config-fragments)
   - [Production Behind a Reverse Proxy](#production-behind-a-reverse-proxy)
   - [TLS Inside yggvault](#tls-inside-yggvault)
-  - [Disable All Metrics](#disable-all-metrics)
+  - [Metrics Are Off by Default](#metrics-are-off-by-default)
   - [Public JSON Metrics and Prometheus/VictoriaMetrics](#public-json-metrics-and-prometheusvictoriametrics)
   - [HTTP, Yggdrasil, and RPC Limits](#http-yggdrasil-and-rpc-limits)
   - [Storage Quota and Archive Limits](#storage-quota-and-archive-limits)
@@ -347,7 +347,7 @@ web:
       listen: "0.0.0.0:443"
 ```
 
-### Disable All Metrics
+### Metrics Are Off by Default
 
 ```yaml
 metrics:
@@ -361,8 +361,8 @@ metrics:
     enabled: false
 ```
 
-When public, internal, and push metrics are disabled, telemetry does not collect snapshots and `/metrics/*` is not
-published.
+These are the defaults. While public, internal, and push metrics are all disabled, telemetry does not collect
+snapshots and `/metrics/*` is not published; enable a switch below to expose metrics.
 
 ### Public JSON Metrics and Prometheus/VictoriaMetrics
 

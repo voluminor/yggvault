@@ -31,12 +31,7 @@ web:
   ingress:
     max_request_uri_bytes: 4096
     read_buffer_size: 32768
-
-  static:
-    dir: ""
-
-  routing:
-    prefix: "pkg"
+    max_connections: 1024
 
 ygg:
   pem_key: "./yggvault.pem"
@@ -47,16 +42,29 @@ ygg:
       # - https://publicpeers.neilalexander.dev/
       - "tls://replace-with-nearby-public-peer.example:443"
 
+rate_limit:
+  web:
+    http:
+      per_peer:
+        requests_per_second: 16
+        burst: 64
+  ygg:
+    per_peer:
+      requests_per_second: 16
+      burst: 64
+
+metrics:
+  web:
+    public: true
+  ygg:
+    public: true
+
 source:
   request_timeout: "30s"
 
 release_mirrors:
   core-module: "https://example.org/mirror/core-module/"
   api-module: "https://example.org/mirror/api-module/"
-
-overlay:
-  go:
-    rewrite_enabled: false
 
 history_policy:
   mutation: "history"
