@@ -960,19 +960,19 @@ Brother wire DTOs are in [mod/brotherwire](mod/brotherwire/README.md). The serve
 
 ### CLI
 
-| Command                                                                              | Purpose                                                                       |
-|--------------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
-| `yggvault <config.yml>`                                                              | start the server                                                              |
-| `yggvault --config <config.yml>`                                                     | same, explicit form                                                           |
-| `--validate-config <config.yml>`                                                     | validate config and exit                                                      |
-| `--make-preset <minimal\|medium\|full> [--out <dir>] [--format <yaml\|json\|hjson>]` | generate a config preset                                                      |
-| `--make-ygg-key [--force]`                                                           | create `./yggvault.pem` and print `<hex>.pk.ygg`                              |
-| `--inspect <config.yml>`                                                             | show keys, versions, sizes, and storage orphan estimate                       |
-| `--prune <config.yml> [--force]`                                                     | delete storage keys missing from `release_mirrors`; dry-run without `--force` |
-| `--vacuum <config.yml>`                                                              | run SQLite VACUUM and Pebble compaction                                       |
-| `--rebuild-cache <config.yml>`                                                       | rebuild hot artifacts and digest helpers                                      |
-| `--info` or `-i`                                                                     | show project and dependency versions                                          |
-| `--help` or `-h`                                                                     | show help                                                                     |
+| Command                                                                                                 | Purpose                                                                       |
+|---------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
+| `yggvault <config.yml>`                                                                                 | start the server                                                              |
+| `yggvault --config <config.yml>`                                                                        | same, explicit form                                                           |
+| `--validate-config <config.yml> [--json]`                                                               | validate config and exit                                                      |
+| `--make-preset <minimal\|medium\|full> [--out <dir>] [--format <yaml\|json\|hjson>] [--force] [--json]` | generate a config preset                                                      |
+| `--make-ygg-key [--force] [--json]`                                                                     | create `./yggvault.pem` and print `<hex>.pk.ygg`                              |
+| `--inspect <config.yml> [--json]`                                                                       | show keys, versions, sizes, and storage orphan estimate                       |
+| `--prune <config.yml> [--force] [--json]`                                                               | delete storage keys missing from `release_mirrors`; dry-run without `--force` |
+| `--vacuum <config.yml> [--json]`                                                                        | run SQLite VACUUM and Pebble compaction                                       |
+| `--rebuild-cache <config.yml> [--json]`                                                                 | rebuild hot artifacts and digest helpers                                      |
+| `--info [--json]` or `-i`                                                                               | show project and dependency versions                                          |
+| `--help [--json]` or `-h`                                                                               | show help                                                                     |
 
 Maintenance commands require exclusive access to storage. Stop the running server before `inspect`, `prune`, `vacuum`,
 and `rebuild-cache`. The command implementation lives in [mod/maintenance](mod/maintenance/README.md); root files only
@@ -1020,17 +1020,17 @@ The table below shows root-mode paths. In nested mode, user static files own `/`
 generated media move under `web.routing.prefix`, for example `/pkg/catalog.json` and `/pkg/sitemap.xml`; `/health`,
 `/info`, `/metrics`, and `/openapi.json` stay at the root.
 
-| Group         | Routes                                                                                                               |
-|---------------|----------------------------------------------------------------------------------------------------------------------|
-| Service       | `/health`, `/info`, `/openapi.json`                                                                                  |
-| Metrics       | `/metrics`, `/metrics/core`, `/metrics/cache`, `/metrics/errors`, `/metrics/rescan`, `/metrics/internal`             |
-| Browser/media | `/`, `/{key}`, `/{key}/{version}`, `/favicon.ico`, `/logo/{size}.png`, `/og.png`, `/og/{key}.png`, `/sitemap.xml`    |
-| Release API   | `/catalog.json`, `/{key}/releases.json`, `/{key}/{version}.json`, `/{key}/latest`, `/{key}/list`, `/{key}/list/full` |
-| Archives      | `/{key}/{version}.zip`, `/{key}/{version}.tar.gz`                                                                    |
-| Go proxy      | `/{key}/@latest`, `/{key}/@v/list`, `/{key}/@v/{version}.info`, `/{key}/@v/{version}.mod`, `/{key}/@v/{version}.zip` |
-| Composer      | `/packages.json`, `/packages/list.json`, `/p2/{vendor}/{package}.json`, `/p2/{vendor}/{package}~dev.json`            |
-| Atom          | `/feed.xml`, `/{key}/releases.xml`                                                                                   |
-| Brother       | `CONNECT /rpc`                                                                                                       |
+| Group         | Routes                                                                                                                           |
+|---------------|----------------------------------------------------------------------------------------------------------------------------------|
+| Service       | `/health`, `/info`, `/openapi.json`                                                                                              |
+| Metrics       | `/metrics`, `/metrics/core`, `/metrics/cache`, `/metrics/errors`, `/metrics/rescan`, `/metrics/internal`                         |
+| Browser/media | `/`, `/{key}`, `/{key}/{version}`, `/favicon.ico`, `/logo/{size}`, `/og.png`, `/og/{key}`, `/og/{key}/{version}`, `/sitemap.xml` |
+| Release API   | `/catalog.json`, `/{key}/releases.json`, `/{key}/{version}.json`, `/{key}/latest`, `/{key}/list`, `/{key}/list/full`             |
+| Archives      | `/{key}/{version}.zip`, `/{key}/{version}.tar.gz`                                                                                |
+| Go proxy      | `/{key}/@latest`, `/{key}/@v/list`, `/{key}/@v/{version}.info`, `/{key}/@v/{version}.mod`, `/{key}/@v/{version}.zip`             |
+| Composer      | `/packages.json`, `/packages/list.json`, `/p2/{vendor}/{package}.json`, `/p2/{vendor}/{package}~dev.json`                        |
+| Atom          | `/feed.xml`, `/{key}/releases.xml`                                                                                               |
+| Brother       | `CONNECT /rpc`                                                                                                                   |
 
 Go routes also support major paths such as `/{key}/vN/@v/list`, `/{key}/vN/@latest`, and related
 `@v/{version}` endpoints.

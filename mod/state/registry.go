@@ -290,8 +290,6 @@ func (obj *Obj) RaiseDiagnostic(diagnosticObj DiagnosticObj) error {
 	case err != nil && !fullRebuildFlag:
 		obj.publishHealthChangedLocked(true)
 	default:
-		// Structural changes and in-place count/lastSeen bumps both reorder the LastSeen-desc window,
-		// so rebuild to keep the snapshot sorted. Rebuild is O(active) with active capped small.
 		obj.publishChangedLocked(true)
 	}
 	return err

@@ -18,13 +18,10 @@ import (
 const (
 	cQuotaEvictPageSize = 1024
 
-	// cHardLimitCompactMinInterval debounces full backstop compaction under writeMu.
 	cHardLimitCompactMinInterval = 30 * time.Second
 
-	// cRealBytesCacheTTL caches physical disk usage for the admission gate and avoids Pebble mutex stalls.
 	cRealBytesCacheTTL = 2 * time.Second
 
-	// cHotBytesCacheTTL caches the hot-cache size estimate and skips the full WalkDir while there is headroom under the limit.
 	cHotBytesCacheTTL = 2 * time.Second
 )
 
@@ -273,8 +270,6 @@ func (obj *Obj) enforceDurableHardLimitLocked(ctx context.Context) error {
 		}
 		obj.lastHardLimitCompact = time.Now()
 	}
-	// Authoritative fresh measurement, computed once and reused for both the decision and the error payload.
-	// RealDiskBytes walks the LSM under the global Pebble mutex, so it must not be recomputed per use.
 	currentBytes := obj.realDurableBytes()
 	if currentBytes <= maxBytes {
 		return nil

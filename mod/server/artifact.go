@@ -17,9 +17,9 @@ import (
 type rangeSpecObj struct {
 	start        int64
 	length       int64
-	contentRange string // "bytes start-end/size" for 206
-	partial      bool   // true means 206; false means 200
-	satisfiable  bool   // false → 416
+	contentRange string
+	partial      bool
+	satisfiable  bool
 }
 
 // // // // // // // // // //
@@ -90,8 +90,6 @@ func decideRange(rangeHeader api.OptString, ifRange api.OptString, etag string, 
 
 // // // // // // // // // //
 
-// artifactGateObj is the artifact conditional-header decision from already resolved metadata.
-// spec is set only when a body is needed, meaning neither 304 nor HEAD.
 type artifactGateObj struct {
 	etag        string
 	spec        rangeSpecObj
@@ -99,8 +97,6 @@ type artifactGateObj struct {
 	headOnly    bool
 }
 
-// gateArtifact computes ETag and parses If-None-Match/HEAD/Range once for go-zip and universal serving.
-// The body is not opened here.
 func gateArtifact(ctx context.Context, artObj core.ArtifactObj, ifNoneMatch api.OptString, rangeHeader api.OptString, ifRange api.OptString) artifactGateObj {
 	etag := artifactio.ETag(artObj)
 	if condMatch(ifNoneMatch, etag) {

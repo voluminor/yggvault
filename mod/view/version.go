@@ -97,7 +97,6 @@ type (
 
 // // // // // // // // // //
 
-// cTagRe strips tags from already sanitized HTML for a plain-text excerpt.
 var cTagRe = regexp.MustCompile(`<[^>]*>`)
 
 func upstreamLabel(deleted bool) string {
@@ -107,14 +106,12 @@ func upstreamLabel(deleted bool) string {
 	return "present"
 }
 
-// notesExcerpt builds a short plain-text excerpt from rendered release notes for og:description.
 func notesExcerpt(notesHTML []byte, maxRunes int) string {
 	if len(notesHTML) == 0 {
 		return ""
 	}
 	text := html.UnescapeString(cTagRe.ReplaceAllString(string(notesHTML), " "))
 	text = strings.Join(strings.Fields(text), " ")
-	// Count runes incrementally to avoid allocating a full []rune for long notes.
 	runeCount, cutOffset := 0, 0
 	for byteIdx := range text {
 		if runeCount == maxRunes-1 {
@@ -130,7 +127,6 @@ func notesExcerpt(notesHTML []byte, maxRunes int) string {
 
 // // // // // // // // // //
 
-// fmtTimestamp formats UTC time; zero time means no data and renders empty.
 func fmtTimestamp(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -138,7 +134,6 @@ func fmtTimestamp(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04 UTC")
 }
 
-// fmtISO returns an RFC3339 timestamp for <time datetime>; zero time renders empty.
 func fmtISO(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -146,7 +141,6 @@ func fmtISO(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// buildVersion derives template-only fields for version.html.
 func buildDownloadRows(ctxObj ContextObj, entryArr []ArtifactEntryObj) ([]downloadObj, []downloadObj) {
 	var downloadArr, goDownloadArr []downloadObj
 	for i := range entryArr {
@@ -181,7 +175,6 @@ func buildDownloadRows(ctxObj ContextObj, entryArr []ArtifactEntryObj) ([]downlo
 	return downloadArr, goDownloadArr
 }
 
-// buildVersion derives template-only fields for version.html.
 func buildVersion(inputObj VersionObj, css template.CSS) versionTemplateObj {
 	downloadArr, goDownloadArr := buildDownloadRows(inputObj.Context, inputObj.Downloads)
 	altDownloadArr, _ := buildDownloadRows(inputObj.Context, inputObj.AltDownloads)
@@ -194,7 +187,6 @@ func buildVersion(inputObj VersionObj, css template.CSS) versionTemplateObj {
 	}
 
 	srcObj := normalizeSource(inputObj.Source)
-	// Render notes once; NotesHTML and the OG excerpt share the same sanitized result.
 	notesHTML := markdown.SafeHTML(inputObj.ReleaseNotesMarkdown)
 
 	descParts := []string{

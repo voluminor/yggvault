@@ -33,7 +33,6 @@ func gitReleases(versionArr ...string) []source.GitReleaseObj {
 	return releaseArr
 }
 
-// newGitVerifyEnv builds a full rescan fixture over a fake source for section 6 scenarios.
 func newGitVerifyEnv(t *testing.T, configObj *stconf.ConfigObj, fakeSrc *fakeSourceObj) (*Obj, *storage.Obj, *state.Obj) {
 	t.Helper()
 	ctx := context.Background()

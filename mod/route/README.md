@@ -1,7 +1,7 @@
 # mod/route
 
 `mod/route` contains stable service route constants shared by server, source discovery, tests, and generated-facing
-helpers. It prevents packages from spelling `/health`, `/info`, OpenAPI, metrics, logo, and similar routes differently.
+helpers. It prevents packages from spelling `/health`, `/info`, OpenAPI, metrics, and similar routes differently.
 
 ## Place in the Runtime
 

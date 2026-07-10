@@ -30,7 +30,8 @@ flowchart TB
 - `loadgen/`: small HTTP load generator used by shell scripts.
 - `run.sh`: storage benchmark wrapper.
 - `highload.sh`: live serving load wrapper.
-- `profile.sh`: pprof and trace collection helper.
+- `system.sh`: live stack benchmark with pprof and trace capture.
+- `system-sweep.sh`: full stack profile and sweep wrapper.
 
 ## Typical Runs
 

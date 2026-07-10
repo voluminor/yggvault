@@ -30,11 +30,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cDefaultShutdownBudget — fallback graceful-shutdown budget when shutdown_timeout is not set.
 	cDefaultShutdownBudget = 10 * time.Second
 
-	// cStorageCloseBudget — guaranteed budget for storage.Close: integrity (WAL checkpoint,
-	// step 6) is not sacrificed to draining. The real bound is storage's internal timers.
 	cStorageCloseBudget = 30 * time.Second
 )
 
@@ -53,7 +50,7 @@ type runtimeObj struct {
 	archive   *archive.Obj
 	rescan    *rescan.Obj
 	server    *server.Obj
-	profiling *http.Server // pprof loopback listener (nil when profiling.enabled=false)
+	profiling *http.Server
 
 	reconcileDone chan struct{}
 }

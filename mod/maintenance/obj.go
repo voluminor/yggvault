@@ -1,4 +1,3 @@
-// Package maintenance owns consistency upkeep for storage and materialized artifacts.
 package maintenance
 
 // // // // // // // // // //

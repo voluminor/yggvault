@@ -38,11 +38,6 @@ const cMaxFailureMessageBytes = 4096
 
 // //
 
-// classifyDegraded maps a per-version failure code to node health impact.
-// Error is reserved for node-side infrastructure codes: they retry every cycle and clear on success.
-// Content-deterministic codes can be quarantined and never retried, so they must never carry Error
-// impact — one bad upstream version would pin the whole node in error forever. For the same reason
-// unknown codes default to Degraded.
 func classifyDegraded(code string) (stcode.OperationalStatusType, stcode.LogReasonType) {
 	switch code {
 	case "spool_failed", "publish_failed", "resurrect_failed", "detect_failed",
@@ -52,10 +47,6 @@ func classifyDegraded(code string) (stcode.OperationalStatusType, stcode.LogReas
 		"brother_blobs_failed", "brother_blob_filter_failed":
 		return stcode.OperationalStatusDegraded, stcode.LogReasonUpstreamUnavailable
 	default:
-		// Known members: archive_invalid, tree_invalid, tree_hash_mismatch, public_mirror_hash_mismatch,
-		// brother_index_hash_mismatch, tree_decode_failed, heal_failed, and the deterministic overlay
-		// codes (go_symlink_in_module, go_manifest_missing, go_manifest_too_large,
-		// rewritten_file_too_large, invalid_artifact_ref, invalid_go_version).
 		return stcode.OperationalStatusDegraded, stcode.LogReasonContentRejected
 	}
 }
@@ -64,7 +55,6 @@ func boundedFailureMessage(messageText string) string {
 	return truncateUTF8(messageText, cMaxFailureMessageBytes, "...")
 }
 
-// markQuarantineDirtyLocked flags a key as needing a quarantine summary pass. permFailMu must be held.
 func (obj *Obj) markQuarantineDirtyLocked(key string) {
 	if obj.quarantineDirtyObj != nil {
 		obj.quarantineDirtyObj[key] = struct{}{}
@@ -104,7 +94,6 @@ func (obj *Obj) loadPermanentFailures() {
 			}
 			obj.permFailMap[missKeyObj{key: failureArr[i].Key, version: failureArr[i].Version}] = failureArr[i].RefSHA
 		}
-		// Any durable rows (active or stale-policy) need one reconcile pass on the first cycle.
 		if len(failureArr) > 0 {
 			obj.markQuarantineDirtyLocked(keyText)
 		}
@@ -143,8 +132,6 @@ func (obj *Obj) raiseQuarantineSummary(ctx context.Context, key string) {
 	skip := obj.quarantineDirtyObj != nil && !dirty && !loadMiss
 	obj.permFailMu.Unlock()
 	if skip {
-		// Healthy key: nothing in the hot skip cache, no failed startup load, and no raised diagnostic,
-		// so skip the durable ListIngestFailures round-trip that would otherwise run every cycle.
 		return
 	}
 	failureArr, err := obj.storageObj.ListIngestFailures(ctx, key)
@@ -159,7 +146,6 @@ func (obj *Obj) raiseQuarantineSummary(ctx context.Context, key string) {
 	activeArr := failureArr[:0]
 	for i := range failureArr {
 		if failureArr[i].Policy != core.IngestFailurePolicy {
-			// Rows recorded under an older unpack policy are invisible to skip logic; reclaim them lazily.
 			if delErr := obj.storageObj.DeleteIngestFailure(ctx, failureArr[i].Key, failureArr[i].Version); delErr != nil {
 				obj.logObj.Warn().
 					Str("component", "rescan").
@@ -172,8 +158,6 @@ func (obj *Obj) raiseQuarantineSummary(ctx context.Context, key string) {
 		}
 		activeArr = append(activeArr, failureArr[i])
 	}
-	// Self-heal the in-memory map (e.g. after a failed startup load): without the entry a later
-	// terminal success would never clear the durable row and the key would stay degraded forever.
 	obj.permFailMu.Lock()
 	for i := range activeArr {
 		missObj := missKeyObj{key: activeArr[i].Key, version: activeArr[i].Version}
@@ -183,7 +167,6 @@ func (obj *Obj) raiseQuarantineSummary(ctx context.Context, key string) {
 	}
 	delete(obj.permFailLoadMissObj, key)
 	if len(activeArr) == 0 {
-		// Fully reconciled: drop the dirty mark so later cycles short-circuit until a new failure appears.
 		delete(obj.quarantineDirtyObj, key)
 	}
 	obj.permFailMu.Unlock()
@@ -223,8 +206,6 @@ func (obj *Obj) raiseQuarantineSummary(ctx context.Context, key string) {
 
 // // // // // // // // // //
 
-// recoverPanic swallows a panic in a background rescan goroutine: a failure of one key must not bring down the process.
-// Called only via defer.
 func (obj *Obj) recoverPanic(scope string, key string) {
 	recovered := recover()
 	if recovered == nil {
@@ -257,7 +238,6 @@ func (obj *Obj) recoverPanic(scope string, key string) {
 
 func (obj *Obj) raiseVersionDegraded(key string, version string, code string, err error) {
 	impactObj, reasonObj := classifyDegraded(code)
-	// State keeps only counters, so live degradation debugging needs this log line.
 	obj.logObj.Warn().
 		Str("component", "rescan").
 		Str("code", code).
@@ -305,8 +285,6 @@ func (obj *Obj) raiseReleasesTruncated(key string, err error) {
 	}
 }
 
-// raiseListingModeConflict records a sticky-mode conflict: a tags key started reporting releases.
-// The key freezes until an operator clears state or renames it; the warning repeats by design.
 func (obj *Obj) raiseListingModeConflict(key string) {
 	obj.logObj.Warn().
 		Str("component", "rescan").
@@ -382,7 +360,6 @@ func (obj *Obj) markVersionTerminalSuccess(ctx context.Context, key string, vers
 
 // // // // // // // // // //
 
-// recordPermanentFailure records a deterministic failure in memory and in the durable quarantine.
 func (obj *Obj) recordPermanentFailure(ctx context.Context, key string, version string, refSHA string, code string, message string) {
 	obj.permFailMu.Lock()
 	obj.permFailMap[missKeyObj{key: key, version: version}] = refSHA
@@ -416,7 +393,6 @@ func (obj *Obj) recordPermanentFailure(ctx context.Context, key string, version 
 		Msg("failed to persist ingest failure quarantine")
 }
 
-// permanentFailureSkip reports whether the version already failed for the same SHA, including unknown SHA.
 func (obj *Obj) permanentFailureSkip(key string, version string, refSHA string) bool {
 	obj.permFailMu.Lock()
 	defer obj.permFailMu.Unlock()

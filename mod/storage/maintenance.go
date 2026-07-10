@@ -14,8 +14,6 @@ import (
 
 const cGCCandidateBatch = 512
 
-// cReachablePageSize is the keyset page size used while collecting reachable sets.
-// The reachable set is resident for Pebble scanning, but SQLite tables are read page by page.
 const cReachablePageSize = 4096
 
 // //
@@ -258,8 +256,6 @@ func (obj *Obj) verifyIntegrityLocked(ctx context.Context) (core.IntegrityReport
 	return reportObj, nil
 }
 
-// reachableForGC materializes the full reachable blob/tree hash set in RAM. At hundreds of
-// millions of blobs this should move to sorted-merge iteration instead of a full transient map.
 func (obj *Obj) reachableForGC(ctx context.Context) (pebblestore.ReachableObjectsObj, error) {
 	reachableBlobObj, err := collectHashSetPaged(ctx, obj.indexObj.BlobRefHashesPage)
 	if err != nil {

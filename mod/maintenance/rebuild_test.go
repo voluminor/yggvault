@@ -25,7 +25,6 @@ const (
 
 func newTestConfig(t *testing.T) *stconf.ConfigObj {
 	t.Helper()
-	// macOS: t.TempDir lives under the /var symlink — resolve it, otherwise storage.New rejects the symlinked path component
 	rootDir, evalErr := filepath.EvalSymlinks(t.TempDir())
 	if evalErr != nil {
 		t.Fatalf("EvalSymlinks returned error: %v", evalErr)
@@ -285,8 +284,6 @@ func TestUpgradeReconcilePrunesLegacyUniversalAndCreatesMissing(t *testing.T) {
 	if err = storeObj.RegisterArtifact(ctx, legacy); err != nil {
 		t.Fatalf("register legacy row: %v", err)
 	}
-	// Legacy global go-zip row: never planned (go-zip is per-listener) and unreachable after the
-	// exact-listener LocateKey change, so reconcile must prune it.
 	legacyGoGlobal := zipGlobal
 	legacyGoGlobal.MaterializerID = stcode.MaterializerGo.String()
 	legacyGoGlobal.FormatVersion = 1

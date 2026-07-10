@@ -33,7 +33,7 @@
                 <span class="name"><a href="{{.URL}}">{{.Version}}</a></span>
                 {{if .Go}}<span class="tag go">go</span>{{end}}{{if .Composer}}<span
                         class="tag composer">composer</span>{{end}}
-                <span class="meta">{{.Time}}</span>
+                <time class="meta" datetime="{{.Time}}">{{.Time}}</time>
                 <span class="grow"></span>
                 <span class="meta">{{.Size}}</span>
             </div>

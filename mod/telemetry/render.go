@@ -11,9 +11,6 @@ import (
 
 // // // // // // // // // //
 
-// buildSnapshot renders all scopes into a single Prometheus text exposition and extracts scalar values.
-// Families are sorted by group and name for deterministic output.
-// The same document serves /metrics/internal and the VictoriaMetrics push.
 func buildSnapshot(rm *metricdata.ResourceMetrics) (doc []byte, values map[Group]map[string]float64) {
 	byGroup := make(map[Group][]metricdata.Metrics, len(knownGroupsArr))
 	for i := range rm.ScopeMetrics {

@@ -29,14 +29,11 @@ import (
 // // // // // // // // // //
 
 const (
-	// cArtifactBytes is the seeded universal.zip body streamed from disk through EnsureArtifactFile.
 	cArtifactBytes = "ZIPDATA!"
 
-	// cArtifactETag is the seeded artifact ETag used to verify If-None-Match 304 handling.
 	cArtifactETag = `"deadbeef"`
 )
 
-// errMeshDisabled is a sentinel for disabled mesh in web-only tests.
 var errMeshDisabled = errors.New("mesh disabled in test")
 
 // // // // // // // // // //
@@ -54,7 +51,6 @@ type fakeStoreObj struct {
 	feed        []core.FeedEventObj
 	artifactRaw []byte
 	tdir        string
-	// keysetCalls counts ListVersionsKeyset calls so cache tests can detect storage hits.
 	keysetCalls atomic.Int64
 }
 
@@ -300,26 +296,18 @@ func withCache() testOptionFunc {
 	return func(o *testOptionsObj) { o.cacheEnabled = true }
 }
 
-// withNonGoNewestVersion adds a newest version without go detection:
-// go routes must filter it per-version instead of killing the whole major.
 func withNonGoNewestVersion() testOptionFunc {
 	return func(o *testOptionsObj) { o.nonGoNewest = true }
 }
 
-// withV2Version adds newest v2.44.0 with Go detection: major >=2 serves through
-// `/{key}/vN/@v/...` and does not mix with v1.
 func withV2Version() testOptionFunc {
 	return func(o *testOptionsObj) { o.v2Version = true }
 }
 
-// withGoZipBlockedNewestVersion adds the newest Go-detected version with blocked go-zip.
-// Go routes must exclude it, just like a version without Go detection.
 func withGoZipBlockedNewestVersion() testOptionFunc {
 	return func(o *testOptionsObj) { o.goZipBlockedNewest = true }
 }
 
-// withRawNewestVersion adds the newest raw version (non-semver, universal-only).
-// Mirror listings include it, while go-proxy and composer p2 never see it.
 func withRawNewestVersion() testOptionFunc {
 	return func(o *testOptionsObj) { o.rawNewest = true }
 }
@@ -429,7 +417,6 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*Obj, listenerCtxObj
 	cfgObj := stconf.FullConfig()
 	cfgObj.Web.Server.Domain = "mirror.example"
 	cfgObj.Web.Static.Dir = optionsObj.staticDir
-	// macOS: t.TempDir lives under the symlinked /var — resolve it, otherwise New rejects the symlink component
 	storageDir, evalErr := filepath.EvalSymlinks(t.TempDir())
 	if evalErr != nil {
 		t.Fatalf("EvalSymlinks returned error: %v", evalErr)

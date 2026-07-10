@@ -27,9 +27,9 @@ type Obj struct {
 	logObj      zerolog.Logger
 	listenerArr []*listenerObj
 	brotherObj  *brother.ServerObj
-	staticSnap  *static.SnapshotObj // nil means static serving is disabled.
-	funcImplObj *funcObj            // shared source of host context and pages for HTML not-found responses
-	openapiSpec openapiSpecObj      // precomputed OpenAPI spec and ETag
+	staticSnap  *static.SnapshotObj
+	funcImplObj *funcObj
+	openapiSpec openapiSpecObj
 }
 
 // // // // // // // // // //
@@ -55,7 +55,6 @@ func New(depsObj DepsObj) (*Obj, error) {
 	if err != nil {
 		return nil, err
 	}
-	// telemetry methods are nil-tolerant and fall back to a noop provider, so no guard is needed here.
 	edgeMetricsObj, err := newEdgeMetrics(depsObj.Telemetry.Meter(telemetry.GroupCore))
 	if err != nil {
 		return nil, err

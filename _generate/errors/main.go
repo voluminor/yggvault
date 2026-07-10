@@ -22,7 +22,6 @@ const (
 	packageName = "stcode"
 	fileName    = "errors.go"
 
-	// default path relative to the repo root (the generator runs from the root)
 	cDefaultSourcePath = "yml/stcode/errors.yml"
 )
 

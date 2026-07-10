@@ -19,7 +19,6 @@ const (
 
 // // // // // // // // // //
 
-// webPublicScheme returns the public web-entry scheme; http is only valid in single+http mode.
 func (obj *funcObj) webPublicScheme() string {
 	serverObj := obj.deps.Config.Web.Server
 	if serverObj.Mode == stconf.WebServerModeSingle && serverObj.Single.Proto == stconf.WebProtoHttp {
@@ -28,8 +27,6 @@ func (obj *funcObj) webPublicScheme() string {
 	return "https"
 }
 
-// alternateListenerCtx builds the opposite entry context (web <-> ygg) when configured.
-// entryHost is the copy-paste host used by overlay operations.
 func (obj *funcObj) alternateListenerCtx(lc listenerCtxObj) (listenerCtxObj, bool) {
 	switch lc.listenerID {
 	case stcode.ListenerWeb:
@@ -57,8 +54,6 @@ func (obj *funcObj) alternateListenerCtx(lc listenerCtxObj) (listenerCtxObj, boo
 	}
 }
 
-// alternateEntry describes the opposite page entry.
-// Ygg links use bracketed IPv6; copy-paste commands use the .pk.ygg name.
 func (obj *funcObj) alternateEntry(lc listenerCtxObj) view.AlternateObj {
 	altLC, ok := obj.alternateListenerCtx(lc)
 	if !ok {
@@ -76,7 +71,6 @@ func (obj *funcObj) alternateEntry(lc listenerCtxObj) view.AlternateObj {
 
 // // // // // // // // // //
 
-// sortedContactGroups prepares contacts once at server construction because config is immutable at runtime.
 func sortedContactGroups(contactMap map[string][]string) []view.ContactGroupObj {
 	groupArr := make([]view.ContactGroupObj, 0, len(contactMap))
 	for name, valueArr := range contactMap {
@@ -86,7 +80,6 @@ func sortedContactGroups(contactMap map[string][]string) []view.ContactGroupObj 
 	return groupArr
 }
 
-// viewService builds public page identity: stable branding plus configured info card.
 func (obj *funcObj) viewService(homePath string) view.ServiceObj {
 	infoObj := obj.deps.Config.Info
 	return view.ServiceObj{
@@ -102,13 +95,11 @@ func (obj *funcObj) viewService(homePath string) view.ServiceObj {
 	}
 }
 
-// viewContext builds page identity, current entry, HTML navigation, and alternate entry.
 func (obj *funcObj) viewContext(lc listenerCtxObj) view.ContextObj {
 	lnk := obj.linkCtx(lc)
 	homePath := lnk.Key("", "")
 	var navArr []view.ActionObj
 	if homePath != "/" {
-		// In embed mode, the site root belongs to user static content.
 		navArr = append(navArr, view.ActionObj{Label: "Home", URL: "/"})
 	}
 	navArr = append(navArr, view.ActionObj{Label: "Packages", URL: homePath})

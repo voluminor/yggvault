@@ -39,7 +39,7 @@ release_mirrors:
   type: "map[string]string"
   usage:
     - "Mirror source registry: local key -> upstream repository root URL."
-    - "Keys must match `^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$`, must not equal web.server.domain, and must not use reserved route names such as `list`, `latest`, `@v`, `p2`, `packages.json`, `catalog.json`, or `feed.xml`."
+    - "Keys must match `^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$`, must not equal web.server.domain, and must not use reserved route names or Go major suffixes such as `v2`."
     - "Values must be non-empty HTTP or HTTPS URLs with a host."
 
 web:
@@ -168,7 +168,7 @@ web:
       usage:
         - "Single path segment used before per-key API and browser routes in nested mode."
         - "Must match `^[a-z0-9][a-z0-9._-]{0,31}$`."
-        - "Must not be one of the stable service routes: `health`, `info`, `metrics`, `openapi.json`."
+        - "Must not be a reserved service or generated-asset path: `health`, `info`, `metrics`, `openapi.json`, `og`, `logo`, `og.png`, `favicon.ico`, `sitemap.xml`."
   pages:
     usage: "Rendering and listing limits for browser/API pages."
     list_page_size:
@@ -536,7 +536,7 @@ rescan:
     value: 0
     usage: "Maximum source releases requested per scan. 0 means full available history."
   verify:
-    usage: "Tiered deep re-verification of already mirrored git versions. Between deep verifies a version is checked cheaply through the git refs advertisement (tag -> commit sha); the archive is re-downloaded only for new versions, sha drift, or when its verification tier is due. The latest version of every key is deep-verified every cycle regardless of these intervals."
+    usage: "Tiered deep re-verification of already mirrored git versions. Between deep verifies a version is checked cheaply through the git refs advertisement (tag -> commit sha); the archive is re-downloaded only for new versions, sha drift, or when its verification tier is due. The latest version is deep-verified every cycle when its upstream SHA cannot be confirmed; with a confirmed matching SHA it follows recent_interval."
     recent_interval:
       type: time.Duration
       value: "168h"

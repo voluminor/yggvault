@@ -132,7 +132,6 @@ func TestFetchArchiveMaxDurationAborts(t *testing.T) {
 		if flusher, ok := w.(http.Flusher); ok {
 			flusher.Flush()
 		}
-		// Hold the body past the ceiling; return promptly once the client aborts so Close does not block.
 		select {
 		case <-r.Context().Done():
 		case <-time.After(5 * time.Second):
@@ -274,7 +273,7 @@ func TestFetchArchiveResumesWithRange(t *testing.T) {
 // TestDiscoverClassifiesGitWhenHealthPageIsLarge is a regression for git forges whose /health
 // returns a large HTML page; discovery must classify git instead of staying inconclusive forever.
 func TestDiscoverClassifiesGitWhenHealthPageIsLarge(t *testing.T) {
-	largeBody := bytes.Repeat([]byte("<html>not a vault</html>"), 8192) // ~196KB > cHealthMaxBytes
+	largeBody := bytes.Repeat([]byte("<html>not a vault</html>"), 8192)
 	ts := serveBytes(t, http.StatusOK, largeBody)
 	obj := newTestObj(t, testConfigObj(t))
 

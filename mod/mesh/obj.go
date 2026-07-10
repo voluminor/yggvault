@@ -21,10 +21,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cYggPort is the fixed transport port for the ygg entry.
 	cYggPort = "80"
 
-	// cCoreStopTimeout is the dedicated upper bound for ratatoskr core shutdown.
 	cCoreStopTimeout = 5 * time.Second
 )
 
@@ -126,7 +124,6 @@ func New(configObj *stconf.ConfigObj, logArr ...zerolog.Logger) (*Obj, error) {
 		return nil, fmt.Errorf("build node sigils: %w", err)
 	}
 
-	// Ctx stays nil: ratatoskr then requires a manual Close, which runtime shutdown guarantees.
 	nodeConfigObj := ratatoskr.ConfigObj{
 		Config:          cfg,
 		CoreStopTimeout: cCoreStopTimeout,

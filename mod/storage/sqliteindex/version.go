@@ -251,7 +251,6 @@ func (obj *Obj) LatestVersion(ctx context.Context, key string) (core.VersionObj,
 				semverMax = versionObj
 			}
 		} else if !haveRaw {
-			// Query order is upstream_seq DESC, so the first non-semver row is the top raw version.
 			rawTop, haveRaw = versionObj, true
 		}
 	}
@@ -429,7 +428,6 @@ func (obj *TxObj) InsertVersion(ctx context.Context, versionObj core.VersionObj)
 	return err
 }
 
-// formatVerifiedTS serializes deep-verification time; zero time is stored as an empty string.
 func formatVerifiedTS(ts time.Time) string {
 	if ts.IsZero() {
 		return ""
@@ -502,7 +500,6 @@ func NewVersion(key string, version string, sourceHashObj core.HashObj, sourceSi
 	}
 }
 
-// sortVersions orders by source position newest-first, then by version string like SQL paths.
 func sortVersions(versionArr []core.VersionObj) {
 	sort.Slice(versionArr, func(i, j int) bool {
 		if versionArr[i].UpstreamSeq != versionArr[j].UpstreamSeq {

@@ -7,7 +7,6 @@ import (
 
 // // // // // // // // // //
 
-// absURL builds an absolute URL for an entry; without host it stays relative.
 func absURL(scheme string, host string, pathText string) string {
 	if host == "" {
 		return pathText
@@ -15,7 +14,6 @@ func absURL(scheme string, host string, pathText string) string {
 	return scheme + "://" + host + pathText
 }
 
-// dropDuplicateSnippets removes entry-independent snippets from the alternate set.
 func dropDuplicateSnippets(altArr []view.CodeSnippetObj, primaryArr []view.CodeSnippetObj) []view.CodeSnippetObj {
 	seenObj := make(map[string]bool, len(primaryArr))
 	for i := range primaryArr {
@@ -30,7 +28,6 @@ func dropDuplicateSnippets(altArr []view.CodeSnippetObj, primaryArr []view.CodeS
 	return outArr
 }
 
-// schemeHost returns the entry scheme and host, or empty strings for a relative (hostless) entry.
 func schemeHost(lnk link.Obj) (string, string) {
 	if lnk.EntryHost == "" {
 		return "", ""

@@ -11,13 +11,10 @@ import (
 // // // // // // // // // //
 
 const (
-	// cDefaultRescanInterval is the fallback for invalid intervals; it matches the schema default.
 	cDefaultRescanInterval = 6 * time.Hour
 
-	// cMinRescanInterval prevents invalid tickers and tight loops against upstreams.
 	cMinRescanInterval = time.Minute
 
-	// cIndexSkipRefreshEvery forces a full index fetch periodically to catch stale brother index hashes.
 	cIndexSkipRefreshEvery uint64 = 12
 )
 
@@ -106,7 +103,6 @@ func (obj *Obj) runLoop() {
 }
 
 func (obj *Obj) runCycle(ctx context.Context) {
-	// A panic in the cycle plumbing must not kill the process or the loop goroutine.
 	defer obj.recoverPanic("cycle", "")
 	cycleStart := time.Now().UTC()
 	statsObj := &cycleStatsObj{}

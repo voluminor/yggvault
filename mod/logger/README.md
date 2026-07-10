@@ -32,8 +32,8 @@ flowchart LR
 ## Important Files
 
 - `obj.go`: logger construction and sink selection.
-- `level.go`: level parsing.
-- `writer.go`: sink adapters.
+- `helper.go`: sink helpers and level parsing.
+- `victorialogs.go`: VictoriaLogs sink delivery.
 
 ## Operational Notes
 

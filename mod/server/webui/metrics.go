@@ -16,7 +16,6 @@ type metricGroupObj struct {
 	internal bool
 }
 
-// cMetricGroupArr sets the static order of metric groups on the page.
 var cMetricGroupArr = []metricGroupObj{
 	{name: "core", url: route.MetricsCore, detail: "request, error, and latency totals", internal: false},
 	{name: "cache", url: route.MetricsCache, detail: "metadata/hot-file RAM cache and storage engine", internal: false},

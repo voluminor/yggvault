@@ -20,15 +20,12 @@ import (
 // // // // // // // // // //
 
 const (
-	// cWebServicePort is the fixed HTTP port advertised for the ygg entry.
 	cWebServicePort = 80
 
-	// cMinNameLen/cMaxNameLen match ratatoskr info.Name limits.
 	cMinNameLen = 4
 	cMaxNameLen = 64
 )
 
-// localDomainSuffixArr contains known local or non-routable suffixes that must not be published in inet.
 var localDomainSuffixArr = []string{".local", ".localhost", ".internal", ".lan", ".home", ".intranet"}
 
 // // // // // // // // // //

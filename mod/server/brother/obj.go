@@ -17,13 +17,10 @@ import (
 // // // // // // // // // //
 
 const (
-	// cIndexPageSize is the Brother.Index page size; page+1 detects the next page without full materialization.
 	cIndexPageSize = 4096
 
-	// cMaxIndexPage caps Brother.Index page numbers to avoid expensive OFFSET skips and 32-bit overflow.
 	cMaxIndexPage = 64
 
-	// cBlobBatchMax is the default hash cap for one Brother.BlobsFetch request.
 	cBlobBatchMax = brotherwire.DefaultMaxFetchBatchCount
 )
 
@@ -70,7 +67,6 @@ type ServerObj struct {
 	connSet map[net.Conn]struct{}
 	closing bool
 
-	// Per-peer session accounting keeps one neighbor from occupying all sessionSem slots.
 	peerMu       sync.Mutex
 	peerSessions map[string]int
 	peerMax      int
@@ -104,7 +100,6 @@ func New(cfg *stconf.ConfigObj, store StoreInterface) (*ServerObj, error) {
 		limiterObj = rate.NewLimiter(rate.Limit(ratePerSec), int(ratePerSec))
 	}
 
-	// Per-peer cap: explicit config value, or auto as half of MaxParallel. Auto is disabled at MaxParallel<=1.
 	peerMax := int(cfg.Brother.Rpc.MaxParallelPerPeer)
 	if peerMax <= 0 {
 		if maxParallel := int(cfg.Brother.Rpc.MaxParallel); maxParallel > 1 {
@@ -124,7 +119,6 @@ func New(cfg *stconf.ConfigObj, store StoreInterface) (*ServerObj, error) {
 
 // // // // // // // // // //
 
-// peerHostFromAddr extracts the peer Yggdrasil host from RemoteAddr for per-peer accounting.
 func peerHostFromAddr(remoteAddr string) string {
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
@@ -133,7 +127,6 @@ func peerHostFromAddr(remoteAddr string) string {
 	return host
 }
 
-// acquirePeerSlot limits simultaneous sessions per peer; peerMax<=0 disables accounting.
 func (obj *ServerObj) acquirePeerSlot(peerHost string) bool {
 	if obj.peerMax <= 0 {
 		return true
@@ -150,7 +143,6 @@ func (obj *ServerObj) acquirePeerSlot(peerHost string) bool {
 	return true
 }
 
-// releasePeerSlot frees a peer slot and removes zero counters so departed peers do not grow the map.
 func (obj *ServerObj) releasePeerSlot(peerHost string) {
 	if obj.peerMax <= 0 {
 		return

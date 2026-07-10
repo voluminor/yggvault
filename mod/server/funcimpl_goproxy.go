@@ -25,7 +25,6 @@ func (obj *funcObj) GetGoLatest(ctx context.Context, params api.GetGoLatestParam
 	if condMatch(params.IfNoneMatch, etag) {
 		return &api.NotModifiedRespObj{}, nil
 	}
-	// LatestInfo scans all versions in a major bucket, so cache the typical result by ETag like composer p2.
 	built, err := obj.cachedObj(ctx, etag, func(buildCtx context.Context) (any, error) {
 		infoObj, buildErr := goproxy.LatestInfo(buildCtx, obj.deps.Storage, obj.deps.Overlay, params.Key, major, lc)
 		if buildErr != nil {
@@ -129,7 +128,6 @@ func (obj *funcObj) goZip(ctx context.Context, key string, version string, major
 		return &api.NotModifiedRespObj{}, nil
 	}
 	disposition := archiveDisposition(key + "@" + version + ".zip")
-	// HEAD responds from metadata; a cold go-zip build is unnecessary for size and ETag.
 	if gate.headOnly {
 		return &api.GetVersionArtifactOKHeaders{
 			AcceptRanges:       api.NewOptString("bytes"),

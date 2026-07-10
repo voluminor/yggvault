@@ -12,7 +12,6 @@ import (
 
 // // // // // // // // // //
 
-// cPeerLimiterShards is the number of limiter map shards; it must be a power of two.
 const cPeerLimiterShards = 16
 
 // // // //

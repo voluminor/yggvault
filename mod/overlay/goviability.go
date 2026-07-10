@@ -23,24 +23,17 @@ const (
 	// GoZipUnclassifiedLabel is the stable label for x/mod/zip errors this code cannot classify yet.
 	GoZipUnclassifiedLabel = "unclassified module zip errors"
 
-	// cMaxBlockSamples limits path examples per block-reason category.
-	cMaxBlockSamples = 3
-	// cMaxBlockSampleBytes limits one sampled path.
+	cMaxBlockSamples     = 3
 	cMaxBlockSampleBytes = 96
-	// cMaxBlockReasonBytes stays within the storage degraded_reason-sized column budget.
 	cMaxBlockReasonBytes = 1024
 )
 
 const (
-	// Tree-complexity budget before modzip.CheckFiles. Its collision checker can allocate
-	// gigabytes on hostile but formally legal deep uppercase trees. This cheap O(path bytes)
-	// guard covers real large modules with headroom and blocks known resource-exhaustion shapes.
 	cGoZipPathBudgetBytes  = 4 << 20
 	cGoZipDirSegmentBudget = 1 << 18
 )
 
 const (
-	// These texts pin the unexported sentinels of golang.org/x/mod/zip.
 	cModZipPathNotCleanText    = "file path is not clean"
 	cModZipPathNotRelativeText = "file path is not relative"
 	cModZipGoModCaseText       = "go.mod files must have lowercase names"
@@ -48,8 +41,6 @@ const (
 
 // // // // // // // // // //
 
-// viabilityFileObj adapts a tree entry to modzip.File without reading blobs.
-// CheckFiles should only open root go.mod for language version parsing, so that body is preloaded.
 type viabilityFileObj struct {
 	entry    core.TreeEntryObj
 	goModArr []byte
@@ -74,7 +65,6 @@ func (f viabilityFileObj) Open() (io.ReadCloser, error) {
 
 // //
 
-// blockSamplesObj tracks a category count and the first sampled paths.
 type blockSamplesObj struct {
 	count     int
 	sampleArr []string
@@ -89,8 +79,6 @@ func (s *blockSamplesObj) add(sampleText string) {
 
 // // // // // // // // // //
 
-// treeComplexityReason enforces the pre-CheckFiles budget; empty means within budget.
-// It counts path bytes and slash segments in one allocation-free pass.
 func treeComplexityReason(treeArr []core.TreeEntryObj) string {
 	var pathBytes, dirSegments uint64
 	for i := range treeArr {
@@ -103,7 +91,6 @@ func treeComplexityReason(treeArr []core.TreeEntryObj) string {
 	return ""
 }
 
-// classifyInvalid splits Invalid entries from CheckFiles so a new x/mod message text cannot masquerade as an invalid path.
 func classifyInvalid(feObj modzip.FileError, invalidObj, collisionObj, oversizeObj, unclassifiedObj *blockSamplesObj) {
 	msgText := ""
 	if feObj.Err != nil {
@@ -114,7 +101,6 @@ func classifyInvalid(feObj modzip.FileError, invalidObj, collisionObj, oversizeO
 	case strings.Contains(msgText, "collision"),
 		strings.Contains(msgText, "both a file and a directory"),
 		strings.Contains(msgText, "multiple entries"):
-		// The collision text contains both sides of the pair, so the whole message is capped.
 		collisionObj.add(clipSample(msgText))
 	case strings.Contains(msgText, "too large"):
 		oversizeObj.add(strconv.Quote(clipSample(feObj.Path)))
@@ -128,7 +114,6 @@ func classifyInvalid(feObj modzip.FileError, invalidObj, collisionObj, oversizeO
 	}
 }
 
-// clipSample cuts a path sample on a rune boundary.
 func clipSample(pathText string) string {
 	if len(pathText) <= cMaxBlockSampleBytes {
 		return pathText
@@ -140,7 +125,6 @@ func clipSample(pathText string) string {
 	return pathText[:cut] + "..."
 }
 
-// clipReason cuts the final reason on a rune boundary without exceeding cMaxBlockReasonBytes.
 func clipReason(reasonText string) string {
 	if len(reasonText) <= cMaxBlockReasonBytes {
 		return reasonText
@@ -154,10 +138,6 @@ func clipReason(reasonText string) string {
 
 // // // // // // // // // //
 
-// goZipBlockReason decides during detection whether a tree can ever become a valid Go module zip.
-// Empty means usable. modzip.CheckFiles supplies invalid paths, fold collisions, and size-limit
-// failures; omitted x/mod/zip classes do not block. Symlinks block everywhere because gozip.Build
-// rejects them hard even where modzip would omit a subtree.
 func goZipBlockReason(treeArr []core.TreeEntryObj, goModArr []byte) string {
 	if reasonText := treeComplexityReason(treeArr); reasonText != "" {
 		return reasonText

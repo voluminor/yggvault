@@ -45,8 +45,7 @@ type Obj struct {
 	droppedDiagnostics uint64
 	permanentAt        uint32
 	maxDiagnostics     int
-	// recentBuffer caps recent_error series in the errors metric group.
-	recentBuffer int
+	recentBuffer       int
 }
 
 // SnapshotObj is an immutable state snapshot published atomically.

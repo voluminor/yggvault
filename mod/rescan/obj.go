@@ -64,25 +64,17 @@ type Obj struct {
 	loopDone   chan struct{}
 	trigger    chan struct{}
 
-	// buildSem limits concurrent ArtifactDigest builds during ingest.
-	// ArtifactDigest does not gate itself, so rescan owns the CPU and disk budget.
 	buildSem chan struct{}
 
-	// metricsObj holds rescan instruments; nil before RegisterMetrics for disabled telemetry.
 	metricsObj *rescanMetricsObj
 
 	missMu  sync.Mutex
 	missMap map[missKeyObj]uint
 
-	// permFailMap is the hot skip cache over durable ingest_failures quarantine.
-	permFailMu  sync.Mutex
-	permFailMap map[missKeyObj]string
-	// Keys whose startup durable load failed need one-cycle durable clears despite hot-cache misses.
+	permFailMu          sync.Mutex
+	permFailMap         map[missKeyObj]string
 	permFailLoadMissObj map[string]struct{}
-	// quarantineDirtyObj marks keys with pending quarantine bookkeeping (in-memory entries, a failed
-	// startup load, or durable rows to reconcile). Healthy keys stay absent so the per-cycle summary skips
-	// the durable ListIngestFailures round-trip for them.
-	quarantineDirtyObj map[string]struct{}
+	quarantineDirtyObj  map[string]struct{}
 
 	quarantineCapMu      sync.Mutex
 	quarantineCapWarnObj map[string]uint64
@@ -91,11 +83,9 @@ type Obj struct {
 	composerNames     []string
 	composerKeyByName map[string]string
 
-	// suppressedSet contains keys excluded by boot name-to-URL checks; local data stays untouched.
 	suppressedMu  sync.RWMutex
 	suppressedSet map[string]struct{}
 
-	// cycleCount drives periodic full index refreshes despite index-skip.
 	cycleCount atomic.Uint64
 
 	activeStats atomic.Pointer[cycleStatsObj]

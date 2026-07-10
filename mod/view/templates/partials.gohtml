@@ -122,9 +122,21 @@
         var timeEls = document.querySelectorAll("time[datetime]");
         for (var ti = 0; ti < timeEls.length; ti++) {
             var tEl = timeEls[ti];
-            var tDate = new Date(tEl.getAttribute("datetime"));
-            if (isNaN(tDate.getTime())) continue;
+            var dtAttr = tEl.getAttribute("datetime");
             var utcText = tEl.textContent;
+            if (dtAttr.indexOf("T") === -1) {
+                var dp = dtAttr.split("-");
+                if (dp.length !== 3) continue;
+                var dOnly = new Date(+dp[0], +dp[1] - 1, +dp[2]);
+                if (isNaN(dOnly.getTime())) continue;
+                tEl.textContent = dOnly.toLocaleDateString(undefined, {
+                    year: "numeric", month: "short", day: "numeric"
+                });
+                tEl.setAttribute("title", utcText + " UTC");
+                continue;
+            }
+            var tDate = new Date(dtAttr);
+            if (isNaN(tDate.getTime())) continue;
             tEl.textContent = tDate.toLocaleString(undefined, {
                 year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
             });

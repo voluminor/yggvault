@@ -35,8 +35,6 @@ func TestListVersionsKeysetPagination(t *testing.T) {
 		version string
 		seq     int64
 	}
-	// v0.9.0 is newest by source listing while semver-older than v0.10.0.
-	// Duplicate seq=10 verifies compound (seq, version) cursor without a UNIQUE constraint.
 	rowArr := []rowObj{
 		{"v0.9.0", 30},
 		{"v0.10.0", 20},

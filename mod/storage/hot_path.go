@@ -193,9 +193,6 @@ func (obj *Obj) openValidHotFile(ctx context.Context, artifactObj core.ArtifactO
 	if artifactObj.FilePath == "" {
 		return nil, false, nil
 	}
-	// Hot serve is the most frequent path: containment is checked via pathInside, the leaf is protected
-	// by OpenNoFollow + os.SameFile + IsRegularFile below. The parent-symlink walk stays on write/remove paths
-	// to avoid adding about 5 Lstat syscalls to every request.
 	filePath, err := pathInside(obj.hotDir, artifactObj.FilePath, "path is outside hot cache")
 	if err != nil {
 		return nil, false, err
@@ -248,10 +245,6 @@ func (obj *Obj) openValidHotFile(ctx context.Context, artifactObj core.ArtifactO
 	return &HotFileObj{Path: filePath, File: fileObj, SizeBytes: artifactObj.SizeBytes, BodyHash: artifactObj.BodyHash, cleanup: releaseFunc}, true, nil
 }
 
-// validateSharedHotFile re-checks a hot file handed back from an artifact flight against the current
-// artifact metadata. Waiters that join a shared build reopen the file independently and never pass through
-// openValidHotFile, so this is where their fd gets its type/size check and the verify_on_read policy. A
-// content mismatch removes the corrupt hot file so the next request rebuilds it.
 func (obj *Obj) validateSharedHotFile(ctx context.Context, keyObj core.ArtifactKeyObj, fileObj *HotFileObj, artifactObj core.ArtifactObj) error {
 	if fileObj == nil || fileObj.File == nil {
 		return errors.New("artifact hot file is nil")

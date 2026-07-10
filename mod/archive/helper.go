@@ -197,7 +197,6 @@ func validateCleanPath(requestObj RequestObj, pathText string, headerCount uint)
 	return cleanPath, nil
 }
 
-// validateSymlinkTarget bounds the target at read time; the root-escape check depends on the final path.
 func validateSymlinkTarget(requestObj RequestObj, targetArr []byte) error {
 	if len(targetArr) > int(requestObj.limitsObj.MaxArchivePathBytes) {
 		return newLimitsErr(requestObj, cCheckPathBytes, util.ErrArchiveEntryPathTooLong, limitFactsObj{pathBytes: uint(len(targetArr))})
@@ -278,7 +277,6 @@ func (obj *stateObj) writeBytesEntry(limitsObj LimitsObj, pathText string, modeT
 	}
 	obj.createdPathArr = append(obj.createdPathArr, filePath)
 	hashObj := core.HashBytes(dataArr)
-	// Symlink targets are needed after strip for escape checks; they are tiny enough to keep inline.
 	if modeText == core.ModeSymlink {
 		obj.symlinkTargetByHash[hashObj] = append([]byte(nil), dataArr...)
 	}
@@ -344,7 +342,6 @@ func (obj *stateObj) writeReaderEntry(ctx context.Context, limitsObj LimitsObj, 
 	return obj.addEntry(pathText, modeText, core.HashFromHasher(hasherObj), sizeBytes, filePath)
 }
 
-// filterEscapingSymlinks drops symlinks after stripCommonTopDir, once the final path is known.
 func (obj *stateObj) filterEscapingSymlinks(entryArr []core.StagedEntryObj) []core.StagedEntryObj {
 	filteredArr := entryArr[:0]
 	for i := range entryArr {

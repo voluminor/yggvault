@@ -58,7 +58,6 @@ func xmlEscape(bufObj *bytes.Buffer, text string) {
 		case '\'':
 			bufObj.WriteString("&apos;")
 		default:
-			// Drop control bytes: they are invalid in XML 1.0
 			if text[i] >= 0x20 || text[i] == '\t' || text[i] == '\n' || text[i] == '\r' {
 				bufObj.WriteByte(text[i])
 			}
@@ -95,7 +94,7 @@ func Build(ctx context.Context, store pager.VersionListerInterface, st StateRead
 	statsObj := BuildStatsObj{}
 
 	var latestPublish time.Time
-	estURLs := uint64(2) // catalog + metrics
+	estURLs := uint64(2)
 	for i := range keyArr {
 		if keyArr[i].LastPublishTS.After(latestPublish) {
 			latestPublish = keyArr[i].LastPublishTS
@@ -107,7 +106,6 @@ func Build(ctx context.Context, store pager.VersionListerInterface, st StateRead
 	}
 
 	var bufObj bytes.Buffer
-	// Reserve for the header plus the estimated entry count (~96 bytes per URL) — avoids reallocations on the cold path
 	bufObj.Grow(128 + int(estURLs)*96)
 	bufObj.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	bufObj.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")

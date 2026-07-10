@@ -23,8 +23,6 @@ import (
 
 // // // // // // // // // //
 
-// cListenerGlobal sets the persisted listener_id for host-independent artifacts.
-// The value comes from the domain enum, not a hard-coded string.
 var cListenerGlobal = stcode.ListenerGlobal.String()
 
 // // // // // // // // // //
@@ -49,7 +47,6 @@ const (
 
 	cHotAccessUpdateInterval = time.Minute
 
-	// cHotVerifySampleRate verifies 1 out of N hot-file opens in sampled mode.
 	cHotVerifySampleRate = 16
 
 	cCacheAreaDurable = "durable"
@@ -101,52 +98,42 @@ type Obj struct {
 	closedFlag    bool
 	closeDoneChan chan struct{}
 	closeErr      error
-	closeMu       sync.RWMutex // leaf lifecycle lock; no storage locks may be taken under it
+	closeMu       sync.RWMutex
 	activeWG      sync.WaitGroup
 	rootCtx       context.Context
 	rootCancel    context.CancelFunc
-	writeMu       sync.Mutex // serializes durable/hot mutations; hotActiveMu is the only lock allowed underneath
+	writeMu       sync.Mutex
 	publishSem    chan struct{}
 
-	// lastHardLimitCompact debounces backstop compaction storms under writeMu.
 	lastHardLimitCompact time.Time
 
-	// realBytesCache/realBytesAt cache physical disk usage for the admission gate.
-	// DiskSpaceUsage takes the global Pebble mutex and walks the LSM, so it is too expensive on every publish.
 	realBytesCache uint64
 	realBytesAt    time.Time
 
-	// hotBytesCache/hotBytesAt cache the hot-cache size estimate under writeMu.
-	// A full dirSize is O(hot-files), so it is refreshed on eviction paths and by TTL.
 	hotBytesCache uint64
 	hotBytesAt    time.Time
 
-	hotActiveMu  sync.Mutex // leaf lock for active hot files; taken alone or under writeMu only
+	hotActiveMu  sync.Mutex
 	hotActiveObj map[string]int
 	hotDeleteObj map[string]struct{}
 
-	// hotEnforceWalks/hotEnforceWalkNanos measure the cost of slow-path hot-budget enforcement.
-	// Writes happen under writeMu, reads from metric callbacks, hence the fields are atomic.
 	hotEnforceWalks     atomic.Int64
 	hotEnforceWalkNanos atomic.Int64
 
-	flightMu  sync.Mutex // leaf lock for the hot-build singleflight map
+	flightMu  sync.Mutex
 	flightMap map[string]*artifactFlightObj
 	buildSem  chan struct{}
 
 	gcLoopDone chan struct{}
 	gcTrigger  chan struct{}
 
-	metricRegMu  sync.Mutex // leaf lock for OTel callback registrations
+	metricRegMu  sync.Mutex
 	metricRegArr []metric.Registration
 
 	verifySampleCounter atomic.Uint64
 
-	// durableVerifySampleCounter drives sampled verify_on_read for durable reads.
 	durableVerifySampleCounter atomic.Uint64
 
-	// inFlightSlots bounds the number of simultaneously materialized in-RAM objects on read.
-	// nil means the budget is disabled.
 	inFlightSlots chan struct{}
 }
 

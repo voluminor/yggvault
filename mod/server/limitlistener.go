@@ -7,8 +7,6 @@ import (
 
 // // // // // // // // // //
 
-// limitListenerObj bounds the number of simultaneously accepted connections.
-// A zero limit is never wrapped: newLimitListener returns the inner listener unchanged.
 type limitListenerObj struct {
 	net.Listener
 	semChan   chan struct{}
@@ -45,8 +43,6 @@ func (obj *limitConnObj) Close() error {
 
 // //
 
-// acquire blocks for a slot and reports false once the listener is closed, so a
-// pending Accept unblocks on shutdown instead of waiting for a slot that never frees.
 func (obj *limitListenerObj) acquire() bool {
 	select {
 	case <-obj.doneChan:

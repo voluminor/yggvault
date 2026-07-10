@@ -3,7 +3,6 @@ package yggvault
 // // // // // // // // // //
 
 const (
-	// sigName is the only top-level sigil key in NodeInfo.
 	sigName = "yggvault"
 
 	cKeyVersion = "version"

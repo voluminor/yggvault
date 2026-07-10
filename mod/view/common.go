@@ -150,7 +150,6 @@ func humanBytes(n uint64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
-// forgeLabel refines generic git class to a known forge host; unknown hosts render as-is.
 func forgeLabel(rawURL string) string {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
@@ -169,7 +168,6 @@ func forgeLabel(rawURL string) string {
 	}
 }
 
-// normalizeSource defaults missing availability to unknown and derives source badge text.
 func normalizeSource(srcObj SourceObj) SourceObj {
 	srcObj.Status = nonEmpty(srcObj.Status, "unknown")
 	srcObj.Label = srcObj.Classification
@@ -181,7 +179,6 @@ func normalizeSource(srcObj SourceObj) SourceObj {
 
 // // // // // // // // // //
 
-// channelClass maps channel name to a badge CSS modifier.
 func channelClass(channel string) string {
 	if channel == "ygg" {
 		return "ygg"
@@ -189,7 +186,6 @@ func channelClass(channel string) string {
 	return "web"
 }
 
-// channelLabel returns the human-readable current-entry badge label.
 func channelLabel(channel string) string {
 	if channel == "ygg" {
 		return "connected via yggdrasil"
@@ -197,7 +193,6 @@ func channelLabel(channel string) string {
 	return "connected via regular web"
 }
 
-// altChannelLabel labels collapsed alternate-entry blocks.
 func altChannelLabel(channel string) string {
 	if channel == "ygg" {
 		return "yggdrasil mesh"
@@ -205,8 +200,6 @@ func altChannelLabel(channel string) string {
 	return "regular web"
 }
 
-// head builds common page metadata. pagePath targets the same page on an alternate entry;
-// feedPath is the optional Atom feed path.
 func head(ctxObj ContextObj, css template.CSS, title string, desc string, ogRel string, pagePath string, feedPath string) headObj {
 	altLabel, altURL := "", ""
 	if ctxObj.Alternate.Host != "" {

@@ -129,14 +129,20 @@ func TestSnippets(t *testing.T) {
 func TestComposerRequireSnippet(t *testing.T) {
 	wantHTTPS := "composer config repositories.yggvault composer https://vault.test\n" +
 		"composer require acme/alpha:v1.0.0\n"
-	if got := ComposerRequireSnippet("acme/alpha", "v1.0.0", "https", "vault.test"); got != wantHTTPS {
+	if got := ComposerRequireSnippet("acme/alpha", "v1.0.0", "https", "vault.test", ""); got != wantHTTPS {
 		t.Errorf("https snippet = %q, want %q", got, wantHTTPS)
 	}
 
 	wantHTTP := "composer config secure-http false\n" +
 		"composer config repositories.yggvault composer http://node.pk.ygg\n" +
 		"composer require acme/alpha:v1.0.0\n"
-	if got := ComposerRequireSnippet("acme/alpha", "v1.0.0", "http", "node.pk.ygg"); got != wantHTTP {
+	if got := ComposerRequireSnippet("acme/alpha", "v1.0.0", "http", "node.pk.ygg", ""); got != wantHTTP {
 		t.Errorf("http snippet = %q, want %q", got, wantHTTP)
+	}
+
+	wantNested := "composer config repositories.yggvault composer https://vault.test/pkg\n" +
+		"composer require acme/alpha:v1.0.0\n"
+	if got := ComposerRequireSnippet("acme/alpha", "v1.0.0", "https", "vault.test", "/pkg"); got != wantNested {
+		t.Errorf("nested snippet = %q, want %q", got, wantNested)
 	}
 }

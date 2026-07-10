@@ -35,7 +35,6 @@ func TestEtagOf(t *testing.T) {
 	if !strings.HasPrefix(first, `"`) || !strings.HasSuffix(first, `"`) {
 		t.Fatalf("etag not quoted: %q", first)
 	}
-	// Validators must rotate on deploy because etagOf mixes in target.Version+Hash.
 	partsOnly := `"` + core.HashBytes([]byte("a\x00b\x00c")).Hex() + `"`
 	if first == partsOnly {
 		t.Fatal("etagOf hashes only its parts: deploy would not rotate validators")
@@ -119,8 +118,6 @@ func TestStripEntryHost(t *testing.T) {
 		{"non go-proxy passthrough", "/" + host + "/catalog.json", host, "/" + host + "/catalog.json", false},
 		{"no host prefix", "/lib/@v/list", host, "/lib/@v/list", false},
 		{"empty entry host", "/" + host + "/lib/@v/list", "", "/" + host + "/lib/@v/list", false},
-		// go probes module-path prefixes; the "module = host" probe must stay untouched
-		// and return 404 for an unknown key, not 400 for an empty key.
 		{"host-as-module probe kept", "/" + host + "/@v/v2.44.0.info", host, "/" + host + "/@v/v2.44.0.info", false},
 		{"host-as-module latest probe kept", "/" + host + "/@latest", host, "/" + host + "/@latest", false},
 	}

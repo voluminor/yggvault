@@ -58,8 +58,6 @@ func TestCacheStillCachesWhenRescanOverdue(t *testing.T) {
 	defer ts.Close()
 	storeObj := storeForTest(t, serverObj)
 
-	// A zero LastRescan makes SecondsToNextRescan return 0; without the floor the byte cache would be a
-	// no-op and every request would rebuild feeds/sitemaps exactly while the node is degraded.
 	stateObj := stateFor(t, serverObj)
 	stateObj.lastRescan = time.Time{}
 

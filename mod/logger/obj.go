@@ -16,8 +16,7 @@ const cMegabyte = 1000 * 1000
 type Obj struct {
 	value     zerolog.Logger
 	closerObj *closerObj
-	// vlSink is kept for VictoriaLogs delivery self-metrics when the sink is enabled.
-	vlSink *victorialogsWriterObj
+	vlSink    *victorialogsWriterObj
 }
 
 type closerObj struct {

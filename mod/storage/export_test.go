@@ -4,9 +4,6 @@ import "context"
 
 // // // // // // // // // //
 
-// Test-only entry points run protected eviction paths without a caller-supplied protected set.
-// Production keeps only the *ProtectedLocked variants that the runtime actually needs.
-
 // //
 
 func (obj *Obj) enforceHotBudgetLocked(ctx context.Context) error {

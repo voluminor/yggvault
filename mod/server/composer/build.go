@@ -89,7 +89,6 @@ func universalZipShasum(ctx context.Context, store VersionReaderInterface, key s
 		if len(artifactObj.BodySha1) > 0 {
 			return hex.EncodeToString(artifactObj.BodySha1)
 		}
-		// Empty listener-scoped sha1 is not terminal; fall back to global, matching webui.
 	}
 	return ""
 }
@@ -98,7 +97,6 @@ func inputsFor(ctx context.Context, store VersionReaderInterface, key string, li
 	inputArr := make([]overlay.ComposerVersionInputObj, 0, pager.PageSize)
 	var totalJSONBytes uint64
 	err := pager.EachVersion(ctx, store, key, func(versionObj core.VersionObj) (bool, error) {
-		// Raw versions are universal-only and never enter composer p2.
 		if util.IsRawVersionName(versionObj.Version) {
 			return false, nil
 		}

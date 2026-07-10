@@ -34,7 +34,7 @@ var ErrStagedSymlinkRejected = errors.New("staged symlink target rejected")
 // Close removes it best-effort even when publish fails.
 type BlobSpoolObj struct {
 	rootPath   string
-	closeMu    sync.Mutex // independent temp-spool lock, unrelated to Obj.closeMu
+	closeMu    sync.Mutex
 	closedFlag bool
 }
 
@@ -66,7 +66,6 @@ func stagedPublishToPublishObj(stagedObj core.StagedPublishObj) core.PublishObj 
 	}
 }
 
-// symlinkTargetFromBytes bounds the target size; root escape is path-dependent and checked later.
 func symlinkTargetFromBytes(dataArr []byte, maxPathBytes uint) error {
 	if maxPathBytes > 0 && uint(len(dataArr)) > maxPathBytes {
 		return errors.New("symlink target exceeds path limit")
@@ -245,7 +244,6 @@ func (obj *Obj) verifySymlinkTargets(ctx context.Context, treeArr []core.TreeEnt
 		if err := symlinkTargetFromBytes(targetArr, maxPathBytes); err != nil {
 			return fmt.Errorf("symlink target for %s: %w: %w", entryObj.Path, ErrStagedSymlinkRejected, err)
 		}
-		// Escape checks are per path: the same target bytes can be safe or unsafe at different depths.
 		if err := util.SymlinkTargetWithinRoot(entryObj.Path, string(targetArr)); err != nil {
 			return fmt.Errorf("symlink target for %s: %w: %w", entryObj.Path, ErrStagedSymlinkRejected, err)
 		}
@@ -253,7 +251,6 @@ func (obj *Obj) verifySymlinkTargets(ctx context.Context, treeArr []core.TreeEnt
 	return nil
 }
 
-// loadSymlinkTarget reads symlink target bytes from staged content or Pebble and verifies the size.
 func (obj *Obj) loadSymlinkTarget(entryObj core.TreeEntryObj, contentByHashObj map[core.HashObj][]byte) ([]byte, error) {
 	if contentArr, ok := contentByHashObj[entryObj.BlobHash]; ok {
 		if uint64(len(contentArr)) != entryObj.SizeBytes {

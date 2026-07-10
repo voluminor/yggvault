@@ -23,7 +23,6 @@ const (
 )
 
 var (
-	// The axis order is fixed for reproducible output.
 	compressionArr = []string{"none", "snappy", "minlz", "fast", "fastest", "balanced", "good", "zstd"}
 	memtableMBArr  = []uint64{16, 64, 256}
 	cacheMBArr     = []uint64{8, 128, 512}
@@ -53,8 +52,6 @@ type resultObj struct {
 	RSSMB        float64 `json:"rss_mb"`
 	Reps         int     `json:"reps"`
 }
-
-// // // // // // // // // // helpers
 
 func envInt(name string, def int) int {
 	if v := os.Getenv(name); v != "" {
@@ -144,8 +141,6 @@ func loadDataset(root string, fileCap, rawCap uint64, maxBlobs int) ([]blobObj, 
 	})
 	return out, raw
 }
-
-// // // // // // // // // // bench core
 
 func runOnce(blobs []blobObj, comp string, memMB, cacheMB uint64) resultObj {
 	dir, err := os.MkdirTemp("", "benchpebble-")
@@ -241,8 +236,6 @@ func filterBySize(blobs []blobObj, lo, hi int) []blobObj {
 	}
 	return out
 }
-
-// // // // // // // // // // main
 
 func main() {
 	dataset := os.Getenv("DATASET")

@@ -9,9 +9,6 @@ import (
 
 // // // // // // // // // //
 
-// symlinkGuard rejects a final path component that is currently a symlink. O_NOFOLLOW is unavailable on non-Unix
-// platforms, so this Lstat check emulates it. It cannot close the open-time TOCTOU window on its own; the write
-// path narrows that further with a post-open regular-file re-check, and read callers re-verify via os.SameFile.
 func symlinkGuard(pathText string) error {
 	if infoObj, err := os.Lstat(pathText); err == nil && infoObj.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("refusing to open symlink: %s", pathText)

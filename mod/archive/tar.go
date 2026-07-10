@@ -17,8 +17,6 @@ import (
 
 var errGzipTrailing = errors.New("gzip stream has trailing data")
 
-// cGzipPaddingCap bounds the tar zero-block padding drained from a gzip member after the tar
-// end-of-archive marker; a larger or non-zero tail is treated as trailing abuse.
 const cGzipPaddingCap = 1 << 20
 
 type gzipReadCloserObj struct {
@@ -107,10 +105,6 @@ func (obj *gzipReadCloserObj) Close() error {
 	return errors.Join(obj.gzipObj.Close(), trailingErr, obj.fileObj.Close())
 }
 
-// checkGzipTail consumes the rest of the current gzip member. tar.Reader stops after the two
-// end-of-archive zero blocks, leaving the record padding (zero blocks) undecoded; GNU tar, git archive
-// and bsdtar all emit it, so that padding is not trailing data. Only a non-zero byte, more than
-// cGzipPaddingCap of padding, or raw bytes after the gzip member are treated as trailing abuse.
 func (obj *gzipReadCloserObj) checkGzipTail() error {
 	bufArr := make([]byte, 4096)
 	var drained uint64

@@ -25,7 +25,6 @@ const (
 	packageName = "stcode"
 	fileName    = "enums.go"
 
-	// default path relative to the repo root (the generator runs from the root)
 	cDefaultSourcePath = "yml/stcode/enums.yml"
 )
 

@@ -12,7 +12,6 @@ import (
 
 // // // // // // // // // //
 
-// panicSourceObj triggers a panic inside a per-key worker: the process must survive a key failure.
 type panicSourceObj struct {
 	fakeSourceObj
 }

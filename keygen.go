@@ -16,10 +16,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cKeyFileName — key file name in the current directory (this value is also what goes into yggdrasil.pem_key).
 	cKeyFileName = "yggvault.pem"
 
-	// cCmdMakeYggKey — command name for the machine envelope `command` and the text header (single source).
 	cCmdMakeYggKey = "make-ygg-key"
 )
 

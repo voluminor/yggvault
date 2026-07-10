@@ -24,7 +24,6 @@ const (
 	presetFormatHJSON = "hjson"
 )
 
-// cPresetFileName is the default YAML preset filename; json/hjson are handled by presetFileName.
 const cPresetFileName = "config.yml"
 
 // //

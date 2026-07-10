@@ -136,7 +136,6 @@ func (obj *Obj) GoPublishable(key string, version string, detectionObj core.Dete
 	if !detectionObj.IsGo || detectionObj.Conflict || candidateObj == nil {
 		return false
 	}
-	// Unbuildable module-zip trees are deliberately excluded from Go overlay routes.
 	if detectionObj.GoZipBlocked {
 		return false
 	}

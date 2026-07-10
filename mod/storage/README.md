@@ -75,12 +75,12 @@ Known backlog:
 
 ## Important Files
 
-- `obj.go`, `open.go`: storage object and startup.
+- `obj.go`, `init.go`: storage object and startup.
 - `staged.go`, `version.go`: publish path and version metadata.
 - `quarantine.go`, `sqliteindex/quarantine.go`: ingest failure and quarantine persistence.
 - `pebble.go`, `pebblestore/`: object store integration.
 - `sqliteindex/`: SQL schema and index queries.
-- `hot.go`, `quota.go`, `maintenance.go`: hot cache, quota, and maintenance.
+- `hot_build.go`, `hot_path.go`, `quota.go`, `maintenance.go`: hot cache, quota, and maintenance.
 - `validate.go`: archive and storage limit enforcement.
 
 ## Operational Notes

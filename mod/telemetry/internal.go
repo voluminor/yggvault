@@ -11,14 +11,13 @@ import (
 
 // // // // // // // // // //
 
-// Indices of the runtime samples in the reused slice; runtime/metrics avoids the STW pause of ReadMemStats.
 const (
-	miHeapObjectsBytes  = iota // /memory/classes/heap/objects:bytes ~ MemStats.HeapAlloc
-	miHeapUnusedBytes          // /memory/classes/heap/unused:bytes
-	miHeapFreeBytes            // /memory/classes/heap/free:bytes
-	miHeapReleasedBytes        // /memory/classes/heap/released:bytes
-	miGCHeapObjects            // /gc/heap/objects:objects ~ MemStats.HeapObjects
-	miGCCyclesTotal            // /gc/cycles/total:gc-cycles ~ MemStats.NumGC
+	miHeapObjectsBytes = iota
+	miHeapUnusedBytes
+	miHeapFreeBytes
+	miHeapReleasedBytes
+	miGCHeapObjects
+	miGCCyclesTotal
 )
 
 func runtimeSampleArr() []runtimemetrics.Sample {
@@ -50,7 +49,6 @@ func (obj *Obj) registerInternal() error {
 		return err
 	}
 
-	// runtime/metrics reads prepared samples without the heavyweight ReadMemStats.
 	sampleArr := runtimeSampleArr()
 	_, err = RegisterSpecs(meterObj, []SpecObj{
 		{Name: "go_goroutines", Help: "number of live goroutines"},

@@ -7,9 +7,7 @@ get:
     Lightweight cross-key snapshot containing each key, latest version,
     operational status, source classification, and source availability. Release
     notes and artifact lists are omitted. The body is served from the metadata
-    cache and does not perform a live storage scan. Clients should treat both
-    `application/json` and `text/plain` variants as the same JSON document. Query
-    parameters are rejected.
+    cache and does not perform a live storage scan. Query parameters are rejected.
   parameters:
     - $ref: parameters/if_none_match
   responses:

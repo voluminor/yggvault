@@ -323,9 +323,9 @@ func TestGoProxyMajor2Routing(t *testing.T) {
 
 	t.Run("cross-major strictness", func(t *testing.T) {
 		for _, pathText := range []string{
-			"/lib/@v/v2.44.0.info", // v2 version outside the v1 major line
+			"/lib/@v/v2.44.0.info",
 			"/lib/v2/@v/v1.0.0.info",
-			"/lib/v1/@v/list", // explicit /v1/ is strict 404 because majorBucket never returns "v1"
+			"/lib/v1/@v/list",
 		} {
 			if respObj, _ := doGET(t, tsObj, pathText, nil); respObj.StatusCode != 404 {
 				t.Fatalf("%s status=%d want 404", pathText, respObj.StatusCode)
@@ -341,13 +341,11 @@ func TestGoProxyMajor2Routing(t *testing.T) {
 		}
 	})
 
-	// During resolution, go probes module-path prefixes down to the host itself.
-	// Anything except 404/410 fails lookup, so this probe must return 404 rather than 400.
 	t.Run("module path prefix probes get 404", func(t *testing.T) {
 		for _, pathText := range []string{
-			"/mirror.example/@v/v2.44.0.info", // "module = host" probe
+			"/mirror.example/@v/v2.44.0.info",
 			"/mirror.example/@latest",
-			"/mirror.example/lib/@v/v2.44.0.info", // probe without /v2 in the v1 major line
+			"/mirror.example/lib/@v/v2.44.0.info",
 		} {
 			if respObj, _ := doGET(t, tsObj, pathText, nil); respObj.StatusCode != 404 {
 				t.Fatalf("%s status=%d want 404", pathText, respObj.StatusCode)
@@ -583,7 +581,6 @@ func TestHTMLPagesConditional(t *testing.T) {
 		}
 	}
 
-	// Key page ETag depends on the keyset cursor, so distinct pages must not collapse in cache.
 	firstResp, _ := doGET(t, tsObj, "/lib", nil)
 	pagedResp, _ := doGET(t, tsObj, "/lib?after="+webui.EncodeCursor(1, "v0.0.1"), nil)
 	if firstResp.Header.Get("Etag") == pagedResp.Header.Get("Etag") {

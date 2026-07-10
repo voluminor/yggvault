@@ -103,7 +103,6 @@ func TestCursorGarbage(t *testing.T) {
 	if _, _, err := decodeReleaseCursor(noSep); !errors.Is(err, serr.ErrBadInput) {
 		t.Fatalf("no-separator cursor: want ErrBadInput, got %v", err)
 	}
-	// Non-numeric and negative seq values are malicious cursors.
 	for _, raw := range []string{"abc\x00v1.0.0", "-5\x00v1.0.0", "1\x00"} {
 		enc := base64.RawURLEncoding.EncodeToString([]byte(raw))
 		if _, _, err := decodeReleaseCursor(enc); !errors.Is(err, serr.ErrBadInput) {

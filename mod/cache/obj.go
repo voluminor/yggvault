@@ -14,11 +14,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cShardCount is the shard count and a power of two for get/set lock locality at up to 1e5 entries.
 	cShardCount = 32
 
-	// cEntryOverheadBytes charges fixed map/list/struct overhead to the byte budget so many tiny entries cannot hide
-	// RAM usage behind payload length only.
 	cEntryOverheadBytes = 64
 )
 
@@ -34,7 +31,7 @@ type cacheItemObj struct {
 	key    string
 	value  EntryObj
 	size   int64
-	expiry int64 // Unix nanoseconds; now >= expiry is a cache miss.
+	expiry int64
 }
 
 func itemSize(key string, value EntryObj) int64 {

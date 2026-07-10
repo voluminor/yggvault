@@ -51,8 +51,6 @@ func TestLimitListenerBoundsConcurrentAccepts(t *testing.T) {
 		t.Fatal("first accept timed out")
 	}
 
-	// Second connection completes the handshake into the backlog, but Accept must not fire
-	// while the single slot is held by the first connection.
 	c2, err := net.Dial("tcp", addrText)
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +62,6 @@ func TestLimitListenerBoundsConcurrentAccepts(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	}
 
-	// Freeing the slot must let the queued accept proceed.
 	_ = firstObj.Close()
 	select {
 	case secondObj := <-acceptedChan:

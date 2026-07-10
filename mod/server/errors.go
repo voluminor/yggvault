@@ -10,10 +10,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cContentTypeJSON is the content type for JSON responses.
 	cContentTypeJSON = "application/json; charset=utf-8"
 
-	// cNoStoreControl disables caching for metrics and errors.
 	cNoStoreControl = "no-store"
 )
 

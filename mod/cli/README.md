@@ -34,10 +34,10 @@ flowchart TB
 ## Important Files
 
 - `obj.go`: command object and parser entry.
-- `parse.go`: flag and argument parsing.
-- `command.go`: typed command definitions.
-- `json.go`: JSON envelope output.
-- `usage.go`: help text.
+- `helper.go`: flag parsing and command validation.
+- `meta.go`: help and info output data.
+- `render.go`: terminal and JSON rendering.
+- `error.go`: CLI error wrapping and output.
 
 ## Operational Notes
 

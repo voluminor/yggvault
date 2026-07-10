@@ -19,18 +19,12 @@ import (
 
 // // // // // // // // // //
 
-// cMaxBrotherVersions caps total versions across index pages to limit pagination abuse and OOM risk.
 const cMaxBrotherVersions = 200000
 
-// cMaxBrotherIndexBytes bounds the cumulative in-memory size of one index across all pages. Together with
-// the per-entry note cap it keeps a hostile brother's footprint modest; the closed-ring model needs no
-// more headroom than this (lowered from 512 MiB).
 const cMaxBrotherIndexBytes = 128 << 20
 
 const (
-	// cMaxBrotherRedials caps reconnects to one brother during a single key ingest cycle.
-	cMaxBrotherRedials = 3
-	// cBrotherRedialBackoff pauses before redialing to avoid hammering a dead link.
+	cMaxBrotherRedials    = 3
 	cBrotherRedialBackoff = 500 * time.Millisecond
 )
 
@@ -75,7 +69,6 @@ func (obj *Obj) filterMissingBlobReqs(ctx context.Context, reqArr []source.BlobR
 	return outArr, nil
 }
 
-// brotherEntryBytes estimates one index entry's heap footprint: version, notes, hashes, and seq overhead.
 func brotherEntryBytes(entryObj source.BrotherIndexEntryObj) uint64 {
 	return uint64(len(entryObj.Version)) + uint64(len(entryObj.ReleaseNotes)) + 96
 }
@@ -132,7 +125,6 @@ func (obj *Obj) ingestBrother(ctx context.Context, key string, sourceURL string,
 			firstSourceURL = keySourceObj.OriginURL
 		}
 		if firstSourceURL != "" && firstSourceURL != brotherURL && obj.firstSourceReachable(ctx, firstSourceURL) {
-			// Brother-origin fallback uses ephemeral listing mode; sticky conflict freezes are for git keys only.
 			obj.ingestGit(ctx, key, firstSourceURL, cycleStart, false, forceRefresh, keySourceObj.ListingMode, false)
 			return
 		}
@@ -160,7 +152,6 @@ func (obj *Obj) ingestBrother(ctx context.Context, key string, sourceURL string,
 		if !forceRefresh && obj.canSkipKnownTree(ctx, key, entryObj.Version, entryObj.TreeHash) {
 			continue
 		}
-		// Do not retry a deterministic failure for the same tree hash; a bad brother could force endless downloads.
 		if forceRefresh {
 			obj.forceClearPermanentFailure(ctx, key, entryObj.Version)
 		} else if !entryObj.TreeHash.IsZero() && obj.permanentFailureSkip(key, entryObj.Version, entryObj.TreeHash.Hex()) {
@@ -184,7 +175,6 @@ func (obj *Obj) ingestBrother(ctx context.Context, key string, sourceURL string,
 	if ctx.Err() != nil {
 		return
 	}
-	// Brother indexes are complete lists, so seq-window release does not apply.
 	obj.applyDeletionGrace(ctx, key, upstreamSet, "", 0)
 }
 
@@ -270,7 +260,6 @@ func brotherDialCandidates(brotherURL string, keySourceObj core.KeySourceObj, or
 	return outArr
 }
 
-// brotherFallbackSeqs assigns positions only to legacy entries without seq; brother indexes are newest-first.
 func (obj *Obj) brotherFallbackSeqs(ctx context.Context, key string, indexArr []source.BrotherIndexEntryObj) map[string]int64 {
 	versionArr := make([]string, 0, len(indexArr))
 	for i := range indexArr {
@@ -284,7 +273,6 @@ func (obj *Obj) brotherFallbackSeqs(ctx context.Context, key string, indexArr []
 	return obj.assignUpstreamSeqs(ctx, key, versionArr, nil)
 }
 
-// canSkipKnownTree reports terminal success for a stored version whose advertised tree hash matches.
 func (obj *Obj) canSkipKnownTree(ctx context.Context, key string, version string, treeHashObj core.HashObj) bool {
 	if treeHashObj.IsZero() {
 		return false
@@ -300,7 +288,6 @@ func (obj *Obj) canSkipKnownTree(ctx context.Context, key string, version string
 		return false
 	}
 	if existingObj.HealPending {
-		// A blocked Go zip can heal without resync; other heal cases require normal resync.
 		return obj.clearBlockedGoHeal(ctx, key, version, existingObj)
 	}
 	obj.markVersionTerminalSuccess(ctx, key, version)
@@ -339,12 +326,6 @@ func (obj *Obj) ingestBrotherPublicFallback(ctx context.Context, key string, rem
 	return false, lastErr
 }
 
-// publicMirrorDetailSkip builds the detail-skip predicate for the public fallback: it skips unstorable names and
-// versions already stored in a healthy, non-deleted state, so their per-version detail (and its request) is not
-// fetched every cycle. Skipped healthy versions are still marked terminal-success to clear stale diagnostics,
-// matching the pre-existing canSkipKnownTree behavior. Because the public list carries no tree hash, an
-// already-stored version's upstream re-publish is not detected on this fallback path; the authoritative
-// brother/git paths detect it once reachable again.
 func (obj *Obj) publicMirrorDetailSkip(ctx context.Context, key string, forceRefresh bool) func(string) bool {
 	return func(version string) bool {
 		if !util.IsStorableSemver(version) && !util.IsStorableRawVersion(version) {
@@ -381,8 +362,6 @@ func (obj *Obj) ingestBrotherPublic(ctx context.Context, key string, remoteKey s
 			Msg("public mirror: some versions could not be resolved this cycle; they are retried next cycle")
 	}
 
-	// Names is the full upstream set (including versions skipped as already-present), so deletion grace stays
-	// safe even when only a subset resolved this cycle.
 	upstreamSet := make(map[string]struct{}, len(listingObj.Names))
 	for _, nameText := range listingObj.Names {
 		upstreamSet[nameText] = struct{}{}
@@ -482,8 +461,6 @@ func (obj *Obj) tryOriginFallback(ctx context.Context, key string, brotherURL st
 	if !obj.firstSourceReachable(ctx, originURL) {
 		return false
 	}
-	// Emergency origin fallback is a normal cycle without forced deep verification.
-	// Listing mode is ephemeral for brother keys and cannot create a sticky conflict freeze.
 	obj.ingestGit(ctx, key, originURL, cycleStart, false, false, keySourceObj.ListingMode, false)
 	return true
 }
@@ -560,7 +537,6 @@ func (obj *Obj) firstSourceReachable(ctx context.Context, sourceURL string) bool
 	probeCtx, cancel := context.WithTimeout(ctx, obj.configObj.Brother.FirstSourceTimeout)
 	defer cancel()
 	_, _, err := obj.sourceObj.Releases(probeCtx, sourceURL, 1)
-	// A releases 404 on Gitea/Forgejo proves the repo is reachable; ingest will use tag fallback.
 	return err == nil || source.IsNotFound(err)
 }
 
@@ -605,7 +581,6 @@ func (obj *Obj) brotherFetchBlobs(ctx context.Context, sessionObj source.Brother
 	return allBlobArr, nil
 }
 
-// recordBrotherPermanentFailure keys the quarantine row by advertised tree hash; legacy zero hashes are not keyed.
 func (obj *Obj) recordBrotherPermanentFailure(ctx context.Context, key string, entryObj source.BrotherIndexEntryObj, code string, message string) {
 	if entryObj.TreeHash.IsZero() {
 		return
@@ -614,7 +589,6 @@ func (obj *Obj) recordBrotherPermanentFailure(ctx context.Context, key string, e
 }
 
 func (obj *Obj) ingestBrotherVersion(ctx context.Context, key string, sessionObj source.BrotherSessionInterface, entryObj source.BrotherIndexEntryObj, upstreamSeq int64) {
-	// Raw versions replicate between brothers like semver; other names are dropped.
 	if !util.IsStorableSemver(entryObj.Version) && !util.IsStorableRawVersion(entryObj.Version) {
 		return
 	}
@@ -635,8 +609,6 @@ func (obj *Obj) ingestBrotherVersion(ctx context.Context, key string, sessionObj
 		obj.raiseVersionDegraded(key, entryObj.Version, "brother_version_failed", err)
 		return
 	}
-	// Version must return exactly the tree bytes advertised by the index hash. A mismatch means a lying
-	// or inconsistent brother; reject deterministically or the same version would redownload every cycle.
 	if !entryObj.TreeHash.IsZero() {
 		if pulledHashObj := core.HashBytes(versionObj.TreeBytes); pulledHashObj != entryObj.TreeHash {
 			hashErr := fmt.Errorf("index tree hash %s does not match pulled tree %s", entryObj.TreeHash.Hex(), pulledHashObj.Hex())
@@ -651,7 +623,6 @@ func (obj *Obj) ingestBrotherVersion(ctx context.Context, key string, sessionObj
 		obj.raiseVersionDegraded(key, entryObj.Version, "tree_decode_failed", err)
 		return
 	}
-	// Check archive count/size/path limits on the cheap tree before downloading blobs.
 	stagedArr := toStagedEntries(treeArr)
 	if _, _, limErr := obj.storageObj.CanonicalTree(stagedArr, key, entryObj.Version); limErr != nil {
 		obj.recordBrotherPermanentFailure(ctx, key, entryObj, "tree_invalid", limErr.Error())

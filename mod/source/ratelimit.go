@@ -96,7 +96,6 @@ func (transportObj *limitTransportObj) RoundTrip(reqObj *http.Request) (*http.Re
 	startObj := time.Now()
 	err := transportObj.owner.upstreamLimiter.wait(reqObj.Context(), reqObj.URL.Hostname())
 	if err != nil {
-		// Cancelled/deadline waits are excluded from the histogram to keep percentiles honest.
 		return nil, err
 	}
 	transportObj.owner.metricsObj.recordUpstreamLimiterWait(time.Since(startObj))

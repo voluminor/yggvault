@@ -67,7 +67,6 @@ type (
 
 // // // // // // // // // //
 
-// buildKey derives template-only fields for key.html.
 func buildKey(inputObj KeyObj, css template.CSS) keyTemplateObj {
 	versionArr := make([]versionRowObj, 0, len(inputObj.Versions))
 	for i := range inputObj.Versions {

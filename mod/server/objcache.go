@@ -15,11 +15,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cObjCacheCap bounds the typed cache by entries, not bytes: serializing just to weigh entries costs more than it saves.
-	// Two generations give an effective ceiling of about 2*cap without per-entry eviction.
 	cObjCacheCap = 4096
 
-	// cObjBuildBudget limits detached builds abandoned by cancelled clients.
 	cObjBuildBudget = 60 * time.Second
 )
 

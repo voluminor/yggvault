@@ -145,6 +145,7 @@ func (obj *Obj) commitPublish(ctx context.Context, publishObj core.PublishObj, t
 // Publish stores a version from inline entries, with content already in memory.
 // It normalizes the tree, verifies links under writeMu, writes missing objects within durable budget, and commits metadata.
 // The tree object is written last, so the version is unreachable until commit; identical republishes return Skipped.
+// Test-only: production publishing goes through PublishStaged; this in-memory path is retained as a test harness.
 func (obj *Obj) Publish(ctx context.Context, publishObj core.PublishObj) (core.PublishResultObj, error) {
 	releaseFunc, err := beginOperation(obj)
 	if err != nil {
@@ -457,7 +458,6 @@ func (obj *Obj) MarkUpstreamDeleted(ctx context.Context, key string, version str
 		if err = txObj.MarkUpstreamDeleted(ctx, key, version); err != nil {
 			return err
 		}
-		// Latest is derived by a top-1 query over versions, so no separate bookkeeping is needed.
 		return txObj.AddHistory(ctx, key, version, eventType, versionObj.TreeHash, core.HashObj{}, "")
 	})
 }

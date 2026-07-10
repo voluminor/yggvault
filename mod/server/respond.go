@@ -17,10 +17,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cNoCacheControl forces revalidation for live metadata.
 	cNoCacheControl = "no-cache, max-age=0, must-revalidate"
 
-	// cContentTypeHTML is the content type for web UI HTML pages.
 	cContentTypeHTML = "text/html; charset=utf-8"
 )
 
@@ -40,7 +38,6 @@ func writeHTML(w http.ResponseWriter, r *http.Request, etag string, htmlArr []by
 	_, _ = w.Write(htmlArr)
 }
 
-// writeHTMLNotModified returns 304 on If-None-Match before page rendering.
 func writeHTMLNotModified(w http.ResponseWriter, r *http.Request, etag string) bool {
 	if !condMatch(api.NewOptString(r.Header.Get("If-None-Match")), etag) {
 		return false
@@ -54,7 +51,6 @@ func writeHTMLNotModified(w http.ResponseWriter, r *http.Request, etag string) b
 
 // // // // // // // // // //
 
-// etagOf includes build identity, so a new deployment rotates derived validators.
 func etagOf(parts ...string) string {
 	if len(parts) == 0 {
 		return ""
@@ -80,8 +76,6 @@ func condMatch(ifNoneMatch api.OptString, etag string) bool {
 		return true
 	}
 	for _, partText := range strings.Split(headerVal, ",") {
-		// RFC 9110: If-None-Match uses weak comparison; our own nginx edge
-		// weakens the ETag under gzip, so a client-sent W/ prefix must match.
 		if strings.TrimPrefix(strings.TrimSpace(partText), "W/") == etag {
 			return true
 		}

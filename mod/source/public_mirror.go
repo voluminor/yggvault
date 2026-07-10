@@ -239,13 +239,13 @@ func (obj *Obj) PublicMirrorVersions(ctx context.Context, rootURL string, remote
 		if err != nil {
 			return PublicMirrorListingObj{}, err
 		}
+		namesBefore := len(resultObj.Names)
 		for _, summaryObj := range listObj.Releases {
 			if len(resultObj.Names) >= cMaxReleases {
 				resultObj.Truncated = true
 				return resultObj, nil
 			}
 			if summaryObj.Version == "" {
-				// A summary without a version name cannot be tracked as an upstream version; skip it.
 				continue
 			}
 			resultObj.Names = append(resultObj.Names, summaryObj.Version)
@@ -258,7 +258,6 @@ func (obj *Obj) PublicMirrorVersions(ctx context.Context, rootURL string, remote
 				if ctx.Err() != nil {
 					return PublicMirrorListingObj{}, ctx.Err()
 				}
-				// Isolate one version's failure: it stays in Names (deletion-safe) and is retried next cycle.
 				resultObj.Unresolved++
 				continue
 			}
@@ -269,6 +268,9 @@ func (obj *Obj) PublicMirrorVersions(ctx context.Context, rootURL string, remote
 		}
 		if len(listObj.Releases) == 0 {
 			return PublicMirrorListingObj{}, permanent(fmt.Errorf("public mirror %q returned an empty page with next cursor %q", pageURL, listObj.Next))
+		}
+		if len(resultObj.Names) == namesBefore {
+			return PublicMirrorListingObj{}, permanent(fmt.Errorf("public mirror %q advanced cursor %q without adding any version", pageURL, listObj.Next))
 		}
 		if _, ok := seenCursorSet[listObj.Next]; ok {
 			return PublicMirrorListingObj{}, permanent(fmt.Errorf("public mirror %q repeated next cursor %q", listURL, listObj.Next))

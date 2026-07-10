@@ -45,9 +45,6 @@ func staleScan(mutObj *keyMutObj, scanAt time.Time) bool {
 	return scanAt.Before(mutObj.lastScan)
 }
 
-// sameCycleReplay decides the fate of a write with an equal timestamp: a same-cycle
-// correction on top of Available (the recovery write precedes the listing outcome) is applied,
-// while a repeat on top of a down status is a replay and is ignored.
 func sameCycleReplay(mutObj *keyMutObj, scanAt time.Time) bool {
 	return !mutObj.lastScan.IsZero() &&
 		scanAt.Equal(mutObj.lastScan) &&
@@ -88,8 +85,6 @@ func applyUnavailable(preparedObj availabilityPreparedObj, permanentAt uint32) b
 	previousScan := preparedObj.mutObj.lastScan
 	previousReclass := preparedObj.mutObj.reclassAllowed
 
-	// Freeze the counter at permanentAt: once permanent-down, further increments only churn the snapshot
-	// (a changed count under an unchanged status) without adding information.
 	if preparedObj.mutObj.unavailableCycles < permanentAt {
 		preparedObj.mutObj.unavailableCycles++
 	}

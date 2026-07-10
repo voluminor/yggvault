@@ -17,10 +17,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cDefaultCacheMaxAge is the default Cache-Control max-age when the operator does not set one.
 	cDefaultCacheMaxAge = time.Hour
 
-	// cFallbackContentType is the default type for unknown extensions.
 	cFallbackContentType = "application/octet-stream"
 )
 

@@ -268,8 +268,6 @@ func validateWeb(stc *stcfg.ConfigObj) error {
 	if domainText == "" {
 		return errors.New("web.server.domain is required when web ingress is enabled")
 	}
-	// A domain with a port/scheme/path is not supported: it is woven into the module path
-	// (targetModulePath) and into links, where colon and slash are invalid.
 	if strings.ContainsAny(domainText, ":/") {
 		return errors.New("web.server.domain must be a bare hostname without scheme, port or path")
 	}

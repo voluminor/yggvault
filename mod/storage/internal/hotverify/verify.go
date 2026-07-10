@@ -28,8 +28,6 @@ var (
 
 const cVerifyBufferBytes = 128 * 1024
 
-// verifyBufferPool reuses 128 KiB buffers for streaming hashes.
-// verify_on_read=always would otherwise allocate a new buffer on every hot-path read.
 var verifyBufferPool = sync.Pool{
 	New: func() any {
 		bufArr := make([]byte, cVerifyBufferBytes)

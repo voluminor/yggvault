@@ -93,8 +93,8 @@ callers can reason about the yggvault block without accidentally depending on un
 ## Important Files
 
 - `obj.go`: mesh object and public methods.
-- `init.go`: node startup and key handling.
-- `method.go`: address, host, dial, listen, and close methods.
+- `host.go`: host derivation from Yggdrasil keys.
+- `dial.go`: Yggdrasil dial and listener adapters.
 - `sigils.go`: NodeInfo sigil construction and public identity validation.
 - `yggvault/`: small adapter package for Yggdrasil-specific runtime wiring.
 

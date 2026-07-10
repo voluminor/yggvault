@@ -21,29 +21,20 @@ import (
 // // // // // // // // // //
 
 const (
-	// cServiceName marks a brother instance in /health responses.
 	cServiceName = "yggvault"
 
-	// cMaxAttempts caps network retries.
 	cMaxAttempts = 3
 
-	// cAbsBlobCap is the absolute per-blob/file size cap, matching storage.
 	cAbsBlobCap = 256 << 20
 
-	// cAbsArchiveCap is the absolute downloaded archive size cap.
-	// It always applies; configured 0 disables operator checks, not the hard disk-exhaustion backstop.
 	cAbsArchiveCap = 2 << 30
 
-	// cHealthMaxBytes is the hard /health body limit; the discovery marker is tiny.
 	cHealthMaxBytes = 64 << 10
 
-	// cSourceArchiveName is the downloaded git archive file name inside the spool.
 	cSourceArchiveName = "source.archive"
 
 	cFormatZip = "zip"
 
-	// cDefaultRequestTimeout and cMinRequestTimeout floor outbound metadata timeouts.
-	// lightweigit-loader builds HTTP requests without context, so Client.Timeout must stay non-zero.
 	cDefaultRequestTimeout = 30 * time.Second
 	cMinRequestTimeout     = time.Second
 )
@@ -71,13 +62,11 @@ type Obj struct {
 
 	retry retryObj
 
-	maxArchiveSize uint64
-	maxBlobBytes   uint64
-	maxFetchBytes  uint64
-	maxFetchCount  uint
-	requestTimeout time.Duration
-	// maxDownloadDuration is a hard wall-clock ceiling per download attempt; 0 disables it. It bounds
-	// how long a slow upstream can hold a download slot, independent of the idle timer and rate floor.
+	maxArchiveSize      uint64
+	maxBlobBytes        uint64
+	maxFetchBytes       uint64
+	maxFetchCount       uint
+	requestTimeout      time.Duration
 	maxDownloadDuration time.Duration
 	routingPrefix       string
 
@@ -85,13 +74,10 @@ type Obj struct {
 	upstreamLimiter *hostLimiterObj
 	metricsObj      *sourceMetricsObj
 
-	// cred matches authorization headers for upstream providers by host.
 	cred *credentialMatcherObj
 
-	// allowLoopback permits clearnet loopback dials only in tests.
 	allowLoopback bool
 
-	// installedLoaderClient means this Obj owns the package-global loader client slot.
 	installedLoaderClient bool
 }
 
@@ -193,8 +179,6 @@ type BlobReqObj struct {
 
 // // // // // // // // // //
 
-// lightweigit uses a package-global http.Client, so only one live source.Obj is allowed per process.
-// New installs the routed transport and Close releases the slot; a second live New fails explicitly.
 var (
 	loaderClientMu   sync.Mutex
 	loaderClientLive bool

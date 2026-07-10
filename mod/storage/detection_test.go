@@ -88,7 +88,6 @@ func TestDetectionGoZipBlockedRoundTrip(t *testing.T) {
 		t.Fatalf("PutDetection update lost: ok=%v err=%v %+v", ok, err, detectionObj)
 	}
 
-	// PutDetection for a missing version must fail on the FK.
 	if err := obj.PutDetection(ctx, "blocked-lib", "v9.9.9", detectionObj); err == nil {
 		t.Fatal("PutDetection for unknown version must fail on versions FK")
 	}

@@ -99,7 +99,6 @@ func TestIngestGitPreservesUpstreamListingOrder(t *testing.T) {
 		t.Fatalf("GetVersion v0.9.0: ok=%v err=%v", ok, err)
 	}
 
-	// Second cycle: v0.9.5 appears at the top of the listing.
 	fakeSrc.releaseArr = []source.GitReleaseObj{
 		{Version: "v0.9.5", ArchiveURL: "https://x/c.zip", Format: "zip"},
 		{Version: "v0.9.0", ArchiveURL: "https://x/a.zip", Format: "zip"},

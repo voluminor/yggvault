@@ -6,7 +6,6 @@ import "syscall"
 
 // // // // // // // // // //
 
-// cpuSeconds — total process CPU time (user+sys) via getrusage.
 func cpuSeconds() float64 {
 	var ru syscall.Rusage
 	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &ru)

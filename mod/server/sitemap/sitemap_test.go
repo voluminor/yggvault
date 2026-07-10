@@ -20,7 +20,7 @@ type fakeStoreObj struct {
 
 func (f *fakeStoreObj) ListVersionsKeyset(_ context.Context, key string, _ bool, _ int64, afterVersion string, limit int) ([]core.VersionObj, error) {
 	if afterVersion != "" {
-		return nil, nil // single-page fixture: the first page returns everything
+		return nil, nil
 	}
 	arr := f.versions[key]
 	if len(arr) > limit {
@@ -69,10 +69,10 @@ func TestBuildNestedAbsoluteURLsAndLastmod(t *testing.T) {
 	for _, want := range []string{
 		`<?xml version="1.0" encoding="UTF-8"?>`,
 		`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`,
-		`<loc>https://vault.test/pkg/</loc>`,              // catalog
-		`<loc>https://vault.test/metrics</loc>`,           // metrics (service route at root)
-		`<loc>https://vault.test/pkg/errors</loc>`,        // key page
-		`<loc>https://vault.test/pkg/errors/v0.7.1</loc>`, // version page
+		`<loc>https://vault.test/pkg/</loc>`,
+		`<loc>https://vault.test/metrics</loc>`,
+		`<loc>https://vault.test/pkg/errors</loc>`,
+		`<loc>https://vault.test/pkg/errors/v0.7.1</loc>`,
 		`<loc>https://vault.test/pkg/errors/v0.7.0</loc>`,
 		`</urlset>`,
 	} {
@@ -101,7 +101,6 @@ func TestBuildMetricsExcludedWhenDisabled(t *testing.T) {
 
 func TestBuildCapTruncatesNewestFirst(t *testing.T) {
 	linkObj := link.Obj{Scheme: "https", EntryHost: "vault.test", RoutePrefix: "pkg"}
-	// cap=2 keeps catalog and the key page, then cuts the walk off before versions.
 	body, statsObj, err := Build(context.Background(), mkStore(), mkState(), linkObj, 2, false)
 	if err != nil {
 		t.Fatalf("Build: %v", err)

@@ -22,7 +22,6 @@ const (
 	CommandRebuildCache = "rebuild-cache"
 )
 
-// Non-command flag names; values are shared by flag.FlagSet, help text, and errors.
 const (
 	cFlagConfig    = "config"
 	cFlagOut       = "out"

@@ -48,8 +48,6 @@ func (obj *Obj) applyDeletionGrace(ctx context.Context, key string, upstreamSet 
 		if windowFloor != "" && belowFloor(version, windowFloor) {
 			continue
 		}
-		// Raw names cannot use the semver floor; their window guard is the source position.
-		// Rows older than the listed seq window are not treated as deleted.
 		if minSeq > 0 && util.IsRawVersionName(version) && localArr[i].UpstreamSeq > 0 && localArr[i].UpstreamSeq < minSeq {
 			continue
 		}
@@ -66,7 +64,6 @@ func (obj *Obj) applyDeletionGrace(ctx context.Context, key string, upstreamSet 
 			applyErr = obj.storageObj.MarkUpstreamDeleted(ctx, key, version)
 		}
 		if applyErr != nil {
-			// The miss counter is kept so a failed apply retries next cycle instead of earning extra grace.
 			obj.logObj.Warn().
 				Str("component", "rescan").
 				Str("key", key).

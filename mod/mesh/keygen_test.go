@@ -22,7 +22,6 @@ func writeKey(t *testing.T, pemBytes []byte) string {
 	if err != nil {
 		t.Fatalf("Stat returned error: %v", err)
 	}
-	// Windows does not honor unix permissions — check only on unix
 	if runtime.GOOS != "windows" {
 		if perm := info.Mode().Perm(); perm != 0o600 {
 			t.Fatalf("key file perm = %o, want 600", perm)

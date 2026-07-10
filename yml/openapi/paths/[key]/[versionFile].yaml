@@ -10,7 +10,9 @@ get:
     source tree (top-dir `<key>-<version>/`) and are host-independent; Go-module
     import-path rewriting is exposed only on the go-proxy `@v/<version>.zip`
     endpoint. A bare `<version>` without an extension renders the browser HTML
-    version page. Query parameters are rejected.
+    version page. If the version exists but its archive has not been
+    materialized yet, the archive request returns 503; retry after a short
+    delay. Query parameters are rejected.
   parameters:
     - $ref: parameters/key
     - name: versionFile
@@ -83,4 +85,6 @@ get:
     '431':
       $ref: responses/default_error
     '500':
+      $ref: responses/default_error
+    '503':
       $ref: responses/default_error

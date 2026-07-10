@@ -8,7 +8,6 @@ import (
 
 // // // // // // // // // //
 
-// universalFormatArr lists universal artifact formats with their format versions.
 var universalFormatArr = []struct {
 	format        archive.FormatType
 	formatVersion uint32

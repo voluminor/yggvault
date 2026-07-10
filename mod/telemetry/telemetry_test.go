@@ -92,7 +92,6 @@ func TestBuildSnapshotCounterAndHistogram(t *testing.T) {
 			t.Fatalf("document missing %q in:\n%s", part, docText)
 		}
 	}
-	// Prometheus text 0.0.4 has no OpenMetrics EOF terminator.
 	if bytes.Contains(doc, []byte("# EOF")) {
 		t.Fatalf("Prometheus text document must not contain an EOF trailer:\n%s", docText)
 	}

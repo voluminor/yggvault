@@ -12,7 +12,6 @@ import (
 // // // // // // // // // //
 
 const (
-	// cRebuildKeyPage is the keyset page size for a full rebuild without per-key fan-out.
 	cRebuildKeyPage = 256
 )
 
@@ -118,8 +117,6 @@ func rebuildVersionArtifacts(ctx context.Context, storeObj *storage.Obj, overlay
 
 	for i := range storedArr {
 		storedObj := storedArr[i]
-		// Legacy layouts: per-listener universal rows and global go-zip rows are no longer planned
-		// (universal is global-only, go-zip is per-listener) and never match a plan identity above.
 		legacyUniversal := storedObj.MaterializerID == stcode.MaterializerUniversal.String() && storedObj.ListenerID != stcode.ListenerGlobal.String()
 		legacyGlobalGo := storedObj.MaterializerID == stcode.MaterializerGo.String() && storedObj.ListenerID == stcode.ListenerGlobal.String()
 		if !legacyUniversal && !legacyGlobalGo {

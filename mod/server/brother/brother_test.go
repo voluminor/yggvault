@@ -433,7 +433,6 @@ func itoa(n int) string {
 	return string(buf[i:])
 }
 
-// errReadCloser is a sanity assertion that bufConnObj satisfies io.ReadWriteCloser.
 var _ io.ReadWriteCloser = (*bufConnObj)(nil)
 
 // // // // // // // // // //

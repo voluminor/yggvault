@@ -25,12 +25,10 @@ const (
 	GroupInternal Group = "internal"
 )
 
-// cScopePrefix separates our own scopes from external scopes, which go to core.
 const cScopePrefix = "github.com/voluminor/yggvault/"
 
 const cPushPath = "/api/v1/import/prometheus"
 
-// knownGroupsArr fixes the snapshot build order; knownGroupSetObj is derived from it.
 var knownGroupsArr = []Group{GroupCore, GroupCache, GroupRescan, GroupErrors, GroupInternal}
 
 var knownGroupSetObj = func() map[Group]bool {
@@ -66,8 +64,6 @@ type Obj struct {
 	started  atomic.Bool
 }
 
-// doc holds the full text exposition for /metrics/internal and the VictoriaMetrics push.
-// values holds per-group aggregates for the JSON endpoints.
 type snapshotObj struct {
 	doc    []byte
 	values map[Group]map[string]float64

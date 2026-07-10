@@ -23,8 +23,6 @@ type statObj struct {
 	statusN map[int]int64
 }
 
-// // // // // // // // // // helpers
-
 func percentile(sorted []int64, p float64) float64 {
 	if len(sorted) == 0 {
 		return 0
@@ -32,8 +30,6 @@ func percentile(sorted []int64, p float64) float64 {
 	idx := int(p / 100 * float64(len(sorted)-1))
 	return float64(sorted[idx]) / 1e6
 }
-
-// // // // // // // // // // main
 
 func main() {
 	url := flag.String("url", "", "target URL")

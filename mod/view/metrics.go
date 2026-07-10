@@ -26,7 +26,6 @@ type metricsTemplateObj struct {
 
 // // // // // // // // // //
 
-// refreshInterval floors live polling at ten seconds so the metrics page does not create noticeable load.
 func refreshInterval(interval time.Duration) time.Duration {
 	if interval < 10*time.Second {
 		return 10 * time.Second
@@ -36,7 +35,6 @@ func refreshInterval(interval time.Duration) time.Duration {
 
 // // // // // // // // // //
 
-// buildMetrics derives template-only fields for metrics.html.
 func buildMetrics(inputObj MetricsObj, css template.CSS) metricsTemplateObj {
 	hasJSON := false
 	for i := range inputObj.Endpoints {

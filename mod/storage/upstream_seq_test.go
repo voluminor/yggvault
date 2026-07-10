@@ -44,7 +44,6 @@ func TestUpstreamSeqOrderingAndLatest(t *testing.T) {
 		t.Fatalf("latest=%s, want v1.0.0 (semver-max, not max upstream_seq)", latestObj.Version)
 	}
 
-	// Deleting semver max falls latest back to the next semver.
 	if err = obj.MarkUpstreamDeleted(ctx, "core-lib", "v1.0.0"); err != nil {
 		t.Fatalf("MarkUpstreamDeleted returned error: %v", err)
 	}
@@ -73,7 +72,6 @@ func TestUpstreamSeqFallbackAndMutationKeepsSeq(t *testing.T) {
 		t.Fatalf("max upstream_seq=%d, want 2 (fallback max+1 per publish)", maxSeq)
 	}
 
-	// Mutating the first version must not raise its position.
 	publishTestVersion(t, obj, "v1.0.0", []core.InputEntryObj{{Path: "f.txt", Content: []byte("one-mutated")}})
 	versionObj, ok, err := obj.GetVersion(ctx, "core-lib", "v1.0.0")
 	if err != nil || !ok {

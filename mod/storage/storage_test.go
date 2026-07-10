@@ -78,7 +78,6 @@ func newTestConfigObj(t testing.TB) *stcfg.ConfigObj {
 	t.Helper()
 
 	configObj := stcfg.FullConfig()
-	// macOS: t.TempDir lives under the symlinked /var — resolve it, otherwise New rejects the symlink component
 	baseDir, evalErr := filepath.EvalSymlinks(t.TempDir())
 	if evalErr != nil {
 		t.Fatalf("EvalSymlinks returned error: %v", evalErr)
@@ -118,7 +117,6 @@ func publishTestVersion(t testing.TB, obj *Obj, version string, entriesArr []cor
 	return publishTestVersionSeq(t, obj, version, 0, entriesArr)
 }
 
-// publishTestVersionSeq publishes with an explicit source position; 0 falls back to max+1.
 func publishTestVersionSeq(t testing.TB, obj *Obj, version string, upstreamSeq int64, entriesArr []core.InputEntryObj) core.PublishResultObj {
 	t.Helper()
 
@@ -563,7 +561,6 @@ func TestBlobSpoolCloseRemovesDirDespiteCanceledContext(t *testing.T) {
 	spoolPath := spoolObj.RootPath()
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	cancelFunc()
-	// cleanup must remove the directory even with a canceled ctx, or shutdown leaves blob-spool-* junk.
 	if err = spoolObj.Close(ctx); err != nil {
 		t.Fatalf("Close with canceled context returned error: %v", err)
 	}
@@ -2532,15 +2529,12 @@ func TestValidateSharedHotFileEnforcesVerifyOnRead(t *testing.T) {
 		if err := obj.RegisterArtifact(ctx, artifactObj); err != nil {
 			t.Fatalf("RegisterArtifact returned error: %v", err)
 		}
-		// Same-size corruption: mirrors a shared build whose on-disk bytes drifted after registration.
 		if err := os.WriteFile(hotPath, corruptArr, 0o644); err != nil {
 			t.Fatalf("corrupt WriteFile returned error: %v", err)
 		}
 		return obj, artifactObj
 	}
 
-	// hotFileObj() copies the build metadata hash/size, so a shared HotFileObj carries the expected
-	// hash; only content verification can detect the drift. Reproduce that here.
 	openShared := func(art core.ArtifactObj) *HotFileObj {
 		fileObj, err := os.Open(art.FilePath)
 		if err != nil {

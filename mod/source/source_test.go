@@ -295,7 +295,6 @@ func TestPublicMirrorVersionsIsolatesBrokenVersion(t *testing.T) {
 	if listingObj.Unresolved != 1 {
 		t.Fatalf("unresolved=%d want 1", listingObj.Unresolved)
 	}
-	// A 404 detail is permanent, so it must not be retried within the same resolve.
 	if got := badHits.Load(); got != 1 {
 		t.Fatalf("broken detail hits=%d want 1 (no retry on permanent 404)", got)
 	}
@@ -326,7 +325,6 @@ func TestPublicMirrorVersionsSkipsKnownDetails(t *testing.T) {
 	t.Cleanup(ts.Close)
 	obj := newTestObj(t, testConfigObj(t))
 
-	// skip v1.0.0 as already-present: its detail must not be fetched, but it stays in Names.
 	skip := func(version string) bool { return version == "v1.0.0" }
 	listingObj, err := obj.PublicMirrorVersions(context.Background(), ts.URL+"/core-lib", "core-lib", skip)
 	if err != nil {

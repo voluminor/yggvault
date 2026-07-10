@@ -15,7 +15,6 @@ import (
 // // // // // // // // // //
 
 const (
-	// cOpenAPIContentType is the spec body content type.
 	cOpenAPIContentType = "application/json; charset=utf-8"
 )
 

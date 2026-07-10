@@ -14,7 +14,6 @@ import (
 
 // // // // // // // // // //
 
-// metricInt reads a counter as int64; missing series yield 0.
 func metricInt(valuesObj map[string]float64, key string) int64 {
 	return int64(valuesObj[key])
 }
@@ -30,7 +29,6 @@ func mapDiagnosticImpact(statusObj stcode.OperationalStatusType) api.MetricsDiag
 	}
 }
 
-// mapDiagnostics maps state diagnostics into the generated recent-buffer.
 func mapDiagnostics(diagArr []state.DiagnosticViewObj) []api.MetricsDiagnosticObj {
 	recentArr := make([]api.MetricsDiagnosticObj, 0, len(diagArr))
 	for i := range diagArr {
@@ -60,7 +58,6 @@ func mapDiagnostics(diagArr []state.DiagnosticViewObj) []api.MetricsDiagnosticOb
 	return recentArr
 }
 
-// groupValues returns ready-made group values honoring the current entry's public gate.
 func (obj *funcObj) groupValues(enabled bool, groupObj telemetry.Group) (map[string]float64, bool) {
 	if !enabled {
 		return nil, false

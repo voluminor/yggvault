@@ -20,12 +20,10 @@ import (
 // // // // // // // // // //
 
 const (
-	// cMaintenanceKeyPage — page size when iterating storage keys (keyset pagination).
 	cMaintenanceKeyPage = 512
 )
 
 func isStorageLockError(err error) bool {
-	// The substring is needed for drivers/wrappers that lose syscall.Errno without Unwrap.
 	return errors.Is(err, syscall.EAGAIN) ||
 		strings.Contains(err.Error(), "resource temporarily unavailable")
 }
@@ -157,9 +155,6 @@ func runPrune(ctx context.Context, configObj *stconf.ConfigObj, storeObj *storag
 	beforeBytes := storeObj.DurableBytes()
 	itemArr := make([]pruneKeyViewObj, 0, len(staleArr))
 	var deletedVersions uint64
-	// DeleteKey deliberately does not touch shared blobs — RepairBlobRefs picks them up.
-	// A prune interrupted (error, Ctrl-C) without repair leaks orphan blobs forever:
-	// a re-run will no longer see the deleted keys. That is why repair runs to completion via defer.
 	repairPending := false
 	defer func() {
 		if !repairPending {
@@ -186,7 +181,6 @@ func runPrune(ctx context.Context, configObj *stconf.ConfigObj, storeObj *storag
 		itemArr = append(itemArr, pruneKeyViewObj{Key: keyText, Versions: versionCount, ReclaimBytesEstimate: reclaimBytes})
 	}
 	if repairPending {
-		// Clear before the explicit attempt; defer must not run a second repair after a failed call.
 		repairPending = false
 		if err = storeObj.RepairBlobRefs(ctx); err != nil {
 			return err

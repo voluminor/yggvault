@@ -8,8 +8,6 @@ import (
 
 // // // // // // // // // //
 
-// cBuildBudget caps detached single-key builds after the caller context is stripped. It is a defensive ceiling
-// against runaway work, not the normal expected build duration.
 const cBuildBudget = 60 * time.Second
 
 // // // // // // // // // //

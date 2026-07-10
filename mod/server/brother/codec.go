@@ -11,12 +11,10 @@ import (
 // // // // // // // // // //
 
 const (
-	// Per-request gob caps for /rpc peers; real args are small, so body budget is conservative.
-	cRequestHeaderCap = 1 << 20  // 1 MiB
-	cRequestBodyCap   = 16 << 20 // 16 MiB
+	cRequestHeaderCap = 1 << 20
+	cRequestBodyCap   = 16 << 20
 )
 
-// errRequestTooLarge means a peer gob request exceeded the per-message budget.
 var errRequestTooLarge = errors.New("brother rpc request exceeds size budget")
 
 // // // // // // // // // //

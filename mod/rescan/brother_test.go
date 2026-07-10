@@ -25,7 +25,6 @@ import (
 
 // // // // // // // // // //
 
-// fakeBrotherFileObj is one version file for fake-session multi-file mode.
 type fakeBrotherFileObj struct {
 	path    string
 	content []byte
@@ -115,7 +114,6 @@ func (s *fakeBrotherSessionObj) Version(_ context.Context, version string) (sour
 func (s *fakeBrotherSessionObj) BlobsFetch(_ context.Context, version string, reqArr []source.BlobReqObj, destDir string) (source.BrotherFetchResultObj, error) {
 	s.fetchBatchSizes = append(s.fetchBatchSizes, len(reqArr))
 	if s.filesByVersion != nil {
-		// Multi-file mode returns strictly requested blobs so the fake does not hide deduplication.
 		contentByHash := make(map[core.HashObj][]byte)
 		for _, fileObj := range s.filesByVersion[version] {
 			contentByHash[core.HashBytes(fileObj.content)] = fileObj.content
@@ -456,7 +454,6 @@ func TestIngestBrotherSharedBlobPublishes(t *testing.T) {
 	}
 	archiveObj := archiveFromConfig(t, configObj)
 
-	// The shared blob is composer.json, which Detect reads and would fail without fallback.
 	sharedComposerArr := []byte(`{"name":"vendor/pkg"}`)
 	sessionObj := &fakeBrotherSessionObj{
 		indexEntries: []source.BrotherIndexEntryObj{
@@ -571,14 +568,12 @@ func TestBrotherFirstSourceReachableOnTagOnlyOrigin(t *testing.T) {
 	obj := New(configObj, fakeSrc, storageObj, overlayObj, stateObj, archiveFromConfig(t, configObj), "")
 	obj.RunOnce(ctx)
 
-	// The first source is reachable: the version came from git tags, not from brother.
 	if _, ok, err := storageObj.GetVersion(ctx, "core-lib", "v1.0.0"); err != nil || !ok {
 		t.Fatalf("tag version from first source must publish: ok=%v err=%v", ok, err)
 	}
 	if _, ok, _ := storageObj.GetVersion(ctx, "core-lib", "v0.0.9"); ok {
 		t.Fatal("brother index version must not be ingested when first source wins")
 	}
-	// Brother-key ephemeral mode is not persisted.
 	if ksObj, ok, _ := storageObj.GetKeySource(ctx, "core-lib"); ok && ksObj.ListingMode != "" {
 		t.Fatalf("brother key must not persist listing mode, got %q", ksObj.ListingMode)
 	}
@@ -609,8 +604,6 @@ func TestBrotherPermanentFailureMemory(t *testing.T) {
 
 // // // // // // // // // //
 
-// brotherSingleBlobTreeHash mirrors the fake session's one-blob tree so tests can advertise
-// an honest TreeHash matching Version bytes.
 func brotherSingleBlobTreeHash(t *testing.T, content []byte) core.HashObj {
 	t.Helper()
 	entryArr := []core.TreeEntryObj{
@@ -623,7 +616,6 @@ func brotherSingleBlobTreeHash(t *testing.T, content []byte) core.HashObj {
 	return treeHashObj
 }
 
-// runBrotherIngestOnce runs one brother-version integration cycle with the supplied index entry.
 func runBrotherIngestOnce(t *testing.T, entryObj source.BrotherIndexEntryObj, content []byte) (context.Context, *storage.Obj) {
 	t.Helper()
 	configObj := rescanTestConfig(t)

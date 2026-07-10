@@ -25,22 +25,16 @@ import (
 // // // // // // // // // //
 
 const (
-	// cTreeObjectMax caps a single tree object and matches the storage tree-codec.
 	cTreeObjectMax = 256 << 20
 
-	// cIndexPageMax caps the number of versions on a single index page.
 	cIndexPageMax = 4096
 
-	// cMaxVersionBytes caps version strings received from a brother.
 	cMaxVersionBytes = 256
 
-	// cMaxBodyMDBytes caps release notes received from a brother.
 	cMaxBodyMDBytes = 128 << 10
 
-	// cMaxSourceURLBytes caps source URLs declared by a brother.
 	cMaxSourceURLBytes = 2048
 
-	// Per-response gob header cap; body cap is derived from configured fetch limits per session.
 	cRPCHeaderCap = 1 << 20
 )
 

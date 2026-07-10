@@ -11,8 +11,6 @@ import (
 
 // // // // // // // // // //
 
-// blobStoreInterface reads durable blobs as a fallback when the spool misses.
-// Brother ingest does not restage blobs that already exist in storage.
 type blobStoreInterface interface {
 	ReadBlob(ctx context.Context, hashObj core.HashObj) ([]byte, error)
 }

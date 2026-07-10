@@ -63,7 +63,6 @@ type (
 
 // // // // // // // // // //
 
-// aboutBlock builds the public node card; http(s) contacts become links.
 func aboutBlock(serviceObj ServiceObj) aboutObj {
 	outObj := aboutObj{Description: serviceObj.Description, Location: serviceObj.Location}
 	for _, groupObj := range serviceObj.Contacts {
@@ -84,7 +83,6 @@ func aboutBlock(serviceObj ServiceObj) aboutObj {
 
 // // // // // // // // // //
 
-// buildCatalog derives template-only fields for catalog.html.
 func buildCatalog(inputObj CatalogObj, css template.CSS) catalogTemplateObj {
 	keyArr := make([]catalogKeyObj, 0, len(inputObj.Keys))
 	for i := range inputObj.Keys {

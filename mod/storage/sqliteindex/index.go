@@ -249,8 +249,6 @@ func openSQLite(ctx context.Context, pathToFile string) (*sql.DB, error) {
 	dbObj.SetMaxIdleConns(maxOpen)
 	dbObj.SetConnMaxLifetime(0)
 
-	// journal_mode, synchronous, foreign_keys and busy_timeout are applied per connection through the driver DSN.
-	// ExecContext PRAGMA here would bind only to one pooled connection.
 	if err = dbObj.PingContext(ctx); err != nil {
 		_ = dbObj.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
@@ -422,8 +420,6 @@ func sqlChunkSize(columnCount int) int {
 	return sizeValue
 }
 
-// scanAll collects every row into a slice via scanFn, then reports any row-iteration error. It replaces the
-// repeated `for rows.Next() { scan; append } + rows.Err()` tail shared by the keyset/page version reads.
 func scanAll[T any](rowsObj *sql.Rows, capacity int, scanFn func(rowScannerInterface) (T, error)) ([]T, error) {
 	if capacity < 0 {
 		capacity = 0
@@ -480,7 +476,6 @@ func scanVersion(scannerObj rowScannerInterface) (core.VersionObj, error) {
 	if err != nil {
 		return versionObj, fmt.Errorf("invalid ingest time in database: %w", err)
 	}
-	// Empty verified_ts means deep verification has not run yet.
 	if verifiedText != "" {
 		versionObj.VerifiedTS, err = core.ParseTime(verifiedText)
 		if err != nil {
@@ -497,7 +492,6 @@ func scanVersion(scannerObj rowScannerInterface) (core.VersionObj, error) {
 }
 
 func versionSelect(builderObj sq.StatementBuilderType, includeNotes bool) sq.SelectBuilder {
-	// Service scans preserve scanVersion shape without loading heavy release notes.
 	notesColumn := "''"
 	if includeNotes {
 		notesColumn = "versions.release_notes"

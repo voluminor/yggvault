@@ -8,8 +8,7 @@ get:
     size, and a link to the detail document; release notes and artifact lists
     are intentionally omitted. Pagination uses keyset cursors:
     `?after=<next-from-previous-response>`. The `next` field is omitted on the
-    last page. Clients should treat both `application/json` and `text/plain`
-    variants as the same JSON document.
+    last page.
   parameters:
     - $ref: parameters/key
     - $ref: parameters/after

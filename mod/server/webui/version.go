@@ -22,7 +22,6 @@ var (
 	cGoMatzer        = stcode.MaterializerGo.String()
 )
 
-// artifactHashes collects all stored body digests for an artifact.
 func artifactHashes(artifactObj core.ArtifactObj) []view.ArtifactHashObj {
 	hashArr := []view.ArtifactHashObj{{Algo: "blake3-24", Sum: artifactObj.BodyHash[:]}}
 	if len(artifactObj.BodySha256) > 0 {
@@ -79,19 +78,16 @@ func Version(ctx context.Context, st StateReaderInterface, store DetailReaderInt
 		if detectionObj.IsComposer {
 			viewModel.Overlays = append(viewModel.Overlays, "composer")
 		}
-		// Show detection evidence as user-facing text, not raw evidence JSON.
 		goCand, composerCand := overlay.CandidateFromDetection(detectionObj)
 		if goCand != nil && goCand.GoModulePath != "" {
 			viewModel.Detected = append(viewModel.Detected, "go module "+goCand.GoModulePath)
 		}
-		// A blocked Go zip is still Go-detected, but it has no @v routes.
 		if detectionObj.GoZipBlocked && detectionObj.GoZipBlockReason != "" {
 			viewModel.Detected = append(viewModel.Detected, "go module zip unavailable: "+detectionObj.GoZipBlockReason)
 		}
 		if composerCand != nil && composerCand.ComposerName != "" {
 			viewModel.Detected = append(viewModel.Detected, "composer "+composerCand.ComposerName)
 		}
-		// Raw versions skip ecosystem parsing and expose universal archives only; the name predicate is shared.
 		if util.IsRawVersionName(version) {
 			viewModel.Detected = append(viewModel.Detected, "raw version: universal archives only")
 		}
@@ -114,7 +110,6 @@ func Version(ctx context.Context, st StateReaderInterface, store DetailReaderInt
 			URL:       pathText,
 			GoModule:  artifactObj.MaterializerID == cGoMatzer,
 		}
-		// Host-sensitive archives exist per entry; show each block only with its own listener hashes.
 		if artifactObj.ListenerID == cListenerGlobal || artifactObj.ListenerID == listenerID {
 			viewModel.Downloads = append(viewModel.Downloads, entryObj)
 			if artifactObj.DegradedReason != "" {
@@ -164,7 +159,7 @@ func versionSnippets(ctx context.Context, store DetailReaderInterface, ov Overla
 		snippetArr = append(snippetArr, view.CodeSnippetObj{Label: "go", Body: overlay.GoInstallSnippet(ov.TargetModulePath(key, version), version, scheme, host)})
 	}
 	if composerCand != nil && host != "" {
-		snippetArr = append(snippetArr, view.CodeSnippetObj{Label: "composer", Body: overlay.ComposerRequireSnippet(composerCand.ComposerName, version, scheme, host)})
+		snippetArr = append(snippetArr, view.CodeSnippetObj{Label: "composer", Body: overlay.ComposerRequireSnippet(composerCand.ComposerName, version, scheme, host, lnk.Base())})
 	}
 	return snippetArr
 }
@@ -191,11 +186,6 @@ func universalSha256(ctx context.Context, store DetailReaderInterface, key strin
 	return nil
 }
 
-// fillHistoryNav finds immediate newer/older neighbors by newest-first keyset walk.
-// It stops after the match and two neighbors; history navigation errors must not fail the whole page.
-// fillHistoryNav sets the immediate newer/older neighbors of versionObj with two bounded keyset lookups
-// (LIMIT 1 each) around its (upstream_seq, version) cursor, instead of scanning the whole history from the
-// head. This keeps the version page O(1) in history length and avoids the O(N^2) enumeration amplification.
 func fillHistoryNav(ctx context.Context, store DetailReaderInterface, versionObj core.VersionObj, viewModel *view.VersionObj) {
 	if olderArr, err := store.ListVersionsKeyset(ctx, versionObj.Key, false, versionObj.UpstreamSeq, versionObj.Version, 1); err == nil && len(olderArr) > 0 {
 		viewModel.History.OlderVersion = olderArr[0].Version

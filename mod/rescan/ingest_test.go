@@ -32,8 +32,8 @@ import (
 type fakeSourceObj struct {
 	releaseArr            []source.GitReleaseObj
 	archiveBytes          []byte
-	archiveByKey          map[string][]byte // per-key archive override for multi-key tests
-	archiveByVersion      map[string][]byte // per-version archive override for multi-version tests
+	archiveByKey          map[string][]byte
+	archiveByVersion      map[string][]byte
 	discoverClass         stcode.SourceClassType
 	discoverErr           error
 	publicMirrorArr       []source.PublicMirrorVersionObj
@@ -42,22 +42,22 @@ type fakeSourceObj struct {
 	publicMirrorCalls     int
 	publicMirrorRoots     []string
 	brotherSession        source.BrotherSessionInterface
-	brotherSessions       []source.BrotherSessionInterface // redial sessions per BrotherDial call, in order
+	brotherSessions       []source.BrotherSessionInterface
 	dialCount             int
-	releasesErr           error // simulates unavailable first source
+	releasesErr           error
 
-	refsMap map[string]string // tag-to-SHA for Refs; nil means empty advertisement
-	refsErr error             // simulates refs advertisement failure
+	refsMap map[string]string
+	refsErr error
 
-	tagArr  []source.GitReleaseObj // tag listing for Tags; nil means empty
-	tagsErr error                  // simulates tag-list failure
+	tagArr  []source.GitReleaseObj
+	tagsErr error
 
 	fetchMu    sync.Mutex
-	fetchCalls map[string]int // FetchArchive counter by version
+	fetchCalls map[string]int
 
 	listMu        sync.Mutex
-	releaseDepths []uint // depth of each Releases call in order
-	tagsCalls     int    // Tags call counter
+	releaseDepths []uint
+	tagsCalls     int
 }
 
 func (f *fakeSourceObj) fetchCount(version string) int {
@@ -214,7 +214,6 @@ func buildZip(t *testing.T, files map[string]string) []byte {
 func rescanTestConfig(t *testing.T) *stconf.ConfigObj {
 	t.Helper()
 	configObj := stconf.FullConfig()
-	// macOS: t.TempDir lives under the /var symlink — resolve it, otherwise New rejects the symlink component
 	baseDir, evalErr := filepath.EvalSymlinks(t.TempDir())
 	if evalErr != nil {
 		t.Fatalf("EvalSymlinks returned error: %v", evalErr)
@@ -387,7 +386,6 @@ func TestClassifyDegradedDictionary(t *testing.T) {
 		"rewritten_file_too_large",
 		"invalid_artifact_ref",
 		"invalid_go_version",
-		// Unknown codes must default to degraded so a future deterministic code cannot pin node health in error.
 		"some_future_code",
 	}
 	for _, codeText := range contentArr {
@@ -470,7 +468,6 @@ func TestVersionFailureMetricCarriesPhase(t *testing.T) {
 
 // // // // // // // // // //
 
-// blockedGoStand builds a fixture with a Go version whose tree cannot become a valid Go module zip.
 func blockedGoStand(t *testing.T) (*Obj, *storage.Obj, *fakeSourceObj, context.Context) {
 	t.Helper()
 	configObj := rescanTestConfig(t)
@@ -495,7 +492,6 @@ func blockedGoStand(t *testing.T) (*Obj, *storage.Obj, *fakeSourceObj, context.C
 		t.Fatalf("state.New: %v", err)
 	}
 
-	// Blocked v1.0.0 is not rank 0; latest is redownloaded every cycle by deep verification schedule.
 	fakeSrc := &fakeSourceObj{
 		releaseArr: []source.GitReleaseObj{
 			{Version: "v1.1.0", ArchiveURL: "https://x/b.zip", Format: "zip"},
@@ -512,7 +508,6 @@ func blockedGoStand(t *testing.T) (*Obj, *storage.Obj, *fakeSourceObj, context.C
 	return New(configObj, fakeSrc, storageObj, overlayObj, stateObj, archiveFromConfig(t, configObj), ""), storageObj, fakeSrc, ctx
 }
 
-// blockedGoFiles is a Go module containing a file name rejected by x/mod/zip.
 func blockedGoFiles() map[string]string {
 	return map[string]string{
 		"core-lib-1.0.0/go.mod":            "module example.com/core-lib\n\ngo 1.22\n",
@@ -554,7 +549,6 @@ func assertBlockedComplete(t *testing.T, ctx context.Context, storageObj *storag
 		t.Fatal("universal artifacts must stay for a blocked version")
 	}
 
-	// Contrast: the clean neighboring version must keep its Go artifact.
 	cleanArr, err := storageObj.ListArtifacts(ctx, "core-lib", "v1.1.0")
 	if err != nil {
 		t.Fatalf("ListArtifacts clean: %v", err)

@@ -477,8 +477,6 @@ func TestExtractTarGzRejectsTrailingData(t *testing.T) {
 }
 
 func TestExtractTarGzAcceptsRecordPadding(t *testing.T) {
-	// GNU tar, git archive and bsdtar pad the tar stream to a full record with zero blocks inside the
-	// single gzip member; tar.Reader leaves that padding undecoded. It must not be rejected as trailing data.
 	var tarBufObj bytes.Buffer
 	tarWriterObj := tar.NewWriter(&tarBufObj)
 	bodyArr := []byte("hello record padding\n")

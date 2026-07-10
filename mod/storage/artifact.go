@@ -156,8 +156,6 @@ func (obj *Obj) EnsureArtifactFile(ctx context.Context, keyObj core.ArtifactKeyO
 	if err != nil {
 		return nil, err
 	}
-	// Waiters reopen the shared build independently, so re-validate type/size and enforce the
-	// verify_on_read policy here; openValidHotFile only covers the cache-hit fast path.
 	if err = obj.validateSharedHotFile(ctx, keyObj, fileObj, artifactObj); err != nil {
 		_ = fileObj.Close()
 		return nil, err

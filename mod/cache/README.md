@@ -34,7 +34,8 @@ flowchart LR
 ## Important Files
 
 - `obj.go`: cache object, configuration, entry accounting.
-- `method.go`: get/set operations and LRU maintenance.
+- `cache.go`: get, set, and build operations.
+- `shard.go`: shard-local LRU maintenance.
 - `metrics.go`: telemetry producer for cache metrics.
 - `gate.go`: shared admission gate for detached byte-cache and server typed-cache builds.
 

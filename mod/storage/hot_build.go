@@ -21,11 +21,8 @@ import (
 
 var errArtifactOversize = errors.New("artifact output exceeds expected size")
 
-// errArtifactBuildStalled means the artifact build wrote no data for longer than cArtifactBuildIdle.
 var errArtifactBuildStalled = errors.New("artifact build stalled: no write progress within idle budget")
 
-// cArtifactBuildIdle bounds an idle builder that holds a build slot, snapshot and temp file.
-// This is not an absolute deadline: slow large builds keep going as long as there is write progress.
 var cArtifactBuildIdle = 90 * time.Second
 
 // //
