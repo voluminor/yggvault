@@ -2549,7 +2549,10 @@ func TestValidateSharedHotFileEnforcesVerifyOnRead(t *testing.T) {
 		_ = sharedAlways.Close()
 		t.Fatal("always: shared-path validation accepted content-drifted hot file")
 	}
-	_ = sharedAlways.Close()
+	if sharedAlways.File != nil {
+		_ = sharedAlways.Close()
+		t.Fatal("always: rejected shared hot file was left open")
+	}
 	if _, statErr := os.Stat(artAlways.FilePath); !os.IsNotExist(statErr) {
 		t.Fatalf("always: corrupt hot file was not removed, stat err=%v", statErr)
 	}
@@ -2561,6 +2564,32 @@ func TestValidateSharedHotFileEnforcesVerifyOnRead(t *testing.T) {
 		t.Fatalf("never: shared-path validation rejected same-size file: %v", err)
 	}
 	_ = sharedNever.Close()
+
+	objActive, artActive := setup(stcfg.HotVerifyOnReadAlways)
+	sharedFirst := openShared(artActive)
+	sharedFirst.cleanup = objActive.retainHotPath(artActive.FilePath)
+	sharedSecond := openShared(artActive)
+	sharedSecond.cleanup = objActive.retainHotPath(artActive.FilePath)
+	if err := objActive.validateSharedHotFile(ctx, artifactKeyFromObj(artActive), sharedFirst, artActive); err == nil {
+		_ = sharedFirst.Close()
+		_ = sharedSecond.Close()
+		t.Fatal("active: shared-path validation accepted content-drifted hot file")
+	}
+	if sharedFirst.File != nil {
+		_ = sharedFirst.Close()
+		_ = sharedSecond.Close()
+		t.Fatal("active: rejected shared hot file was left open")
+	}
+	if _, statErr := os.Stat(artActive.FilePath); statErr != nil {
+		_ = sharedSecond.Close()
+		t.Fatalf("active: corrupt hot file was removed before the last reader closed: %v", statErr)
+	}
+	if err := sharedSecond.Close(); err != nil {
+		t.Fatalf("active: second shared close returned error: %v", err)
+	}
+	if _, statErr := os.Stat(artActive.FilePath); !os.IsNotExist(statErr) {
+		t.Fatalf("active: pending corrupt hot file was not removed, stat err=%v", statErr)
+	}
 }
 
 func TestRegisterArtifactRejectsHotPathHashMismatch(t *testing.T) {
