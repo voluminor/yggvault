@@ -39,8 +39,9 @@ release_mirrors:
   type: "map[string]string"
   usage:
     - "Mirror source registry: local key -> upstream repository root URL."
-    - "Keys must match `^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$`, must not equal web.server.domain, and must not use reserved route names such as `list`, `latest`, `@v`, `p2`, `packages.json`, `catalog.json`, or `feed.xml`."
+    - "Keys must match `^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$`, must not equal web.server.domain, and must not use reserved route names or Go major suffixes such as `v2`."
     - "Values must be non-empty HTTP or HTTPS URLs with a host."
+    - "A URL must not point at this node itself: hosts equal to web.server.domain or to this node's own Yggdrasil host are rejected, because a node cannot mirror itself."
 
 web:
   usage: "Web ingress, route topology, static file serving, and browser/API pagination."
@@ -123,6 +124,10 @@ web:
       value: "120s"
       min: "1s"
       usage: "Keep-alive idle timeout for incoming connections. Limits how long slow or idle clients can hold sockets. Accepts values such as `120s`, `1m`, or a nanosecond integer."
+    max_connections:
+      type: uint
+      value: 0
+      usage: "Maximum number of simultaneously accepted connections per listener, applied to every HTTP listener including web and Yggdrasil. 0 disables the limit. When set, connections beyond the limit wait in the accept backlog until a slot frees."
   static:
     usage:
       - "Optional user static tree served by the web listener."
@@ -164,7 +169,7 @@ web:
       usage:
         - "Single path segment used before per-key API and browser routes in nested mode."
         - "Must match `^[a-z0-9][a-z0-9._-]{0,31}$`."
-        - "Must not be one of the stable service routes: `health`, `info`, `metrics`, `openapi.json`."
+        - "Must not be a reserved service or generated-asset path: `health`, `info`, `metrics`, `openapi.json`, `og`, `logo`, `og.png`, `favicon.ico`, `sitemap.xml`."
   pages:
     usage: "Rendering and listing limits for browser/API pages."
     list_page_size:
@@ -191,7 +196,7 @@ ygg:
   pem_key:
     type: string
     usage:
-      - "Path to the node private key in PEM format."
+      - "Path to the node private key in PEM format. Create a key with `yggvault --make-ygg-key`."
       - "Relative paths are resolved against the process working directory."
       - "Empty value fully disables Yggdrasil ingress."
       - "When enabled, the node publishes HTTP on fixed Yggdrasil service port 80. Its host is `<PublicKey>.pk.ygg`; its transport address is an IPv6 address in 200::/7."
@@ -200,12 +205,22 @@ ygg:
     initial:
       type: "[]string"
       value: [ ]
-      usage: "Initial peer URI candidates. Empty list disables peer manager startup."
+      usage:
+        - "Initial peer URI candidates. Empty list disables peer manager startup."
+        - "Invalid or duplicate entries are dropped with startup warnings; validation fails only when no usable candidate remains."
+    passive:
+      type: bool
+      value: false
+      usage:
+        - "Keeps every configured peer connected and managed, skipping latency-based selection."
+        - "When enabled, ygg.peers.max_per_proto and ygg.peers.min_peers are ignored and health recovery does not run; scheduled ygg.peers.refresh_interval refreshes still reconnect lost peers."
     max_per_proto:
       type: uint
       value: 1
       min: 1
-      usage: "Target number of best peers retained per transport protocol."
+      usage:
+        - "Target number of best peers retained per transport protocol."
+        - "Ignored when ygg.peers.passive is enabled."
     probe_timeout:
       type: time.Duration
       value: "10s"
@@ -215,12 +230,43 @@ ygg:
       type: time.Duration
       value: "0s"
       min: "0s"
-      usage: "Interval between peer-pool refreshes. Zero means a single refresh at startup. Accepts values such as `5m`, `1h`, or a nanosecond integer."
+      usage:
+        - "Interval between scheduled peer-pool refreshes. Zero disables scheduled refreshes after the startup selection; outage and min_peers recovery still run independently through ygg.peers.health_interval."
+        - "One refresh re-probes the whole candidate pool, so non-zero values below 1m are raised to 1m at startup with a warning. Accepts values such as `5m`, `1h`, or a nanosecond integer."
     batch_size:
       type: uint
       value: 8
       min: 2
-      usage: "Maximum peer candidates probed concurrently in one batch. Must be >= 2."
+      usage: "Maximum new peer connections attempted in one refresh cycle. Values above 256 are capped by the library internally."
+    min_peers:
+      type: uint
+      value: 0
+      max: 256
+      usage:
+        - "Early-recovery threshold: when the count of active peers stays at or below this value for ygg.peers.min_peers_confirmations consecutive health checks, an unscheduled peer-pool refresh runs."
+        - "0 disables early recovery. Valid range: 0..256."
+        - "Must stay below the selectable peer capacity: the sum over distinct URI schemes in ygg.peers.initial of min(scheme candidates, max_per_proto)."
+        - "Ignored in passive mode and when health recovery is disabled (ygg.peers.health_interval=0)."
+    min_peers_confirmations:
+      type: uint
+      value: 3
+      min: 1
+      max: 1000
+      usage: "Number of consecutive low-peer-count health checks required before early recovery triggers. Guards against refresh storms on short connectivity blips. Valid range: 1..1000."
+    health_interval:
+      type: time.Duration
+      value: "10s"
+      min: "0s"
+      usage:
+        - "Interval between peer health checks driving outage detection and ygg.peers.min_peers early recovery."
+        - "0 disables health recovery. Non-zero values must be at least 1s. Accepts values such as `10s`, `1m`, or a nanosecond integer."
+    reprobe_interval:
+      type: time.Duration
+      value: "30m"
+      min: "0s"
+      usage:
+        - "Minimum holdoff before reconnecting a reachable peer that lost latency selection. Prevents flapping between near-equal candidates."
+        - "0 disables the holdoff. Accepts values such as `30m`, `1h`, or a nanosecond integer."
 
 logging:
   usage: "Runtime logging pipeline and event sinks."
@@ -314,8 +360,8 @@ metrics:
     usage: "Metrics exposed on the web ingress."
     public:
       type: bool
-      value: true
-      usage: "Publishes the HTML metrics index at /metrics and the JSON metric groups on web routes: /metrics/core, /metrics/cache, /metrics/errors, and /metrics/rescan."
+      value: false
+      usage: "Publishes the HTML metrics index at /metrics and the JSON metric groups on web routes: /metrics/core, /metrics/cache, /metrics/errors, /metrics/rescan, and /metrics/ygg. The ygg group exists only while Yggdrasil ingress is running and returns 404 otherwise. Disabled by default: metrics stay operator-only until explicitly exposed."
     internal:
       type: bool
       value: false
@@ -324,8 +370,8 @@ metrics:
     usage: "Metrics exposed on the Yggdrasil ingress."
     public:
       type: bool
-      value: true
-      usage: "Publishes the HTML metrics index and JSON metric groups on Yggdrasil routes. Same group set as metrics.web.public."
+      value: false
+      usage: "Publishes the HTML metrics index and JSON metric groups on Yggdrasil routes. Same group set as metrics.web.public. Disabled by default."
     internal:
       type: bool
       value: false
@@ -454,6 +500,27 @@ source:
     value: 8
     min: 1
     usage: "Maximum number of source archive downloads running concurrently."
+  download_max_duration:
+    type: time.Duration
+    value: "1h"
+    usage:
+      - "Hard wall-clock ceiling for a single source archive download attempt, independent of source.request_timeout (per-read idle) and the internal minimum-throughput floor. It bounds how long one slow upstream can hold a download slot (source.download_max_parallel)."
+      - "0 disables the ceiling. Set it above the time a legitimate largest-archive download needs: storage.archive_limits.size.compressed at your slowest expected link speed. Accepts values such as `1h`, `30m`, or a nanosecond integer."
+  rate_limit:
+    usage:
+      - "Per-host token bucket for every outgoing upstream HTTP request: provider API listings, git refs advertisements, discovery probes, public mirror JSON, and archive downloads."
+      - "The bucket key is the lowercased target host. Brother RPC has its own limiter in brother.rpc.rate_per_sec."
+      - "The wait happens inside the HTTP transport, so it also paces retries and provider API pagination."
+    requests_per_second:
+      type: uint
+      value: 8
+      usage:
+        - "Sustained per-host request rate. 0 disables outbound rate limiting."
+        - "Keep burst >= source.download_max_parallel + rescan.max_parallel_keys so parallel work does not starve against source.request_timeout."
+    burst:
+      type: uint
+      value: 16
+      usage: "Per-host burst capacity. Required to be >= 1 when requests_per_second > 0."
   retry:
     usage: "Retry policy for network and download failures. Runtime caps attempts in source code; these values shape the backoff between attempts."
     backoff_initial:
@@ -511,7 +578,7 @@ rescan:
     value: 0
     usage: "Maximum source releases requested per scan. 0 means full available history."
   verify:
-    usage: "Tiered deep re-verification of already mirrored git versions. Between deep verifies a version is checked cheaply through the git refs advertisement (tag -> commit sha); the archive is re-downloaded only for new versions, sha drift, or when its verification tier is due. The latest version of every key is deep-verified every cycle regardless of these intervals."
+    usage: "Tiered deep re-verification of already mirrored git versions. Between deep verifies a version is checked cheaply through the git refs advertisement (tag -> commit sha); the archive is re-downloaded only for new versions, sha drift, or when its verification tier is due. The latest version is deep-verified every cycle when its upstream SHA cannot be confirmed; with a confirmed matching SHA it follows recent_interval."
     recent_interval:
       type: time.Duration
       value: "168h"
@@ -667,6 +734,10 @@ cache:
     value: "64mb"
     min: "1mb"
     usage: "RAM cap for prebuilt metadata and ETag cache. This is a hard size cap. Accepts values such as `64mb`, `256mb`, or bytes."
+  build_max_parallel:
+    type: uint
+    value: 16
+    usage: "Global cap on concurrent detached cache builds shared by the byte cache and the typed object cache. 0 disables the cap."
 
 overlay:
   usage: "Safety settings for ecosystem-specific overlay materialization."
@@ -678,6 +749,7 @@ overlay:
       usage:
         - "Allows yggvault to rewrite go.mod and Go imports when the upstream module path differs from the public target module path."
         - "If rewrite is required and this flag is false, the Go overlay for that version is not published."
+        - "Universal `.zip`/`.tar.gz` archives are always raw and unaffected by this flag."
 
 history_policy:
   usage: "Version mutation and deletion policy for the local history chain."
@@ -774,7 +846,10 @@ shutdown_timeout:
   type: time.Duration
   value: "10s"
   min: "1s"
-  usage: "Global graceful shutdown budget. Storage close still gets its own integrity budget in runtime shutdown code. Accepts values such as `10s`, `1m`, or a nanosecond integer."
+  usage:
+    - "Global graceful shutdown budget. Storage close still gets its own integrity budget in runtime shutdown code."
+    - "Also applied as the embedded Yggdrasil node close budget: node teardown that exceeds it continues in the background."
+    - "Accepts values such as `10s`, `1m`, or a nanosecond integer."
 
 profiling:
   usage: "Built-in net/http/pprof and runtime-trace listener for load diagnostics. Disabled mode starts no listener. Enabled mode must bind only to loopback; use an SSH tunnel for remote access."

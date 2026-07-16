@@ -26,7 +26,7 @@ type SourceInterface interface {
 	Tags(ctx context.Context, sourceURL string, depth uint) ([]source.GitReleaseObj, bool, error)
 	Refs(ctx context.Context, sourceURL string) (map[string]string, error)
 	FetchArchive(ctx context.Context, reqObj source.GitFetchRequestObj) (source.GitFetchResultObj, error)
-	PublicMirrorVersions(ctx context.Context, rootURL string, remoteKey string) ([]source.PublicMirrorVersionObj, bool, error)
+	PublicMirrorVersions(ctx context.Context, rootURL string, remoteKey string, skip func(version string) bool) (source.PublicMirrorListingObj, error)
 	BrotherDial(ctx context.Context, localKey string, remoteKey string, brotherURL string) (source.BrotherSessionInterface, error)
 }
 
@@ -64,30 +64,28 @@ type Obj struct {
 	loopDone   chan struct{}
 	trigger    chan struct{}
 
-	// buildSem limits concurrent ArtifactDigest builds during ingest.
-	// ArtifactDigest does not gate itself, so rescan owns the CPU and disk budget.
 	buildSem chan struct{}
 
-	// metricsObj holds rescan instruments; nil before RegisterMetrics for disabled telemetry.
 	metricsObj *rescanMetricsObj
 
 	missMu  sync.Mutex
 	missMap map[missKeyObj]uint
 
-	// permFailMap remembers the tag SHA that caused a deterministic ingest failure.
-	// It is intentionally in-memory: a restart costs one retry, while steady-state avoids repeated downloads.
-	permFailMu  sync.Mutex
-	permFailMap map[missKeyObj]string
+	permFailMu          sync.Mutex
+	permFailMap         map[missKeyObj]string
+	permFailLoadMissObj map[string]struct{}
+	quarantineDirtyObj  map[string]struct{}
+
+	quarantineCapMu      sync.Mutex
+	quarantineCapWarnObj map[string]uint64
 
 	composerMu        sync.RWMutex
 	composerNames     []string
 	composerKeyByName map[string]string
 
-	// suppressedSet contains keys excluded by boot name-to-URL checks; local data stays untouched.
 	suppressedMu  sync.RWMutex
 	suppressedSet map[string]struct{}
 
-	// cycleCount drives periodic full index refreshes despite index-skip.
 	cycleCount atomic.Uint64
 
 	activeStats atomic.Pointer[cycleStatsObj]
@@ -131,24 +129,29 @@ func New(
 	if len(logArr) > 0 {
 		logObj = logArr[0]
 	}
-	return &Obj{
-		sourceObj:   sourceObj,
-		storageObj:  storageObj,
-		overlayObj:  overlayObj,
-		stateObj:    stateObj,
-		archiveObj:  archiveObj,
-		configObj:   configObj,
-		listenerArr: listenerArr,
-		keyArr:      keyArr,
-		rootCtx:     rootCtx,
-		rootCancel:  rootCancel,
-		loopDone:    make(chan struct{}),
-		trigger:     make(chan struct{}, 1),
-		buildSem:    make(chan struct{}, buildParallel),
-		missMap:     make(map[missKeyObj]uint),
-		permFailMap: make(map[missKeyObj]string),
-		logObj:      logObj,
+	obj := &Obj{
+		sourceObj:            sourceObj,
+		storageObj:           storageObj,
+		overlayObj:           overlayObj,
+		stateObj:             stateObj,
+		archiveObj:           archiveObj,
+		configObj:            configObj,
+		listenerArr:          listenerArr,
+		keyArr:               keyArr,
+		rootCtx:              rootCtx,
+		rootCancel:           rootCancel,
+		loopDone:             make(chan struct{}),
+		trigger:              make(chan struct{}, 1),
+		buildSem:             make(chan struct{}, buildParallel),
+		missMap:              make(map[missKeyObj]uint),
+		permFailMap:          make(map[missKeyObj]string),
+		permFailLoadMissObj:  make(map[string]struct{}),
+		quarantineDirtyObj:   make(map[string]struct{}),
+		quarantineCapWarnObj: make(map[string]uint64),
+		logObj:               logObj,
 	}
+	obj.loadPermanentFailures()
+	return obj
 }
 
 // SetSuppressed sets keys excluded by boot name-to-URL checks.

@@ -161,6 +161,25 @@ func (obj *Obj) removeHotPath(pathToFile string) error {
 	return err
 }
 
+func (obj *Obj) discardInvalidHotFile(fileObj *HotFileObj) error {
+	if fileObj == nil {
+		return nil
+	}
+	pathToFile := fileObj.Path
+	cleanupFunc := fileObj.cleanup
+	deletePending := false
+	if pathToFile != "" {
+		deletePending = obj.markHotDeletePending(pathToFile)
+	}
+
+	closeErr := fileObj.Close()
+	// Retained active files delete through pending release; transient shared files delete through cleanup.
+	if pathToFile == "" || deletePending || cleanupFunc != nil {
+		return closeErr
+	}
+	return errors.Join(closeErr, obj.removeHotPath(pathToFile))
+}
+
 func (obj *Obj) shouldVerifyHotRead() bool {
 	switch obj.configObj.Storage.Hot.VerifyOnRead {
 	case stcfg.HotVerifyOnReadNever:
@@ -172,7 +191,7 @@ func (obj *Obj) shouldVerifyHotRead() bool {
 	}
 }
 
-func (obj *Obj) shouldRetainArtifactLocked(ctx context.Context, keyObj core.ArtifactKeyObj) (bool, error) {
+func (obj *Obj) shouldRetainArtifact(ctx context.Context, keyObj core.ArtifactKeyObj) (bool, error) {
 	switch obj.configObj.Storage.Hot.Retain {
 	case stcfg.CacheRetainModeAll:
 		return true, nil
@@ -193,9 +212,6 @@ func (obj *Obj) openValidHotFile(ctx context.Context, artifactObj core.ArtifactO
 	if artifactObj.FilePath == "" {
 		return nil, false, nil
 	}
-	// Hot serve is the most frequent path: containment is checked via pathInside, the leaf is protected
-	// by OpenNoFollow + os.SameFile + IsRegularFile below. The parent-symlink walk stays on write/remove paths
-	// to avoid adding about 5 Lstat syscalls to every request.
 	filePath, err := pathInside(obj.hotDir, artifactObj.FilePath, "path is outside hot cache")
 	if err != nil {
 		return nil, false, err
@@ -225,19 +241,23 @@ func (obj *Obj) openValidHotFile(ctx context.Context, artifactObj core.ArtifactO
 		_ = releaseFunc()
 		return nil, false, err
 	}
-	if !osfs.IsRegularFile(infoObj) || !os.SameFile(lstatInfo, infoObj) || uint64(infoObj.Size()) != artifactObj.SizeBytes {
+	hotFileObj := &HotFileObj{Path: filePath, File: fileObj, SizeBytes: artifactObj.SizeBytes, BodyHash: artifactObj.BodyHash, cleanup: releaseFunc}
+	if !osfs.IsRegularFile(infoObj) || !os.SameFile(lstatInfo, infoObj) {
 		_ = fileObj.Close()
 		_ = releaseFunc()
 		return nil, false, nil
 	}
+	if uint64(infoObj.Size()) != artifactObj.SizeBytes {
+		_ = obj.discardInvalidHotFile(hotFileObj)
+		return nil, false, nil
+	}
 	if obj.shouldVerifyHotRead() {
 		if err = hotverify.VerifyOpenHotFile(ctx, fileObj, infoObj, artifactObj.BodyHash, artifactObj.SizeBytes); err != nil {
-			_ = fileObj.Close()
-			_ = releaseFunc()
 			if errors.Is(err, hotverify.ErrHashMismatch) {
-				_ = obj.removeHotPath(filePath)
+				_ = obj.discardInvalidHotFile(hotFileObj)
 				return nil, false, nil
 			}
+			_ = hotFileObj.Close()
 			return nil, false, err
 		}
 	}
@@ -245,5 +265,33 @@ func (obj *Obj) openValidHotFile(ctx context.Context, artifactObj core.ArtifactO
 		accessTime := time.Now()
 		_ = os.Chtimes(filePath, accessTime, accessTime)
 	}
-	return &HotFileObj{Path: filePath, File: fileObj, SizeBytes: artifactObj.SizeBytes, BodyHash: artifactObj.BodyHash, cleanup: releaseFunc}, true, nil
+	return hotFileObj, true, nil
+}
+
+func (obj *Obj) validateSharedHotFile(ctx context.Context, keyObj core.ArtifactKeyObj, fileObj *HotFileObj, artifactObj core.ArtifactObj) error {
+	if fileObj == nil || fileObj.File == nil {
+		return errors.New("artifact hot file is nil")
+	}
+	infoObj, err := fileObj.File.Stat()
+	if err != nil {
+		return err
+	}
+	if !osfs.IsRegularFile(infoObj) || uint64(infoObj.Size()) != artifactObj.SizeBytes {
+		discardErr := obj.discardInvalidHotFile(fileObj)
+		return newArtifactBuildErr(keyObj, discardErr, cArtifactCheckStaleSize, "", "", artifactObj.SizeBytes, uint64(infoObj.Size()))
+	}
+	if fileObj.BodyHash != artifactObj.BodyHash {
+		return newArtifactBuildErr(keyObj, nil, cArtifactCheckStaleHash, artifactObj.BodyHash.Hex(), fileObj.BodyHash.Hex(), 0, 0)
+	}
+	if !obj.shouldVerifyHotRead() {
+		return nil
+	}
+	if err = hotverify.VerifyOpenHotFile(ctx, fileObj.File, infoObj, artifactObj.BodyHash, artifactObj.SizeBytes); err != nil {
+		if errors.Is(err, hotverify.ErrHashMismatch) {
+			discardErr := obj.discardInvalidHotFile(fileObj)
+			return newArtifactBuildErr(keyObj, errors.Join(err, discardErr), cArtifactCheckStaleHash, artifactObj.BodyHash.Hex(), fileObj.BodyHash.Hex(), 0, 0)
+		}
+		return err
+	}
+	return nil
 }

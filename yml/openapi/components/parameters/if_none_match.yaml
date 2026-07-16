@@ -6,3 +6,4 @@ description: >-
   the server returns `304 Not Modified` without a response body.
 schema:
   type: string
+  example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'

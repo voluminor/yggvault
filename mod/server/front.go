@@ -38,8 +38,6 @@ func majorFrom(ctx context.Context) string {
 	return major
 }
 
-// headOnlyFrom reports that the original request was HEAD, rewritten to GET on a clone.
-// Artifact handlers answer from metadata without opening or materializing bodies.
 func headOnlyFrom(ctx context.Context) bool {
 	flag, _ := ctx.Value(headOnlyKeyObj{}).(bool)
 	return flag
@@ -60,7 +58,6 @@ func looksLikeGoProxy(path string) bool {
 	return strings.Contains(path, "/@v/") || strings.HasSuffix(path, "/@latest")
 }
 
-// stripEntryHost removes the entry-host prefix from goproxy paths; client module paths start with the host.
 func stripEntryHost(path string, entryHost string) (string, bool) {
 	if entryHost == "" || !looksLikeGoProxy(path) {
 		return path, false
@@ -71,17 +68,12 @@ func stripEntryHost(path string, entryHost string) (string, bool) {
 		return path, false
 	}
 	rest := trimmed[len(hostPrefix):]
-	// The go toolchain probes the host itself as a module prefix and only tolerates 404/410.
-	// Keep the host in place so the unknown key returns 404 instead of an empty-key 400.
 	if strings.HasPrefix(rest, "@") {
 		return path, false
 	}
 	return "/" + rest, true
 }
 
-// stripMajor removes a `vN` segment immediately before `/@v/` or `/@latest`.
-// Go module paths for major >=2 end in `/vN`, while standalone vN keys are config-invalid.
-// Explicit `/v0/` and `/v1/` are still stripped and later return strict 404.
 func stripMajor(path string) (string, string) {
 	markerIdx := strings.Index(path, "/@v/")
 	if markerIdx < 0 {
@@ -122,7 +114,7 @@ func splitSegments(pathText string) []string {
 	return strings.Split(trimmed, "/")
 }
 
-func (obj *ServerObj) splitNested(reqPath string) (string, bool) {
+func (obj *Obj) splitNested(reqPath string) (string, bool) {
 	if route.IsService(reqPath) {
 		return reqPath, true
 	}
@@ -136,7 +128,7 @@ func (obj *ServerObj) splitNested(reqPath string) (string, bool) {
 	return reqPath, false
 }
 
-func (obj *ServerObj) brotherRPCEnabled(lc listenerCtxObj) bool {
+func (obj *Obj) brotherRPCEnabled(lc listenerCtxObj) bool {
 	switch lc.listenerID {
 	case stcode.ListenerWeb:
 		return obj.cfg.Brother.Rpc.WebEnabled
@@ -156,7 +148,7 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, code string,
 // Handler is the outer handler for one entry listener.
 // It injects listener context, applies RPC/ingress/method gates, request ID, and go-proxy host/major stripping.
 // HEAD is routed as GET because ogen only defines GET operations here.
-func (obj *ServerObj) Handler(lc listenerCtxObj) http.Handler {
+func (obj *Obj) Handler(lc listenerCtxObj) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(context.WithValue(r.Context(), listenerCtxKeyObj{}, lc))
 		r = withRequestID(r, newRequestID())
@@ -169,7 +161,13 @@ func (obj *ServerObj) Handler(lc listenerCtxObj) http.Handler {
 				writeError(logWriterObj, r, http.StatusNotFound, "not_found", "resource not found")
 				return
 			}
+			sessionStart := time.Now()
 			obj.brotherObj.Handler().ServeHTTP(w, r)
+			obj.logObj.Info().
+				Str("listener", string(lc.listenerID)).
+				Str("remote", r.RemoteAddr).
+				Dur("elapsed", time.Since(sessionStart)).
+				Msg("brother rpc session finished")
 			return
 		}
 
@@ -219,7 +217,6 @@ func (obj *ServerObj) Handler(lc listenerCtxObj) http.Handler {
 			}
 		}
 
-		// Strip major after the route prefix; nested mode looks like /prefix/key/vN/@v/...
 		major := ""
 		if sub, majorSeg := stripMajor(routedPath); majorSeg != "" {
 			routedPath, major, rewritten = sub, majorSeg, true

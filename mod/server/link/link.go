@@ -11,12 +11,17 @@ type Obj struct {
 
 // // // // // // // // // //
 
+// Base returns the mirror route base path: "/<prefix>" in nested mode, "" in root mode.
+func (obj Obj) Base() string {
+	if obj.RoutePrefix != "" {
+		return "/" + obj.RoutePrefix
+	}
+	return ""
+}
+
 // Key builds a per-key web path with the nested prefix when nested mode is active.
 func (obj Obj) Key(key string, suffix string) string {
-	if obj.RoutePrefix != "" {
-		return "/" + obj.RoutePrefix + "/" + key + suffix
-	}
-	return "/" + key + suffix
+	return obj.Base() + "/" + key + suffix
 }
 
 // Abs returns an absolute URL for the entry scheme, or a relative path when entry host is empty.

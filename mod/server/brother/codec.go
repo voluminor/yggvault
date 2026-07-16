@@ -11,12 +11,10 @@ import (
 // // // // // // // // // //
 
 const (
-	// Per-request gob caps for /rpc peers; real args are small, so body budget is conservative.
-	cRequestHeaderCap = 1 << 20  // 1 MiB
-	cRequestBodyCap   = 16 << 20 // 16 MiB
+	cRequestHeaderCap = 1 << 20
+	cRequestBodyCap   = 16 << 20
 )
 
-// errRequestTooLarge means a peer gob request exceeded the per-message budget.
 var errRequestTooLarge = errors.New("brother rpc request exceeds size budget")
 
 // // // // // // // // // //
@@ -80,18 +78,15 @@ func (c *boundedCodecObj) ReadRequestBody(body any) error {
 	return c.dec.Decode(body)
 }
 
-// WriteResponse gob-encodes the response header and body; encode errors close the connection.
+// WriteResponse gob-encodes the response header and body. Any encode error desynchronizes the
+// gob stream, so the connection is closed unconditionally without flushing partial bytes.
 func (c *boundedCodecObj) WriteResponse(respObj *rpc.Response, body any) error {
 	if err := c.enc.Encode(respObj); err != nil {
-		if c.encBuf.Flush() == nil {
-			_ = c.conn.Close()
-		}
+		_ = c.Close()
 		return err
 	}
 	if err := c.enc.Encode(body); err != nil {
-		if c.encBuf.Flush() == nil {
-			_ = c.conn.Close()
-		}
+		_ = c.Close()
 		return err
 	}
 	return c.encBuf.Flush()

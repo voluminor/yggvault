@@ -23,33 +23,33 @@ func TestIsStorableRawVersion(t *testing.T) {
 
 	rejectArr := []string{
 		"",
-		"a",                     // too short
-		strings.Repeat("a", 65), // too long
-		"v1.2.3",                // storable semver stays on the semver path
-		"1.2.3",                 // storable semver without prefix
-		"v2",                    // go major segment
-		"v10",                   // go major segment
-		"list",                  // reserved route segment
-		"latest",                // reserved route segment
-		"releases.json",         // reserved route segment
-		"foo.zip",               // artifact suffix
-		"foo.tar.gz",            // artifact suffix
-		"foo.json",              // artifact suffix
-		"foo.xml",               // artifact suffix
-		"foo.mod",               // go proxy suffix
-		"foo.info",              // go proxy suffix
-		"foo.txt",               // reserved suffix
-		"FOO.ZIP",               // suffixes rejected case-insensitively
-		"-bad",                  // must start with alnum
-		"bad-",                  // must end with alnum
-		".bad",                  // must start with alnum
-		"pathé",                 // non-ASCII
-		"has space",             // forbidden char
-		"a/b",                   // forbidden char
-		"a@b",                   // forbidden char
-		"v1.2.3+meta",           // '+' is outside the charset: build-metadata tags are not storable at all
-		"CON",                   // windows reserved base
-		"aux.1",                 // windows reserved base
+		"a",
+		strings.Repeat("a", 65),
+		"v1.2.3",
+		"1.2.3",
+		"v2",
+		"v10",
+		"list",
+		"latest",
+		"releases.json",
+		"foo.zip",
+		"foo.tar.gz",
+		"foo.json",
+		"foo.xml",
+		"foo.mod",
+		"foo.info",
+		"foo.txt",
+		"FOO.ZIP",
+		"-bad",
+		"bad-",
+		".bad",
+		"pathé",
+		"has space",
+		"a/b",
+		"a@b",
+		"v1.2.3+meta",
+		"CON",
+		"aux.1",
 	}
 	for _, name := range rejectArr {
 		if IsStorableRawVersion(name) {

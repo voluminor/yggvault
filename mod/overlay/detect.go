@@ -119,8 +119,6 @@ func (goDetectorObj) Ecosystem() stcode.EcosystemType { return stcode.EcosystemG
 // Missing, nested-only or oversized go.mod returns nil candidate.
 func (goDetectorObj) Detect(ctx context.Context, treeArr []core.TreeEntryObj, src BlobReaderInterface) (*CandidateObj, error) {
 	entryObj, ok := shallowestEntry(treeArr, "go.mod")
-	// go.mod only in a subdirectory means a submodule: x/mod/zip would drop its
-	// entire subtree, and the "successfully" built module would be empty and unbuildable.
 	if !ok || entryObj.Path != "go.mod" {
 		return nil, nil
 	}
@@ -135,7 +133,6 @@ func (goDetectorObj) Detect(ctx context.Context, treeArr []core.TreeEntryObj, sr
 	if modulePath == "" {
 		return nil, nil
 	}
-	// Go-zip viability is cheap and deterministic here because it does not read blobs.
 	blockReason := goZipBlockReason(treeArr, dataArr)
 	rewriteArr, err := scanRewriteBlobs(ctx, treeArr, src, modulePath)
 	if err != nil {

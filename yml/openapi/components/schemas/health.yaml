@@ -5,28 +5,36 @@ properties:
     type: string
     enum: [ yggvault ]
     description: Service name emitted by this binary.
+    example: yggvault
   status:
     type: string
     enum: [ ok, degraded, error ]
     description: Current node health after runtime self-checks and recent diagnostics.
+    example: ok
   source:
     type: string
     description: "Entry channel that served this request: `web` or `yggdrasil`."
     enum: [ web, yggdrasil ]
+    example: web
   ts:
     type: string
     format: date-time
     description: Timestamp when the health snapshot was produced.
+    example: "2026-07-16T18:42:47Z"
   last_rescan:
     type: string
     format: date-time
     description: Timestamp of the last completed rescan cycle, omitted before the first completed cycle.
+    example: "2026-07-16T18:40:00Z"
   errors_count:
     type: integer
     format: int32
     description: Number of recent diagnostics currently tracked by the runtime state.
+    example: 0
   reasons:
     type: array
     description: Degraded or error reasons as stable reason strings.
+    example: [ ]
     items:
       type: string
+      example: upstream_unavailable

@@ -4,9 +4,11 @@ properties:
   key:
     type: string
     description: Registry key that owns this version.
+    example: yggvault
   version:
     type: string
     description: Version label as exposed by the mirror.
+    example: v0.3.4
   source:
     $ref: schemas/source_status
   upstream_present:
@@ -14,22 +16,28 @@ properties:
     description: >-
       Whether this version was still present at the upstream during the last
       scan. `false` means the mirror kept an upstream-deleted version.
+    example: true
   time:
     type: string
     format: date-time
     description: Release timestamp used for feeds, lists, and package-manager metadata.
+    example: "2026-07-16T18:42:47Z"
   size:
     type: integer
     format: int64
     description: Total source content size in bytes.
+    example: 7340032
   hash:
     type: string
     description: "BLAKE3-24 XOF digest of the canonical version tree, encoded as 48 lowercase hex characters."
+    example: 0123456789abcdef0123456789abcdef0123456789abcdef
   overlays:
     type: array
     description: Overlay families detected and published for this version, such as Go or Composer.
+    example: [ go ]
     items:
       type: string
+      example: go
   artifacts:
     type: array
     description: Downloadable artifacts published for this version.
@@ -38,8 +46,11 @@ properties:
   notes_markdown:
     type: string
     description: "Raw upstream release notes in Markdown. Sanitized HTML is rendered only for browser pages."
+    example: "## v0.3.4\n\nMaintenance release."
   degraded:
     type: array
     description: Per-version degraded reasons, when some overlay or artifact could not be published.
+    example: [ ]
     items:
       type: string
+      example: go_manifest_missing

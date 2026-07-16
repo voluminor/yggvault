@@ -8,8 +8,6 @@ import (
 
 // // // // // // // // // //
 
-// cStmtCacheCap caps cached prepared statements.
-// SQL forms are stable, but batch and IN chunk lengths create finite variants; overflow executes directly without growing the cache.
 const cStmtCacheCap = 512
 
 // //

@@ -4,14 +4,18 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"errors"
-
-	"github.com/voluminor/ratatoskr/mod/resolver"
 )
 
 // // // // // // // // // //
 
+// cHostSuffix is the canonical Yggdrasil public-key domain suffix (`<hex>.pk.ygg`). Ratatoskr v1
+// keeps this naming contract internal, so the mesh layer owns its copy.
+const cHostSuffix = ".pk.ygg"
+
+// // // // // // // // // //
+
 func hostFromPublicKey(pubKey ed25519.PublicKey) string {
-	return hex.EncodeToString(pubKey) + resolver.NameMappingSuffix
+	return hex.EncodeToString(pubKey) + cHostSuffix
 }
 
 // // // // // // // // // //

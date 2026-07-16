@@ -4,8 +4,6 @@ import "errors"
 
 // // // // // // // // // //
 
-// Overlay degradation sentinels: materializer/detect failures do not break mirror metadata; they produce 404 on the
-// overlay route plus a diagnostic. errSymlinkInGoModule is declared in gozip.go.
 var (
 	errManifestMissing       = errors.New("go.mod not found in version tree")
 	errManifestTooLarge      = errors.New("go.mod exceeds manifest size cap")

@@ -23,7 +23,6 @@ func TestSpoolSourceReadBlobFallsBackToStorage(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = storageObj.Close(ctx) })
 
-	// The blob exists only in the spool map, so storage is not touched.
 	stagedArr := []byte("staged content")
 	stagedHashObj := core.HashBytes(stagedArr)
 	stagedPath := filepath.Join(t.TempDir(), "staged.blob")

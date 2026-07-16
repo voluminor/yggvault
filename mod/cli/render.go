@@ -14,7 +14,6 @@ import (
 
 // // // // // // // // // //
 
-// rxUsageToken highlights long/short flags and angle-bracket placeholders with one matcher.
 var rxUsageToken = regexp.MustCompile(`--?[A-Za-z][A-Za-z0-9-]*|<[^>]+>`)
 
 // //

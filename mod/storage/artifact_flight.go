@@ -79,6 +79,8 @@ func (obj *Obj) finishArtifactFlight(flightKey string, flightObj *artifactFlight
 	close(flightObj.doneChan)
 	obj.flightMu.Unlock()
 
+	flightObj.cancel()
+
 	if cleanupObj != nil {
 		_ = cleanupObj.cleanupUnused()
 	}

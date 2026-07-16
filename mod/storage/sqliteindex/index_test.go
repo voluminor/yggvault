@@ -21,7 +21,6 @@ func expectExecFails(t *testing.T, indexObj *Obj, queryText string, argsArr ...a
 	}
 }
 
-// tempSqlitePath is the index temp-file path with symlinks resolved (macOS: t.TempDir is under /var).
 func tempSqlitePath(t testing.TB) string {
 	t.Helper()
 	base, err := filepath.EvalSymlinks(t.TempDir())

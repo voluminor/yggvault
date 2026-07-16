@@ -3,10 +3,10 @@
 `mod/logger` builds the process logger from configuration. It wires console output, rotating file output, and optional
 VictoriaLogs shipping into one logger used by runtime packages.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   config["stconf config"] --> logger["mod/logger"]
   logger --> console["console sink"]
   logger --> file["rotating file sink"]
@@ -29,13 +29,13 @@ flowchart LR
 - Remote logging failures must not crash the mirror. They are operational degradation, not data corruption.
 - Logs should use stable, low-cardinality fields such as component, key, version, and request id.
 
-## Important Files
+## Important files
 
 - `obj.go`: logger construction and sink selection.
-- `level.go`: level parsing.
-- `writer.go`: sink adapters.
+- `helper.go`: sink helpers and level parsing.
+- `victorialogs.go`: VictoriaLogs sink delivery.
 
-## Operational Notes
+## Operational notes
 
 Use file logging for persistent node diagnostics. Console logging is usually enough for containers. VictoriaLogs is
 optional and should be treated as best-effort telemetry.

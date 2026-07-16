@@ -20,7 +20,6 @@ import (
 
 // // // // // // // // // //
 
-// cMaxReleases caps collected release records to avoid OOM on huge histories.
 const cMaxReleases = 100_000
 
 // // // // // // // // // //
@@ -56,8 +55,6 @@ func classifyLoaderErr(err error) error {
 	if errors.Is(err, lightweigit.ErrNotFound) {
 		return permanent(err)
 	}
-	// Since adaptive page splitting in the loader, this only survives when one listing item
-	// exceeds the response-body cap; that is a permanent content property.
 	if errors.Is(err, lightweigit.ErrResponseTooLarge) {
 		return permanent(err)
 	}
@@ -72,8 +69,6 @@ func IsNotFound(err error) bool {
 
 // // // // // // // // // //
 
-// collectStream drains a listing stream up to cMaxReleases. On the cap it cancels and drains the
-// channel so the loader goroutine cannot block on send; our context.Canceled means truncation.
 func collectStream[T any](ctx context.Context, streamFunc func(context.Context, chan T, int) error, depth uint, mapFunc func(T) (GitReleaseObj, bool)) ([]GitReleaseObj, bool, error) {
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()

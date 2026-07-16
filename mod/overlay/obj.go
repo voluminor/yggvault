@@ -14,15 +14,9 @@ import (
 // // // // // // // // // //
 
 const (
-	// cMaxManifestBytes caps manifest parsing size for go.mod/composer.json. Ingest already enforces per-file caps;
-	// this is overlay defense in depth.
 	cMaxManifestBytes = 1 << 20
 
-	// cMaxComposerNameBytes caps composer names that enter routes and file names.
 	cMaxComposerNameBytes = 150
-
-	// Format versions for byte-stable materializers. Increment on byte output changes to invalidate rebuild body_hash
-	// checks. Composer/Go served-live JSON metadata is not included here.
 
 	// GoZipFormatVersion is the Go module zip format version.
 	GoZipFormatVersion = 2

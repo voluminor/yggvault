@@ -15,10 +15,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cRefsMaxBytes caps refs advertisements; large monorepos still fit in a few megabytes.
 	cRefsMaxBytes = 16 << 20
 
-	// cRefsService is the smart-HTTP v0 service name.
 	cRefsService = "git-upload-pack"
 
 	cTagRefPrefix = "refs/tags/"
@@ -68,8 +66,6 @@ func trimPktNewline(payloadArr []byte) []byte {
 	return payloadArr
 }
 
-// readPktLine reads one pkt-line: 4 hex length bytes including the header, then payload.
-// The second result reports flush-pkt `0000`.
 func readPktLine(bufObj *bufio.Reader) ([]byte, bool, error) {
 	headArr := make([]byte, 4)
 	if _, err := io.ReadFull(bufObj, headArr); err != nil {
@@ -95,8 +91,6 @@ func readPktLine(bufObj *bufio.Reader) ([]byte, bool, error) {
 	return payloadArr, false, nil
 }
 
-// parseRefsAdvertisement parses v0 service header, flush, and `<sha> <refname>[\0caps]` lines.
-// Only refs/tags/* are collected; peeled refs replace annotated-tag object SHAs with commit SHAs.
 func parseRefsAdvertisement(readerObj io.Reader, maxBytes int64) (map[string]string, error) {
 	limitedObj := &io.LimitedReader{R: readerObj, N: maxBytes + 1}
 	bufObj := bufio.NewReader(limitedObj)
@@ -121,7 +115,6 @@ func parseRefsAdvertisement(readerObj io.Reader, maxBytes int64) (map[string]str
 	for {
 		payloadArr, flushFlag, err = readPktLine(bufObj)
 		if errors.Is(err, io.EOF) {
-			// EOF at the byte limit means truncation exactly on a pkt-line boundary.
 			if limitedObj.N <= 0 {
 				return nil, errRefsTooLarge
 			}
@@ -134,7 +127,6 @@ func parseRefsAdvertisement(readerObj io.Reader, maxBytes int64) (map[string]str
 			continue
 		}
 		lineText := string(trimPktNewline(payloadArr))
-		// Capabilities appear after NUL only on the first ref line.
 		if capIdx := strings.IndexByte(lineText, 0); capIdx >= 0 {
 			lineText = lineText[:capIdx]
 		}

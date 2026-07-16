@@ -1,0 +1,39 @@
+get:
+  tags: [ service ]
+  operationId: getMetricsYgg
+  x-func: GetMetricsYgg
+  summary: Yggdrasil mesh peer metrics
+  description: >-
+    JSON snapshot of the embedded Yggdrasil node: peer totals, traffic and
+    latency aggregates, and isolation notifications, read from the prebuilt
+    telemetry snapshot. Served only when public metrics are enabled for the
+    current entry (`metrics.web.public` or `metrics.ygg.public`) and the
+    Yggdrasil node is running (`ygg.pem_key` is set); otherwise the endpoint
+    returns 404. The per-peer list is included only when internal metrics are
+    also enabled for the entry: it exposes direct topology, so the public
+    response stays aggregate-only.
+  responses:
+    '200':
+      description: Yggdrasil mesh metrics.
+      headers:
+        Cache-Control:
+          description: No-cache policy for live metrics.
+          schema:
+            type: string
+            example: no-cache, max-age=0, must-revalidate
+      content:
+        application/json:
+          schema:
+            $ref: schemas/metrics_ygg
+    '400':
+      $ref: responses/default_error
+    '404':
+      $ref: responses/default_error
+    '405':
+      $ref: responses/default_error
+    '414':
+      $ref: responses/default_error
+    '431':
+      $ref: responses/default_error
+    '500':
+      $ref: responses/default_error

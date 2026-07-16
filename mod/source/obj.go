@@ -21,29 +21,20 @@ import (
 // // // // // // // // // //
 
 const (
-	// cServiceName marks a brother instance in /health responses.
 	cServiceName = "yggvault"
 
-	// cMaxAttempts caps network retries.
 	cMaxAttempts = 3
 
-	// cAbsBlobCap is the absolute per-blob/file size cap, matching storage.
 	cAbsBlobCap = 256 << 20
 
-	// cAbsArchiveCap is the absolute downloaded archive size cap.
-	// It always applies; configured 0 disables operator checks, not the hard disk-exhaustion backstop.
 	cAbsArchiveCap = 2 << 30
 
-	// cHealthMaxBytes is the hard /health body limit; the discovery marker is tiny.
 	cHealthMaxBytes = 64 << 10
 
-	// cSourceArchiveName is the downloaded git archive file name inside the spool.
 	cSourceArchiveName = "source.archive"
 
 	cFormatZip = "zip"
 
-	// cDefaultRequestTimeout and cMinRequestTimeout floor outbound metadata timeouts.
-	// lightweigit-loader builds HTTP requests without context, so Client.Timeout must stay non-zero.
 	cDefaultRequestTimeout = 30 * time.Second
 	cMinRequestTimeout     = time.Second
 )
@@ -71,22 +62,22 @@ type Obj struct {
 
 	retry retryObj
 
-	maxArchiveSize uint64
-	maxBlobBytes   uint64
-	maxFetchBytes  uint64
-	maxFetchCount  uint
-	requestTimeout time.Duration
-	routingPrefix  string
+	maxArchiveSize      uint64
+	maxBlobBytes        uint64
+	maxFetchBytes       uint64
+	maxFetchCount       uint
+	requestTimeout      time.Duration
+	maxDownloadDuration time.Duration
+	routingPrefix       string
 
-	rpcLimiter *rate.Limiter
+	rpcLimiter      *rate.Limiter
+	upstreamLimiter *hostLimiterObj
+	metricsObj      *sourceMetricsObj
 
-	// cred matches authorization headers for upstream providers by host.
 	cred *credentialMatcherObj
 
-	// allowLoopback permits clearnet loopback dials only in tests.
 	allowLoopback bool
 
-	// installedLoaderClient means this Obj owns the package-global loader client slot.
 	installedLoaderClient bool
 }
 
@@ -149,6 +140,7 @@ type HelloResultObj struct {
 	Protocol              string
 	MaxFetchResponseBytes uint64
 	MaxFetchBatchCount    uint
+	IndexKeyset           bool
 }
 
 // BrotherVersionObj carries the canonical version tree bytes; their hash24 is verified against the
@@ -187,8 +179,6 @@ type BlobReqObj struct {
 
 // // // // // // // // // //
 
-// lightweigit uses a package-global http.Client, so only one live source.Obj is allowed per process.
-// New installs the routed transport and Close releases the slot; a second live New fails explicitly.
 var (
 	loaderClientMu   sync.Mutex
 	loaderClientLive bool
@@ -222,21 +212,23 @@ func New(configObj *stconf.ConfigObj, meshNode MeshInterface, optArr ...Option) 
 	}
 
 	obj := &Obj{
-		mesh:           meshNode,
-		downloadSem:    make(chan struct{}, downloadParallel),
-		maxArchiveSize: effectiveArchiveCap(uint64(configObj.Storage.ArchiveLimits.Size.Compressed)),
-		maxBlobBytes:   effectiveBlobCap(uint64(configObj.Storage.ArchiveLimits.Size.PerFile)),
-		maxFetchBytes:  effectiveFetchBytes(uint64(configObj.Brother.Rpc.MaxFetchResponseBytes)),
-		maxFetchCount:  effectiveFetchCount(configObj.Brother.Rpc.MaxFetchBatchCount),
-		requestTimeout: floorRequestTimeout(configObj.Source.RequestTimeout),
-		routingPrefix:  configObj.Web.Routing.Prefix,
+		mesh:                meshNode,
+		downloadSem:         make(chan struct{}, downloadParallel),
+		maxArchiveSize:      effectiveArchiveCap(uint64(configObj.Storage.ArchiveLimits.Size.Compressed)),
+		maxBlobBytes:        effectiveBlobCap(uint64(configObj.Storage.ArchiveLimits.Size.PerFile)),
+		maxFetchBytes:       effectiveFetchBytes(uint64(configObj.Brother.Rpc.MaxFetchResponseBytes)),
+		maxFetchCount:       effectiveFetchCount(configObj.Brother.Rpc.MaxFetchBatchCount),
+		requestTimeout:      floorRequestTimeout(configObj.Source.RequestTimeout),
+		maxDownloadDuration: configObj.Source.DownloadMaxDuration,
+		routingPrefix:       configObj.Web.Routing.Prefix,
 		retry: retryObj{
 			maxAttempts:    cMaxAttempts,
 			backoffInitial: configObj.Source.Retry.BackoffInitial,
 			backoffMax:     configObj.Source.Retry.BackoffMax,
 			jitterPercent:  configObj.Source.Retry.JitterPercent,
 		},
-		rpcLimiter: buildRPCLimiter(configObj.Brother.Rpc.RatePerSec),
+		rpcLimiter:      buildRPCLimiter(configObj.Brother.Rpc.RatePerSec),
+		upstreamLimiter: newHostLimiterObj(configObj.Source.RateLimit),
 	}
 
 	for _, optFn := range optArr {

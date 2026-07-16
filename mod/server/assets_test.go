@@ -43,7 +43,6 @@ func TestAssetConditionalAndNotFound(t *testing.T) {
 	tsObj := httptest.NewServer(serverObj.Handler(lc))
 	defer tsObj.Close()
 
-	// favicon returns 304 on a matching If-None-Match.
 	firstResp, _ := doGET(t, tsObj, "/favicon.ico", nil)
 	etag := firstResp.Header.Get("ETag")
 	if etag == "" {
@@ -54,7 +53,6 @@ func TestAssetConditionalAndNotFound(t *testing.T) {
 		t.Fatalf("favicon If-None-Match status=%d want 304", condResp.StatusCode)
 	}
 
-	// A logo size outside the whitelist and an unknown og key yield 404.
 	if respObj, _ := doGET(t, tsObj, "/logo/999", nil); respObj.StatusCode != http.StatusNotFound {
 		t.Fatalf("logo/999 status=%d want 404", respObj.StatusCode)
 	}

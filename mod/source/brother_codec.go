@@ -10,7 +10,6 @@ import (
 
 // // // // // // // // // //
 
-// errRPCMessageTooLarge means a brother gob message exceeded the per-message budget.
 var errRPCMessageTooLarge = errors.New("brother rpc message exceeds size budget")
 
 // // // // // // // // // //

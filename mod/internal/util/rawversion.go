@@ -7,12 +7,10 @@ import (
 // // // // // // // // // //
 
 const (
-	// cMinRawVersionBytes and cMaxRawVersionBytes are hard raw-name length bounds.
 	cMinRawVersionBytes = 2
 	cMaxRawVersionBytes = 64
 )
 
-// reservedRawSegmentSet keeps single-segment /{key}/ routes from being shadowed by raw versions.
 var reservedRawSegmentSet = map[string]struct{}{
 	"list":          {},
 	"latest":        {},
@@ -20,7 +18,6 @@ var reservedRawSegmentSet = map[string]struct{}{
 	"releases.xml":  {},
 }
 
-// forbiddenRawSuffixArr keeps artifact and go-proxy suffixes out of ambiguous raw names.
 var forbiddenRawSuffixArr = []string{".zip", ".tar.gz", ".json", ".xml", ".mod", ".info", ".txt"}
 
 // // // // // // // // // //
@@ -35,7 +32,6 @@ func isRawSymbol(symbolByte byte) bool {
 	return isRawAlnum(symbolByte) || symbolByte == '.' || symbolByte == '_' || symbolByte == '-'
 }
 
-// isGoMajorSegment detects v{N}, which is reserved for go-proxy major path segments.
 func isGoMajorSegment(name string) bool {
 	if len(name) < 2 || name[0] != 'v' {
 		return false

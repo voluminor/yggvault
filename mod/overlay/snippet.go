@@ -33,13 +33,15 @@ func GoInstallSnippet(modulePath string, version string, proxyScheme string, hos
 
 // ComposerRequireSnippet returns a mirror install recipe. The mirror has priority for its packages,
 // transitive dependencies stay on Packagist, and http/ygg entries disable secure-http.
-func ComposerRequireSnippet(name string, version string, scheme string, host string) string {
+// basePath is the nested route base ("/pkg") or empty in root mode: Composer resolves
+// packages.json under the repository URL, so the URL must carry the prefix.
+func ComposerRequireSnippet(name string, version string, scheme string, host string, basePath string) string {
 	prefix := ""
 	if scheme != "https" {
 		prefix = "composer config secure-http false\n"
 	}
-	return fmt.Sprintf("%scomposer config repositories.yggvault composer %s://%s\ncomposer require %s:%s\n",
-		prefix, scheme, host, name, version)
+	return fmt.Sprintf("%scomposer config repositories.yggvault composer %s://%s%s\ncomposer require %s:%s\n",
+		prefix, scheme, host, basePath, name, version)
 }
 
 // TargetModulePath returns the served Go module path for snippets and pages.

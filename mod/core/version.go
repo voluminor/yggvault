@@ -35,6 +35,22 @@ type VersionObj struct {
 	VerifiedTS      time.Time // last deep verification time; zero means never verified
 }
 
+// IngestFailurePolicy changes whenever the retry rules for deterministic ingest failures change.
+const IngestFailurePolicy = 1
+
+// IngestFailureObj stores a deterministic ingest failure until the ref or policy changes.
+type IngestFailureObj struct {
+	Key     string
+	Version string
+	RefSHA  string
+	Code    string
+	Message string
+	Policy  uint
+	FirstTS time.Time
+	LastTS  time.Time
+	Count   uint64
+}
+
 // PublishObj requests version publication with entry bodies in memory, including tree, detection, artifacts, and
 // history event parameters.
 type PublishObj struct {

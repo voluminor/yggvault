@@ -4,10 +4,10 @@
 diagnostics, content checksum, and small serving metadata. It is rebuilt from config and storage during runtime and is
 not the durable source of truth.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   rescan["mod/rescan"] --> state["mod/state"]
   storage["mod/storage"] --> state
   server["mod/server"] --> state
@@ -25,18 +25,35 @@ flowchart LR
 ## Contracts
 
 - Storage remains durable truth. State can be rebuilt.
-- Writers update state through methods that publish snapshots atomically.
+- Writers update state through methods that publish snapshots atomically. One internal mutex serializes all mutations
+  and
+  snapshot publication.
+- Reads are lock-free: public read methods load immutable snapshots through an atomic pointer.
 - Readers receive copies or immutable values and must not mutate internal maps.
 - Diagnostic messages are user-facing and must be in English.
+- The diagnostic registry is capped at 4096 records. On overflow, the oldest deactivated record is evicted in O(1);
+  active diagnostics are never evicted. If the registry is full of active records, the new diagnostic is dropped and the
+  dropped counter is incremented.
+- Deactivated diagnostics keep first-seen, last-seen, and count data until evicted by registry pressure.
+- `ClearVersionDiagnostics` is intentionally cheap when there is nothing to clear: it must not publish a new snapshot or
+  bump the generation in that case.
 
-## Important Files
+## Important files
 
-- `obj.go`: state object and internal locks.
-- `method.go`, `snapshot.go`: public reads and snapshot publishing.
-- `key.go`, `diagnostic.go`, `checksum.go`: main state domains.
+- `obj.go`: public types, state object, and internal mutable record types.
+- `init.go`: construction from config and initial snapshot publication.
+- `method.go`: key-domain mutations and mirror statistics.
+- `registry.go`: diagnostic registry, key/version diagnostic clearing, and O(1) inactive eviction.
+- `availability.go`: upstream availability transitions.
+- `checksum.go`: content checksum publication.
+- `snapshot.go`: lock-free reads and snapshot construction.
+- `helper.go`: validation, key index construction, and snapshot publication helpers.
 - `metrics.go`: state-related metrics.
 
-## Operational Notes
+## Operational notes
 
 State updates should be cheap. Expensive work such as storage scans, archive checks, and artifact builds belongs in
 `mod/rescan` or `mod/storage`; state should only publish the resulting facts.
+
+Full snapshot rebuilds happen on structural diagnostic changes. Key mutations use incremental snapshot publication and
+are gated on actual state changes; no-op clears and repeated unchanged writes should not advance `Generation`.

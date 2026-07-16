@@ -566,7 +566,6 @@ func (obj *TxObj) AddHistory(ctx context.Context, key string, version string, ev
 func (obj *TxObj) CopyVersionMetadata(ctx context.Context, oldObj core.VersionObj, historicalVersion string) error {
 	oldObj.ReplacedBy = oldObj.Version
 	oldObj.Version = historicalVersion
-	// Historical copies go to the end of the display order and do not compete for latest.
 	oldObj.UpstreamSeq = 0
 	if err := obj.InsertVersion(ctx, oldObj); err != nil {
 		return err

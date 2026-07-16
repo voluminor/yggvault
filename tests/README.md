@@ -9,7 +9,7 @@ API fallback.
 ## Stack
 
 ```mermaid
-flowchart LR
+flowchart TB
   gh["GitHub and GitLab upstreams"] --> seedA["node-a Go seed"]
   gh --> seedB["node-b Composer seed"]
   seedB -. "public API fallback" .-> nodeD
@@ -28,7 +28,7 @@ flowchart LR
   verifier --> edge
 ```
 
-## What It Verifies
+## What it verifies
 
 - Git seed ingest for Go module releases.
 - Composer seed ingest and p2 metadata.
@@ -41,7 +41,7 @@ flowchart LR
 - Bazel and Zig snippets against served universal archives.
 - TLS edge behavior with the generated test CA.
 
-## Main Files
+## Main files
 
 - `docker-compose.yml`: two hubs, five vault nodes, TLS edge, verifier container.
 - `scripts/bootstrap.sh`: generated keys, configs, certificates, and topology.
@@ -72,14 +72,14 @@ Clean generated state:
 bash tests/scripts/down.sh --clean
 ```
 
-## GitHub Quota
+## GitHub quota
 
 The seed nodes query GitHub. `tests/scripts/up.sh` checks the unauthenticated quota before startup. If quota is low,
 the verifier can fail for upstream reasons rather than product reasons. Set `GITHUB_TOKEN` in the environment when a
 full run needs authenticated GitHub API budget; bootstrap writes that token into generated seed configs under
 `tmp/tests`, so use short-lived test tokens and clean the directory when done.
 
-## Generated Files
+## Generated files
 
 `tmp/tests` is disposable. It contains generated configs, keys, certificates, logs, storage, verifier output, and the
 topology note printed by bootstrap.

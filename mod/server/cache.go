@@ -9,8 +9,14 @@ import (
 
 // // // // // // // // // //
 
+const cMinCacheTTL = 30 * time.Second
+
 func (obj *funcObj) cacheTTL() time.Duration {
-	return cache.SecondsToNextRescan(obj.deps.State.Snapshot().LastRescan, obj.deps.Config.Rescan.Interval, time.Now())
+	ttl := cache.SecondsToNextRescan(obj.deps.State.Snapshot().LastRescan, obj.deps.Config.Rescan.Interval, time.Now())
+	if ttl < cMinCacheTTL {
+		return cMinCacheTTL
+	}
+	return ttl
 }
 
 // // // // // // // // // //

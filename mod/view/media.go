@@ -268,7 +268,6 @@ func appendICOEntry(bufObj *bytes.Buffer, edge int, bodyArr []byte, offset int) 
 	writeICOUint32(bufObj, uint32(offset))
 }
 
-// cleanBannerText normalizes text for the banner ASCII font by transliterating or dropping non-ASCII runes.
 func cleanBannerText(text string) string {
 	if len(text) > cMaxBannerTextBytes {
 		text = text[:cMaxBannerTextBytes]
@@ -415,7 +414,6 @@ func LogoPNG(edge int) ([]byte, error) {
 	return encodePNG(imgObj)
 }
 
-// ogBanner draws the shared Open Graph banner: brand, large headline, optional sub-line and bottom text.
 func ogBanner(headline string, subLine string, bottomText string) ([]byte, error) {
 	imgObj := image.NewRGBA(image.Rect(0, 0, OGBannerWidth, OGBannerHeight))
 	draw.Draw(imgObj, imgObj.Bounds(), image.NewUniform(cSteelObj), image.Point{}, draw.Src)
@@ -441,7 +439,6 @@ func ogBanner(headline string, subLine string, bottomText string) ([]byte, error
 	return encodePNG(imgObj)
 }
 
-// overlaySuffix appends overlay names to the banner subline.
 func overlaySuffix(overlayArr []string) string {
 	if len(overlayArr) == 0 {
 		return ""

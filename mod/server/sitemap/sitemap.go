@@ -18,11 +18,28 @@ import (
 // GenVersion invalidates the cached sitemap ETag when the XML format changes.
 const GenVersion = "1"
 
+const cMaxBytes = 8 << 20
+
 // // // // // // // // // //
 
 // StateReaderInterface returns a key snapshot for catalog and per-key sitemap entries.
 type StateReaderInterface interface {
 	KeyStates() []state.KeyStateObj
+}
+
+// //
+
+// BuildStatsObj holds the final sitemap generation counters.
+type BuildStatsObj struct {
+	URLsWritten   int
+	URLsDropped   int
+	URLTruncated  bool
+	ByteTruncated bool
+}
+
+// Truncated reports that the sitemap was capped by URL count or by bytes.
+func (obj BuildStatsObj) Truncated() bool {
+	return obj.URLTruncated || obj.ByteTruncated
 }
 
 // //
@@ -41,7 +58,6 @@ func xmlEscape(bufObj *bytes.Buffer, text string) {
 		case '\'':
 			bufObj.WriteString("&apos;")
 		default:
-			// Drop control bytes: they are invalid in XML 1.0
 			if text[i] >= 0x20 || text[i] == '\t' || text[i] == '\n' || text[i] == '\r' {
 				bufObj.WriteByte(text[i])
 			}
@@ -49,19 +65,36 @@ func xmlEscape(bufObj *bytes.Buffer, text string) {
 	}
 }
 
+func totalURLCandidates(keyArr []state.KeyStateObj, includeMetrics bool) int {
+	totalValue := 1
+	if includeMetrics {
+		totalValue++
+	}
+	for i := range keyArr {
+		if keyArr[i].VersionCount == 0 {
+			continue
+		}
+		totalValue++
+		totalValue += int(keyArr[i].VersionCount)
+	}
+	return totalValue
+}
+
 // // // // // // // // // //
 
 // Build renders the sitemap for the current entry's crawlable HTML pages.
 // The maxURLs limit is filled with catalog, metrics and the freshest versions first.
 // Absolute loc values are built from linkObj; version lastmod equals ingest time.
-func Build(ctx context.Context, store pager.VersionListerInterface, st StateReaderInterface, linkObj link.Obj, maxURLs int, includeMetrics bool) ([]byte, error) {
+func Build(ctx context.Context, store pager.VersionListerInterface, st StateReaderInterface, linkObj link.Obj, maxURLs int, includeMetrics bool) ([]byte, BuildStatsObj, error) {
 	if maxURLs < 1 {
 		maxURLs = 1
 	}
 	keyArr := st.KeyStates()
+	totalURLs := totalURLCandidates(keyArr, includeMetrics)
+	statsObj := BuildStatsObj{}
 
 	var latestPublish time.Time
-	estURLs := uint64(2) // catalog + metrics
+	estURLs := uint64(2)
 	for i := range keyArr {
 		if keyArr[i].LastPublishTS.After(latestPublish) {
 			latestPublish = keyArr[i].LastPublishTS
@@ -73,26 +106,32 @@ func Build(ctx context.Context, store pager.VersionListerInterface, st StateRead
 	}
 
 	var bufObj bytes.Buffer
-	// Reserve for the header plus the estimated entry count (~96 bytes per URL) — avoids reallocations on the cold path
 	bufObj.Grow(128 + int(estURLs)*96)
 	bufObj.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	bufObj.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
 
-	countValue := 0
+	const footerText = "</urlset>\n"
 	writeURL := func(loc string, lastmod time.Time) bool {
-		if countValue >= maxURLs {
+		if statsObj.URLsWritten >= maxURLs {
+			statsObj.URLTruncated = true
 			return false
 		}
-		bufObj.WriteString("  <url><loc>")
-		xmlEscape(&bufObj, linkObj.Abs(loc))
-		bufObj.WriteString("</loc>")
+		var entryBufObj bytes.Buffer
+		entryBufObj.WriteString("  <url><loc>")
+		xmlEscape(&entryBufObj, linkObj.Abs(loc))
+		entryBufObj.WriteString("</loc>")
 		if !lastmod.IsZero() {
-			bufObj.WriteString("<lastmod>")
-			bufObj.WriteString(lastmod.UTC().Format(time.RFC3339))
-			bufObj.WriteString("</lastmod>")
+			entryBufObj.WriteString("<lastmod>")
+			entryBufObj.WriteString(lastmod.UTC().Format(time.RFC3339))
+			entryBufObj.WriteString("</lastmod>")
 		}
-		bufObj.WriteString("</url>\n")
-		countValue++
+		entryBufObj.WriteString("</url>\n")
+		if bufObj.Len()+entryBufObj.Len()+len(footerText) > cMaxBytes {
+			statsObj.ByteTruncated = true
+			return false
+		}
+		bufObj.Write(entryBufObj.Bytes())
+		statsObj.URLsWritten++
 		return true
 	}
 
@@ -121,13 +160,16 @@ func Build(ctx context.Context, store pager.VersionListerInterface, st StateRead
 			return false, nil
 		})
 		if err != nil {
-			return nil, err
+			return nil, statsObj, err
 		}
 		if capped {
 			break
 		}
 	}
 
-	bufObj.WriteString("</urlset>\n")
-	return bufObj.Bytes(), nil
+	if statsObj.Truncated() && totalURLs > statsObj.URLsWritten {
+		statsObj.URLsDropped = totalURLs - statsObj.URLsWritten
+	}
+	bufObj.WriteString(footerText)
+	return bufObj.Bytes(), statsObj, nil
 }

@@ -19,10 +19,12 @@ get:
           description: Strong cache validator for the generated feed body.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Cache policy for generated metadata.
           schema:
             type: string
+            example: public, must-revalidate, max-age=300
       content:
         application/atom+xml:
           schema:
@@ -30,23 +32,23 @@ get:
           example: |
             <?xml version="1.0" encoding="utf-8"?>
             <feed xmlns="http://www.w3.org/2005/Atom">
-              <id>https://modules.example.org/feed.xml</id>
-              <title>yggvault - new releases</title>
-              <updated>2026-04-02T09:00:00Z</updated>
+              <id>urn:ygg:feed</id>
+              <title>yggvault — releases</title>
+              <updated>2026-07-16T18:42:47Z</updated>
               <link rel="self" href="/feed.xml"/>
               <entry>
-                <id>ratatoskr@v1.2.3#blake3-24:ef01</id>
-                <title>ratatoskr v1.2.3 - archive updated</title>
-                <updated>2026-04-02T09:00:00Z</updated>
-                <link href="/ratatoskr/v1.2.3"/>
-                <content type="html">&lt;p&gt;Upstream re-released the archive.&lt;/p&gt;</content>
+                <title>yggvault@v0.3.4 — archive updated</title>
+                <id>urn:ygg:yggvault:v0.3.4:fedcba9876543210fedcba9876543210fedcba9876543210</id>
+                <updated>2026-07-16T18:42:47Z</updated>
+                <link href="/yggvault/v0.3.4" rel="alternate"/>
+                <content type="html">&lt;p&gt;Upstream archive was updated.&lt;/p&gt;</content>
               </entry>
               <entry>
-                <id>ratatoskr@v1.2.3#blake3-24:abcd</id>
-                <title>ratatoskr v1.2.3 - released</title>
-                <updated>2026-04-01T12:00:00Z</updated>
-                <link href="/ratatoskr/v1.2.3"/>
-                <content type="html">&lt;h2&gt;Changelog&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;fix&lt;/li&gt;&lt;/ul&gt;</content>
+                <title>yggvault@v0.3.4 — released</title>
+                <id>urn:ygg:yggvault:v0.3.4:0123456789abcdef0123456789abcdef0123456789abcdef</id>
+                <updated>2026-07-16T17:00:00Z</updated>
+                <link href="/yggvault/v0.3.4" rel="alternate"/>
+                <content type="html">&lt;p&gt;Maintenance release.&lt;/p&gt;</content>
               </entry>
             </feed>
     '304':

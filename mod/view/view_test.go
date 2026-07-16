@@ -85,8 +85,6 @@ func TestSourceLabels(t *testing.T) {
 
 // // // // // // // // // //
 
-// excerptReference is the old excerpt implementation using a full []rune slice.
-// It keeps og:description byte-for-byte compatible after optimization.
 func excerptReference(markdownText string, maxRunes int) string {
 	if strings.TrimSpace(markdownText) == "" {
 		return ""

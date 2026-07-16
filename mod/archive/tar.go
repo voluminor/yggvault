@@ -17,6 +17,8 @@ import (
 
 var errGzipTrailing = errors.New("gzip stream has trailing data")
 
+const cGzipPaddingCap = 1 << 20
+
 type gzipReadCloserObj struct {
 	fileObj *os.File
 	bufObj  *bufio.Reader
@@ -96,15 +98,40 @@ func openTarReader(requestObj RequestObj, gzipFlag bool) (*tar.Reader, io.Closer
 	return tar.NewReader(readerObj), closerObj, nil
 }
 
-// Close closes gzip and file readers and reports trailing data after the gzip stream as malformed abuse.
+// Close drains the tar zero-block padding left inside the gzip member, then closes the readers and
+// reports genuine trailing data (non-zero padding, an oversized tail, or bytes after the member) as abuse.
 func (obj *gzipReadCloserObj) Close() error {
-	err := obj.gzipObj.Close()
-	if _, peekErr := obj.bufObj.Peek(1); peekErr == nil {
-		err = errors.Join(err, errGzipTrailing)
-	} else if !errors.Is(peekErr, io.EOF) {
-		err = errors.Join(err, peekErr)
+	trailingErr := obj.checkGzipTail()
+	return errors.Join(obj.gzipObj.Close(), trailingErr, obj.fileObj.Close())
+}
+
+func (obj *gzipReadCloserObj) checkGzipTail() error {
+	bufArr := make([]byte, 4096)
+	var drained uint64
+	for {
+		n, err := obj.gzipObj.Read(bufArr)
+		for i := 0; i < n; i++ {
+			if bufArr[i] != 0 {
+				return errGzipTrailing
+			}
+		}
+		drained += uint64(n)
+		if drained > cGzipPaddingCap {
+			return errGzipTrailing
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
 	}
-	return errors.Join(err, obj.fileObj.Close())
+	if _, peekErr := obj.bufObj.Peek(1); peekErr == nil {
+		return errGzipTrailing
+	} else if !errors.Is(peekErr, io.EOF) {
+		return peekErr
+	}
+	return nil
 }
 
 func tarEntryMode(headerObj *tar.Header) (string, bool, error) {

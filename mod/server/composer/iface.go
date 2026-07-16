@@ -11,13 +11,10 @@ import (
 // // // // // // // // // //
 
 const (
-	// cMaxManifestBytes caps one composer.json included in p2; larger versions become dist-only entries.
 	cMaxManifestBytes = 1 << 20
 
-	// cMaxInputBytes caps total raw composer.json bytes per document to limit cold-build memory.
 	cMaxInputBytes = 64 << 20
 
-	// cMaxFilterBytes caps filter length because matching work and cache-key size depend on it.
 	cMaxFilterBytes = 256
 )
 

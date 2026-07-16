@@ -8,8 +8,6 @@ import (
 
 // // // // // // // // // //
 
-// cBuildBudget caps detached single-key builds after the caller context is stripped. It is a defensive ceiling
-// against runaway work, not the normal expected build duration.
 const cBuildBudget = 60 * time.Second
 
 // // // // // // // // // //
@@ -66,6 +64,13 @@ func (obj *Obj) GetOrBuild(ctx context.Context, key string, ttl time.Duration, b
 		}
 		buildCtx, cancelBuild := context.WithTimeout(context.WithoutCancel(ctx), cBuildBudget)
 		defer cancelBuild()
+		if err := obj.buildGate.Acquire(buildCtx); err != nil {
+			if buildCtx.Err() == context.DeadlineExceeded {
+				obj.buildsAborted.Add(1)
+			}
+			return EntryObj{}, err
+		}
+		defer obj.buildGate.Release()
 		obj.builds.Add(1)
 		builtObj, buildErr := buildFn(buildCtx)
 		if buildErr != nil {

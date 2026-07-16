@@ -12,16 +12,13 @@ import (
 
 // // // // // // // // // //
 
-// cInfoMaxBytes is the hard /info body limit; the public node card is small.
 const cInfoMaxBytes = 64 << 10
 
 // // // // // // // // // //
 
 type brotherInfoObj struct {
-	Domain  string `json:"domain"`
-	YggHost string `json:"ygg_host"`
-	// RoutePrefix is a pointer so a nil value distinguishes a node that omits the field (older
-	// instance) from one that advertises an empty prefix (served at the root).
+	Domain      string  `json:"domain"`
+	YggHost     string  `json:"ygg_host"`
 	RoutePrefix *string `json:"route_prefix"`
 }
 

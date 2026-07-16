@@ -75,9 +75,9 @@ func (f *fakeTagProviderObj) ReleasesStream(context.Context, chan lightweigit.Pr
 func TestCollectTagsMapsAndFilters(t *testing.T) {
 	providerObj := &fakeTagProviderObj{tagArr: []string{
 		"v2.0.0",
-		"v2.1.0-rc.1",    // storable semver prerelease: dropped
-		"INKSCAPE_1_3_2", // non-semver: kept as raw
-		"blockly-v9.3.3", // non-semver: kept as raw
+		"v2.1.0-rc.1",
+		"INKSCAPE_1_3_2",
+		"blockly-v9.3.3",
 	}}
 
 	outArr, truncated, err := collectTags(context.Background(), providerObj, 7)
@@ -141,7 +141,6 @@ func TestCollectTagsStreamError(t *testing.T) {
 
 // // // // // // // // // //
 
-// endlessTagProviderObj sends tags forever until the stream is canceled.
 type endlessTagProviderObj struct {
 	fakeTagProviderObj
 }

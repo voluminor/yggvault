@@ -18,14 +18,10 @@ import (
 
 // // // // // // // // // //
 
-// errSymlinkInGoModule marks a version degraded because Go module zip forbids symlinks.
 var errSymlinkInGoModule = errors.New("go module contains a symlink, which the go module zip format forbids")
 
-// cRewriteCacheBudgetFallback is the build-cache budget when the per-file cap is disabled.
 const cRewriteCacheBudgetFallback = 64 << 20
 
-// cMaxCachedRewriteBytes caps one cached rewritten file. Only small rewrite files are cached so Lstat does not hold
-// both a large source and rewritten copy in RAM; large files are reread by Open.
 const cMaxCachedRewriteBytes = 4 << 20
 
 type rewriteCacheObj struct {
@@ -71,8 +67,6 @@ type goFileInfoObj struct {
 	name string
 	size int64
 }
-
-// fs.FileInfo for x/mod/zip with fixed mode/time for deterministic output.
 
 // Name returns the file base name.
 func (i goFileInfoObj) Name() string { return i.name }

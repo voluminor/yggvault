@@ -4,8 +4,6 @@ package sqliteindex
 
 import (
 	"net/url"
-	"path/filepath"
-	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -22,17 +20,7 @@ func sqliteDSN(pathToFile string) string {
 	valueObj.Set("_busy_timeout", "5000")
 	valueObj.Set("_foreign_keys", "on")
 	valueObj.Set("_journal_mode", "WAL")
-	// NORMAL under WAL fsyncs WAL on commit, but skips FULL's extra checkpoint sync.
-	// There is no corruption risk; power loss can only lose the latest committed transaction.
 	valueObj.Set("_synchronous", "NORMAL")
 	dsnObj.RawQuery = valueObj.Encode()
 	return dsnObj.String()
-}
-
-func sqliteURIPath(pathToFile string) string {
-	pathText := filepath.ToSlash(pathToFile)
-	if filepath.VolumeName(pathToFile) != "" && !strings.HasPrefix(pathText, "/") {
-		return "/" + pathText
-	}
-	return pathText
 }

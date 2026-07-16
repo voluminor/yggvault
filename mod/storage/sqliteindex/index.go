@@ -101,6 +101,17 @@ var requiredColumnObj = map[string][]schemaColumnObj{
 		{name: "bound_ts", dataType: "TEXT", notNull: true},
 		{name: "listing_mode", dataType: "TEXT", notNull: true},
 	},
+	"ingest_failures": {
+		{name: "key", dataType: "TEXT", notNull: true, primaryKey: 1},
+		{name: "version", dataType: "TEXT", notNull: true, primaryKey: 2},
+		{name: "ref_sha", dataType: "TEXT", notNull: true},
+		{name: "code", dataType: "TEXT", notNull: true},
+		{name: "message", dataType: "TEXT", notNull: true},
+		{name: "policy", dataType: "INTEGER", notNull: true},
+		{name: "first_ts", dataType: "TEXT", notNull: true},
+		{name: "last_ts", dataType: "TEXT", notNull: true},
+		{name: "count", dataType: "INTEGER", notNull: true},
+	},
 }
 
 var requiredIndexObj = map[string][]string{
@@ -183,6 +194,10 @@ var requiredTableSQLObj = map[string][]string{
 		"listing_mode IN ('', 'releases', 'tags')",
 		"STRICT",
 	},
+	"ingest_failures": {
+		"count INTEGER NOT NULL CHECK(count >= 1)",
+		"STRICT",
+	},
 }
 
 // //
@@ -234,8 +249,6 @@ func openSQLite(ctx context.Context, pathToFile string) (*sql.DB, error) {
 	dbObj.SetMaxIdleConns(maxOpen)
 	dbObj.SetConnMaxLifetime(0)
 
-	// journal_mode, synchronous, foreign_keys and busy_timeout are applied per connection through the driver DSN.
-	// ExecContext PRAGMA here would bind only to one pooled connection.
 	if err = dbObj.PingContext(ctx); err != nil {
 		_ = dbObj.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
@@ -407,6 +420,24 @@ func sqlChunkSize(columnCount int) int {
 	return sizeValue
 }
 
+func scanAll[T any](rowsObj *sql.Rows, capacity int, scanFn func(rowScannerInterface) (T, error)) ([]T, error) {
+	if capacity < 0 {
+		capacity = 0
+	}
+	resultArr := make([]T, 0, capacity)
+	for rowsObj.Next() {
+		itemObj, err := scanFn(rowsObj)
+		if err != nil {
+			return nil, err
+		}
+		resultArr = append(resultArr, itemObj)
+	}
+	if err := rowsObj.Err(); err != nil {
+		return nil, err
+	}
+	return resultArr, nil
+}
+
 func scanVersion(scannerObj rowScannerInterface) (core.VersionObj, error) {
 	var versionObj core.VersionObj
 	var sourceArr []byte
@@ -445,7 +476,6 @@ func scanVersion(scannerObj rowScannerInterface) (core.VersionObj, error) {
 	if err != nil {
 		return versionObj, fmt.Errorf("invalid ingest time in database: %w", err)
 	}
-	// Empty verified_ts means deep verification has not run yet.
 	if verifiedText != "" {
 		versionObj.VerifiedTS, err = core.ParseTime(verifiedText)
 		if err != nil {
@@ -462,7 +492,6 @@ func scanVersion(scannerObj rowScannerInterface) (core.VersionObj, error) {
 }
 
 func versionSelect(builderObj sq.StatementBuilderType, includeNotes bool) sq.SelectBuilder {
-	// Service scans preserve scanVersion shape without loading heavy release notes.
 	notesColumn := "''"
 	if includeNotes {
 		notesColumn = "versions.release_notes"

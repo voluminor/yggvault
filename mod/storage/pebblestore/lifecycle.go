@@ -107,8 +107,6 @@ func buildPebbleOptions(tuningObj TuningObj) *pebble.Options {
 		CompactionConcurrencyRange: func() (int, int) { return 1, max(2, runtime.NumCPU()/2) },
 	}
 	optionsObj.ApplyCompressionSettings(func() pebble.DBCompressionSettings { return settingsObj })
-	// A Bloom filter on each level speeds up negative point lookups for blob/tree presence checks.
-	// An in-memory bitmap is used instead of reading sstable index blocks.
 	for i := range optionsObj.Levels {
 		optionsObj.Levels[i].FilterPolicy = bloom.FilterPolicy(10)
 	}

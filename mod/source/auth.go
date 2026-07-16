@@ -21,8 +21,8 @@ type suffixRuleObj struct {
 }
 
 type credentialMatcherObj struct {
-	exact map[string]authHeaderObj // exact host to header
-	rules []suffixRuleObj          // predefined domain and subdomain rules
+	exact map[string]authHeaderObj
+	rules []suffixRuleObj
 }
 
 type authTransportObj struct {

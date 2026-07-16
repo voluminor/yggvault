@@ -26,9 +26,10 @@ import (
 
 type funcObj struct {
 	deps          DepsObj
-	objCache      *objCacheObj           // RAM cache for typed bodies: composer-p2 and go-latest
-	assets        *assetSnapshotObj      // favicon + whitelisted logos pre-rendered once at startup
-	contactGroups []view.ContactGroupObj // sorted contacts from immutable config
+	objCache      *objCacheObj
+	assets        *assetSnapshotObj
+	contactGroups []view.ContactGroupObj
+	edgeMetrics   *edgeMetricsObj
 }
 
 var _ api.FuncInterface = (*funcObj)(nil)
@@ -163,9 +164,6 @@ func (obj *funcObj) GetInfo(ctx context.Context) (api.GetInfoRes, error) {
 	return &api.InfoObjHeaders{CacheControl: api.NewOptString(cNoCacheControl), Response: infoObj}, nil
 }
 
-// // // // // // // // // //
-// Data API operations build bodies in dataapi; funcObj owns cache, ETag and conditional headers.
-
 // GetCatalog serves `/catalog.json`, a cached cross-key snapshot.
 // The body does not depend on the host, so a single byte-cache entry serves all listeners.
 func (obj *funcObj) GetCatalog(ctx context.Context, params api.GetCatalogParams) (api.GetCatalogRes, error) {
@@ -235,7 +233,6 @@ func (obj *funcObj) versionPage(ctx context.Context, params api.GetVersionFilePa
 	if condMatch(params.IfNoneMatch, etag) {
 		return &api.NotModifiedRespObj{}, nil
 	}
-	// Alternate snippets use the full opposite-entry context to avoid mixing host-sensitive artifacts.
 	var altOv webui.OverlayInterface
 	altListenerID := ""
 	if altLC, ok := obj.alternateListenerCtx(lc); ok {
@@ -300,6 +297,11 @@ func (obj *funcObj) versionArchive(ctx context.Context, params api.GetVersionFil
 		return nil, err
 	}
 	if !found {
+		if _, versionFound, getErr := obj.deps.Storage.GetVersion(ctx, params.Key, version); getErr != nil {
+			return nil, getErr
+		} else if versionFound {
+			return nil, serr.ErrUnavailable
+		}
 		return nil, serr.ErrNotFound
 	}
 	gate := gateArtifact(ctx, artObj, params.IfNoneMatch, params.Range, params.IfRange)
@@ -307,7 +309,6 @@ func (obj *funcObj) versionArchive(ctx context.Context, params api.GetVersionFil
 		return &api.NotModifiedRespObj{}, nil
 	}
 	disposition := archiveDisposition(params.Key + "-" + version + "." + string(format))
-	// HEAD responds from Locate metadata; size, ETag, and Accept-Ranges are known without opening the file.
 	if gate.headOnly {
 		return &api.GetVersionFileOKApplicationOctetStreamHeaders{
 			AcceptRanges:       api.NewOptString("bytes"),
@@ -321,7 +322,6 @@ func (obj *funcObj) versionArchive(ctx context.Context, params api.GetVersionFil
 	if !gate.spec.satisfiable {
 		return nil, serr.ErrRangeNotSatisfiable
 	}
-	// keyObj is reused so OpenArtifact does not repeat GetArtifact on full-body responses.
 	openObj, err := dataapi.OpenArtifact(ctx, obj.deps.Storage, obj.deps.Overlay, keyObj)
 	if err != nil {
 		return nil, err

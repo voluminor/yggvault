@@ -1,8 +1,12 @@
-![GitHub repo file or directory count](https://img.shields.io/github/directory-file-count/voluminor/yggvault?color=orange)
-![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/voluminor/yggvault?color=green)
-![GitHub repo size](https://img.shields.io/github/repo-size/voluminor/yggvault)
+<p align="center">
+  <img src=".github/img/yggvault_banner.svg" alt="yggvault — release archive mirror" width="100%">
+</p>
 
 # yggvault
+
+[![Tests](https://github.com/voluminor/yggvault/actions/workflows/tests.yml/badge.svg)](https://github.com/voluminor/yggvault/actions/workflows/tests.yml)
+[![GitHub release](https://img.shields.io/github/v/release/voluminor/yggvault)](https://github.com/voluminor/yggvault/releases)
+[![Go version](https://img.shields.io/github/go-mod/go-version/voluminor/yggvault)](go.mod)
 
 Canonical repository: [github.com/voluminor/yggvault](https://github.com/voluminor/yggvault).
 
@@ -37,76 +41,142 @@ under a prefix such as `/pkg`. That makes one binary both a website and a packag
 Common CLI commands such as `--make-preset`, `--make-ygg-key`, `--validate-config`, `--inspect`, `--prune`,
 `--vacuum`, and `--rebuild-cache` are listed in [CLI](#cli).
 
-## Contents
+<details>
+<summary>Contents</summary>
 
-- [Quick Choice](#quick-choice)
-- [When It Fits](#when-it-fits)
-- [Ready-Made Releases](#ready-made-releases)
-  - [Available Release Assets](#available-release-assets)
-  - [Download a Selected Asset](#download-a-selected-asset)
+- [Quick choice](#quick-choice)
+- [Quick start](#quick-start)
+  - [Common problems](#common-problems)
+- [When it fits](#when-it-fits)
+- [Ready-made releases](#ready-made-releases)
+  - [Source mirror for builds](#source-mirror-for-builds)
+  - [Available release assets](#available-release-assets)
+  - [Download a selected asset](#download-a-selected-asset)
   - [Windows PowerShell](#windows-powershell)
-- [Quick Start](#quick-start)
-  - [Common Problems](#common-problems)
-- [Ready Config Fragments](#ready-config-fragments)
-  - [Production Behind a Reverse Proxy](#production-behind-a-reverse-proxy)
-  - [TLS Inside yggvault](#tls-inside-yggvault)
-  - [Disable All Metrics](#disable-all-metrics)
-  - [Public JSON Metrics and Prometheus/VictoriaMetrics](#public-json-metrics-and-prometheusvictoriametrics)
-  - [HTTP, Yggdrasil, and RPC Limits](#http-yggdrasil-and-rpc-limits)
-  - [Storage Quota and Archive Limits](#storage-quota-and-archive-limits)
-  - [Aggressive Low-RAM Profile](#aggressive-low-ram-profile)
-  - [Upstream Credentials](#upstream-credentials)
+- [Ready config fragments](#ready-config-fragments)
+  - [Production behind a reverse proxy](#production-behind-a-reverse-proxy)
+  - [TLS inside yggvault](#tls-inside-yggvault)
+  - [Metrics are off by default](#metrics-are-off-by-default)
+  - [Public JSON metrics and Prometheus/VictoriaMetrics](#public-json-metrics-and-prometheusvictoriametrics)
+  - [HTTP, Yggdrasil, and RPC limits](#http-yggdrasil-and-rpc-limits)
+  - [Storage quota and archive limits](#storage-quota-and-archive-limits)
+  - [Aggressive low-RAM profile](#aggressive-low-ram-profile)
+  - [Upstream credentials](#upstream-credentials)
   - [Enable Yggdrasil](#enable-yggdrasil)
-  - [Brother Seed and Follower](#brother-seed-and-follower)
+  - [Brother seed and follower](#brother-seed-and-follower)
   - [Profiling](#profiling)
-- [Storage and Performance](#storage-and-performance)
-- [How to Use It](#how-to-use-it)
-  - [Go Module Proxy](#go-module-proxy)
+- [Storage and performance](#storage-and-performance)
+- [How to use it](#how-to-use-it)
+  - [Go module proxy](#go-module-proxy)
   - [Composer](#composer)
   - [Archives and JSON API](#archives-and-json-api)
   - [Web UI](#web-ui)
-  - [Custom Frontend and Nested Mode](#custom-frontend-and-nested-mode)
-- [How It Works](#how-it-works)
-  - [Application Startup](#application-startup)
-  - [Adding a Repository](#adding-a-repository)
-  - [Rescan Pipeline](#rescan-pipeline)
-  - [Serving a Client Request](#serving-a-client-request)
+  - [Custom frontend and nested mode](#custom-frontend-and-nested-mode)
+- [How it works](#how-it-works)
+  - [Application startup](#application-startup)
+  - [Adding a repository](#adding-a-repository)
+  - [Rescan pipeline](#rescan-pipeline)
+  - [Serving a client request](#serving-a-client-request)
 - [Yggdrasil](#yggdrasil)
-- [Brother Sync](#brother-sync)
-  - [Sync Flow](#sync-flow)
+- [Brother sync](#brother-sync)
+  - [Sync flow](#sync-flow)
 - [Operations](#operations)
   - [CLI](#cli)
-  - [History, Deletions, and Degraded Upstreams](#history-deletions-and-degraded-upstreams)
-  - [Security and Limits](#security-and-limits)
-- [HTTP Routes](#http-routes)
-- [For Developers](#for-developers)
+  - [History, deletions, and degraded upstreams](#history-deletions-and-degraded-upstreams)
+  - [Security and limits](#security-and-limits)
+- [HTTP routes](#http-routes)
+- [For developers](#for-developers)
   - [Bootstrap](#bootstrap)
-  - [Getting Source from a Mirror](#getting-source-from-a-mirror)
-  - [Tests and Benchmarks](#tests-and-benchmarks)
+  - [Getting source from a mirror](#getting-source-from-a-mirror)
+  - [Tests and benchmarks](#tests-and-benchmarks)
   - [Generation](#generation)
-  - [Module Map](#module-map)
-- [Self Build](#self-build)
-  - [CGO Build for a Specific System](#cgo-build-for-a-specific-system)
-- [Project Policy](#project-policy)
+  - [Module map](#module-map)
+- [Self build](#self-build)
+  - [CGO build for a specific system](#cgo-build-for-a-specific-system)
+- [Project policy](#project-policy)
 
-## Quick Choice
+</details>
+
+## Quick choice
 
 | Task                                        | Use                                                                | Start here                                                          |
 |---------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------------------------|
-| Download a ready binary                     | GitHub Releases, pure-Go asset for your OS/architecture            | [Ready-Made Releases](#ready-made-releases)                         |
-| Build from source without development setup | release or mirror source archive                                   | [Getting Source from a Mirror](#getting-source-from-a-mirror)       |
-| Run a local mirror for one project          | `single` web listener and one `release_mirrors` entry              | [Quick Start](#quick-start)                                         |
-| Use the node as a Go proxy                  | `GOPROXY=<node>`, module path `host/[prefix/]key`                  | [Go Module Proxy](#go-module-proxy)                                 |
+| Download a ready binary                     | GitHub Releases, pure-Go asset for your OS/architecture            | [Ready-made releases](#ready-made-releases)                         |
+| Build from source without development setup | release or mirror source archive                                   | [Source mirror for builds](#source-mirror-for-builds)               |
+| Run a local mirror for one project          | `single` web listener and one `release_mirrors` entry              | [Quick start](#quick-start)                                         |
+| Use the node as a Go proxy                  | `GOPROXY=<node>`, module path `host/[prefix/]key`                  | [Go module proxy](#go-module-proxy)                                 |
 | Use the node as a Composer repository       | `repositories[].type=composer`                                     | [Composer](#composer)                                               |
 | Download archives directly                  | `/{key}/latest`, `/{key}/{version}.zip`, `/{key}/{version}.tar.gz` | [Archives and JSON API](#archives-and-json-api)                     |
-| Host your own frontend on the node          | `web.static.dir`, `web.routing.prefix`                             | [Custom Frontend and Nested Mode](#custom-frontend-and-nested-mode) |
+| Host your own frontend on the node          | `web.static.dir`, `web.routing.prefix`                             | [Custom frontend and nested mode](#custom-frontend-and-nested-mode) |
 | Expose the node in Yggdrasil                | `ygg.pem_key`, peers, host `<PublicKey>.pk.ygg`                    | [Yggdrasil](#yggdrasil)                                             |
-| Synchronize several nodes                   | Brother RPC or public fallback                                     | [Brother Sync](#brother-sync)                                       |
+| Synchronize several nodes                   | Brother RPC or public fallback                                     | [Brother sync](#brother-sync)                                       |
 | Find a CLI command                          | presets, keygen, validation, inspect, prune, vacuum                | [CLI](#cli)                                                         |
-| Tune disk, memory, and speed                | `storage.*`, `cache.*`, build type                                 | [Storage and Performance](#storage-and-performance)                 |
-| Contribute code                             | generators, hooks, tests, module map                               | [For Developers](#for-developers)                                   |
+| Tune disk, memory, and speed                | `storage.*`, `cache.*`, build type                                 | [Storage and performance](#storage-and-performance)                 |
+| Contribute code                             | generators, hooks, tests, module map                               | [For developers](#for-developers)                                   |
 
-## When It Fits
+## Quick start
+
+After downloading a release binary, generate the smallest preset. Use `./yggvault` when the binary is in the current
+directory, or `yggvault` when it is installed in `PATH`.
+
+```bash
+./yggvault --make-preset minimal --out .
+```
+
+The generated `config.yml` is intentionally HTTP-only: `ygg.pem_key` is empty, so the example peer is ignored. For a
+first local mirror, change these two parts:
+
+```yaml
+web:
+  server:
+    domain: "modules.localhost"
+
+release_mirrors:
+  errors: "https://github.com/go-faster/errors"
+```
+
+`release_mirrors` maps a local key to an upstream URL. The key becomes part of the public package path — in this
+example, `modules.localhost/errors`. Keys must match `^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$`; also avoid reserved
+route names such as `latest`, `list`, `@v`, `packages.json`, `catalog.json`, and `feed.xml`.
+
+Validate the complete generated file, then start the node:
+
+```bash
+./yggvault --validate-config config.yml
+./yggvault config.yml
+```
+
+The first rescan downloads release versions from upstream. Once it completes, check the node:
+
+```bash
+curl -fsS http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:8080/catalog.json
+curl -fsS http://127.0.0.1:8080/errors/latest
+
+GOPROXY=http://127.0.0.1:8080 GOSUMDB=off \
+  go list -m modules.localhost/errors@latest
+```
+
+`modules.localhost` does not need to resolve in DNS for this Go command: the request goes to `GOPROXY`, while the
+module path remains the package identity. If you change `web.server.domain`, use the same host in the module path.
+
+Yggdrasil is optional. To enable it later, generate a key and continue with [Yggdrasil](#yggdrasil):
+
+```bash
+./yggvault --make-ygg-key
+```
+
+### Common problems
+
+| Symptom                                  | Cause                                                                   | Fix                                             |
+|------------------------------------------|-------------------------------------------------------------------------|-------------------------------------------------|
+| `go.mod requires go >= 1.26.3`           | old Go toolchain                                                        | update Go to the version from `go.mod` or newer |
+| server starts, but the key never appears | upstream is unreachable or `release_mirrors` still contains the example | check the URL and wait for rescan               |
+| `go get` cannot find the module          | module path does not match `web.server.domain/[prefix/]key`             | use the configured domain and prefix            |
+| Go tries to contact `sum.golang.org`     | the republished module path is not in the public sumdb                  | set `GOSUMDB=off` or scoped `GONOSUMDB`         |
+| Yggdrasil host does not open             | no key, no peers, or no mesh route                                      | see [Yggdrasil](#yggdrasil)                     |
+
+## When it fits
 
 - You need a private or public Go/Composer mirror without a separate database or object storage service.
 - You want Go, Composer, universal archives, feeds, JSON APIs, and a Web UI from one source of truth.
@@ -118,7 +188,7 @@ Common CLI commands such as `--make-preset`, `--make-ygg-key`, `--validate-confi
 Do not choose `yggvault` if you need a transparent proxy for every Go module, git hosting, per-user read ACLs,
 a sumdb proxy, or arbitrary commit pseudo-version publishing.
 
-## Ready-Made Releases
+## Ready-made releases
 
 Ready binaries are published in [GitHub Releases](https://github.com/voluminor/yggvault/releases). They are produced by
 [the release workflow](.github/workflows/release.yml): tests run first, then the workflow creates pure-Go
@@ -128,10 +198,23 @@ For the first run, take a pure-Go asset. CGO assets are useful when you intentio
 `balanced` storage settings and care about C SQLite/C zstd write cost. See [STORAGE-TUNING.md](STORAGE-TUNING.md)
 for the measured trade-offs.
 
+### Source mirror for builds
+
+yggvault mirrors its own releases at both of these addresses:
+
+- Clearnet: [https://www.ratatoskr.space/pkg/yggvault](https://www.ratatoskr.space/pkg/yggvault)
+- Yggdrasil: [open the mirror](http://[203:b338:2a84:a18f:986:47ae:1a4:d8d3]/pkg/yggvault) at
+  `http://[203:b338:2a84:a18f:986:47ae:1a4:d8d3]/pkg/yggvault`
+
+Use the mirror source archives when you want to build without preparing a development checkout. They include generated
+files, so the build path is `latest` → `{version}.tar.gz` → `go build`; no generators or `go generate` step is needed.
+The exact commands are in [Getting source from a mirror](#getting-source-from-a-mirror). The bracketed IPv6 literal in
+the Yggdrasil URL is intentional and required by URL syntax.
+
 The release workflow builds the assets below. Treat this as the build matrix, not a full support matrix. Platforms not
 used by the maintainer or CI should be considered best effort until you verify them in your environment.
 
-### Available Release Assets
+### Available release assets
 
 | Asset                            | Type    | Use it for                          |
 |----------------------------------|---------|-------------------------------------|
@@ -149,13 +232,13 @@ used by the maintainer or CI should be considered best effort until you verify t
 | `yggvault-windows-amd64-cgo.exe` | CGO     | Windows x86_64 with C SQLite/C zstd |
 
 If you need another OS, architecture, `GOAMD64`, static musl, or custom `CGO_CFLAGS`, build it yourself:
-[Self Build](#self-build).
+[Self build](#self-build).
 
 Current releases publish GitHub-hosted binary assets. Separate checksums, signatures, attestations, and SBOM files are
 not published yet. If you require release verification beyond GitHub release provenance, build from a release or mirror
 source archive and record your own checksums.
 
-### Download a Selected Asset
+### Download a selected asset
 
 ```bash
 REPO="voluminor/yggvault"
@@ -173,8 +256,8 @@ Change `ASSET` to the name you need from the table, for example `yggvault-darwin
 `yggvault-linux-arm64` for Linux arm64, or `yggvault-freebsd-amd64` for FreeBSD.
 
 If no ready asset fits your target, or if you need custom `GOAMD64`, static CGO, or custom `CGO_CFLAGS`, use
-[Self Build](#self-build). For generated source archives that do not need a developer bootstrap, see
-[Getting Source from a Mirror](#getting-source-from-a-mirror).
+[Self build](#self-build). For generated source archives that do not need a developer bootstrap, see
+[Getting source from a mirror](#getting-source-from-a-mirror).
 
 ### Windows PowerShell
 
@@ -190,113 +273,24 @@ Invoke-WebRequest $Url -OutFile "yggvault.exe"
 
 Use `yggvault-windows-arm64.exe` for Windows arm64.
 
-## Quick Start
+## Ready config fragments
 
-After downloading a release binary, create a first config and start the node. If the binary is in the current directory,
-use `./yggvault`; if it is installed in `PATH`, use `yggvault`.
-
-```bash
-./yggvault --make-preset minimal --out .
-```
-
-Minimal working `config.yml`:
-
-```yaml
-logging:
-  console:
-    enabled: true
-    level: "info"
-
-web:
-  server:
-    domain: "modules.localhost"
-    mode: "single"
-    single:
-      proto: "http"
-      listen: "127.0.0.1:8080"
-
-ygg:
-  pem_key: "./yggvault.pem"
-  peers:
-    initial:
-      - "tls://replace-with-nearby-public-peer.example:443"
-
-storage:
-  dir: "./cache"
-
-release_mirrors:
-  errors: "https://github.com/go-faster/errors"
-```
-
-`release_mirrors` is a map of `local-key -> upstream URL`. The key becomes part of the public path:
-`modules.localhost/errors`. Keep keys short and lowercase, and avoid reserved routes such as `latest`, `list`, `@v`,
-`packages.json`, `catalog.json`, and `feed.xml`.
-
-Yggdrasil is optional. The preset includes Yggdrasil fields so you can enable mesh access without rewriting the config.
-
-For an HTTP-only first run, disable Yggdrasil:
-
-```yaml
-ygg:
-  pem_key: ""
-  peers:
-    initial: [ ]
-```
-
-If you want Yggdrasil, create a key before the first run:
-
-```bash
-./yggvault --make-ygg-key
-```
-
-Then replace the example in `ygg.peers.initial` with 2-3 nearby public peer URIs. Peer lists:
-[yggdrasil-network/public-peers](https://github.com/yggdrasil-network/public-peers) and
-[publicpeers.neilalexander.dev](https://publicpeers.neilalexander.dev/).
-
-Run:
-
-```bash
-./yggvault --validate-config config.yml
-./yggvault config.yml
-```
-
-The first rescan downloads versions from upstream. Then check the node:
-
-```bash
-curl -fsS http://127.0.0.1:8080/health
-curl -fsS http://127.0.0.1:8080/catalog.json
-curl -fsS http://127.0.0.1:8080/errors/latest
-
-GOPROXY=http://127.0.0.1:8080 GOSUMDB=off \
-  go list -m modules.localhost/errors@latest
-```
-
-`modules.localhost` does not need to resolve in DNS for the Go command above: the request goes to `GOPROXY`, while the
-module path remains the package identity. If you change `web.server.domain`, use the same host in the Go module path.
-
-### Common Problems
-
-| Symptom                                  | Cause                                                                   | Fix                                             |
-|------------------------------------------|-------------------------------------------------------------------------|-------------------------------------------------|
-| `go.mod requires go >= 1.26.3`           | old Go toolchain                                                        | update Go to the version from `go.mod` or newer |
-| server starts, but the key never appears | upstream is unreachable or `release_mirrors` still contains the example | check the URL and wait for rescan               |
-| `go get` cannot find the module          | module path does not match `web.server.domain/[prefix/]key`             | use the configured domain and prefix            |
-| Go tries to contact `sum.golang.org`     | the republished module path is not in the public sumdb                  | set `GOSUMDB=off` or scoped `GONOSUMDB`         |
-| Yggdrasil host does not open             | no key, no peers, or no mesh route                                      | see [Yggdrasil](#yggdrasil)                     |
-
-## Ready Config Fragments
+The CLI generates `minimal`, `medium`, and `full` presets in YAML, JSON, or HJSON. Start with the smallest preset that
+contains the sections you need. The repository includes the [minimal](yml/config/minimal.yml) and
+[medium](yml/config/medium.yml) YAML sources; [the config schema](yml/config/config.yml) defines all fields, defaults,
+ranges, and validation notes. Generate `full` through `--make-preset full` when you need every setting in one file.
 
 The fragments below are meant to be pasted into `config.yml` on top of a preset. They are not complete configs; they
 show the knobs operators usually choose.
 
 Only short recipes live here. Model details, limits, and trade-offs are in [Yggdrasil](#yggdrasil),
-[Brother Sync](#brother-sync), [Storage and Performance](#storage-and-performance), and
-[Security and Limits](#security-and-limits).
+[Brother sync](#brother-sync), [Storage and performance](#storage-and-performance), and
+[Security and limits](#security-and-limits).
 
 YAML values are read literally. If you need secrets from environment variables, generate the config with an external
 template or secret manager; `${TOKEN}` is not expanded by `yggvault`.
 
-### Production Behind a Reverse Proxy
+### Production behind a reverse proxy
 
 Use `shared` when TLS is terminated by nginx, Caddy, an ingress controller, or another proxy. `yggvault` listens on
 plain HTTP on loopback or a container interface, but generates external links as HTTPS.
@@ -330,7 +324,7 @@ storage:
   dir: "/var/lib/yggvault"
 ```
 
-### TLS Inside yggvault
+### TLS inside yggvault
 
 Use this only when the process itself owns TLS. If TLS is already terminated by a reverse proxy, use `shared`.
 
@@ -347,7 +341,7 @@ web:
       listen: "0.0.0.0:443"
 ```
 
-### Disable All Metrics
+### Metrics are off by default
 
 ```yaml
 metrics:
@@ -361,10 +355,10 @@ metrics:
     enabled: false
 ```
 
-When public, internal, and push metrics are disabled, telemetry does not collect snapshots and `/metrics/*` is not
-published.
+These are the defaults. While public, internal, and push metrics are all disabled, telemetry does not collect
+snapshots and `/metrics/*` is not published; enable a switch below to expose metrics.
 
-### Public JSON Metrics and Prometheus/VictoriaMetrics
+### Public JSON metrics and Prometheus/VictoriaMetrics
 
 ```yaml
 metrics:
@@ -382,10 +376,13 @@ metrics:
     timeout: "10s"
 ```
 
-`/metrics` and `/metrics/{core,cache,errors,rescan}` are human-friendly JSON endpoints. `/metrics/internal` is full
-Prometheus/OpenMetrics text and should normally be exposed only in a trusted network.
+`/metrics` is an HTML index. `/metrics/{core,cache,errors,rescan,ygg}` returns JSON; `/metrics/ygg` exists only while
+the embedded Yggdrasil node is running. Its public response contains aggregate peer, traffic, latency, and isolation
+signals. The bounded per-peer list appears only when internal metrics are also enabled for the listener because it
+reveals direct topology. `/metrics/internal` is the full Prometheus text exposition and should normally be exposed
+only in a trusted network.
 
-### HTTP, Yggdrasil, and RPC Limits
+### HTTP, Yggdrasil, and RPC limits
 
 ```yaml
 web:
@@ -426,12 +423,19 @@ brother:
     rate_per_sec: 16
     max_fetch_response_bytes: "256MiB"
     max_fetch_batch_count: 256
+
+source:
+  rate_limit:
+    requests_per_second: 8
+    burst: 16
 ```
 
 `requests_per_second: 0` disables a specific bucket. Public web nodes should usually keep at least per-peer limits.
-See [Security and Limits](#security-and-limits) for the threat model.
+`source.rate_limit` is an outbound per-host limiter for git providers, archive downloads, brother RPC HTTP transports,
+and public brother fallback reads. It protects the node and upstreams from cold-start fan-out.
+See [Security and limits](#security-and-limits) for the threat model.
 
-### Storage Quota and Archive Limits
+### Storage quota and archive limits
 
 ```yaml
 storage:
@@ -459,13 +463,14 @@ storage:
 
 cache:
   metadata_max_size: "64mb"
+  build_max_parallel: 16
 ```
 
 Durable quota limits the source of truth. `storage.hot.max_size` limits regenerable `.zip`/`.tar.gz` and Go/Composer
-artifacts separately. Choose numbers from workload profiles: [Storage and Performance](#storage-and-performance) and
+artifacts separately. Choose numbers from workload profiles: [Storage and performance](#storage-and-performance) and
 [STORAGE-TUNING.md](STORAGE-TUNING.md).
 
-### Aggressive Low-RAM Profile
+### Aggressive low-RAM profile
 
 This is the aggressive README variant. For a less strict profile that keeps more artifacts hot, see
 [STORAGE-TUNING.md](STORAGE-TUNING.md).
@@ -489,11 +494,12 @@ storage:
 
 cache:
   metadata_max_size: "16mb"
+  build_max_parallel: 2
 ```
 
 This profile lowers baseline memory and parallelism, but it rebuilds artifacts more often and makes rescans slower.
 
-### Upstream Credentials
+### Upstream credentials
 
 ```yaml
 source:
@@ -524,17 +530,24 @@ ygg:
     initial:
       - "tls://example-peer-1:443"
       - "tcp://example-peer-2:62486"
+    passive: false
     max_per_proto: 1
+    min_peers: 1
+    min_peers_confirmations: 3
     probe_timeout: "10s"
+    health_interval: "10s"
     refresh_interval: "1h"
+    reprobe_interval: "30m"
     batch_size: 8
 ```
 
 When `ygg.pem_key` is empty, the Yggdrasil ingress is disabled. When it is set, the node serves HTTP on the fixed
-Yggdrasil service port 80 and gets a host like `<PublicKey>.pk.ygg`. Peer sources and client commands are in
-[Yggdrasil](#yggdrasil).
+Yggdrasil service port 80 and gets a host like `<PublicKey>.pk.ygg`. In selection mode, `min_peers` triggers an
+unscheduled refresh after `min_peers_confirmations` consecutive low-peer health checks. `health_interval: "0s"`
+disables health recovery; `refresh_interval: "0s"` disables scheduled refreshes. `passive: true` keeps every configured
+peer and ignores selection and health-recovery knobs. Peer sources and client commands are in [Yggdrasil](#yggdrasil).
 
-### Brother Seed and Follower
+### Brother seed and follower
 
 A seed usually points at the real upstream:
 
@@ -566,7 +579,7 @@ brother:
     ygg_enabled: true
 ```
 
-The sync flow, fallback without RPC, and limits are described in [Brother Sync](#brother-sync).
+The sync flow, fallback without RPC, and limits are described in [Brother sync](#brother-sync).
 
 ### Profiling
 
@@ -579,7 +592,7 @@ profiling:
 
 The profiling listener must be loopback. Use an SSH tunnel for remote diagnostics.
 
-## Storage and Performance
+## Storage and performance
 
 `storage.dir` contains both the durable source of truth and the regenerable hot cache:
 
@@ -604,9 +617,9 @@ Short choice:
 Detailed profiles, benchmark numbers, native/CGO build effects, and ready config fragments:
 [STORAGE-TUNING.md](STORAGE-TUNING.md).
 
-## How to Use It
+## How to use it
 
-### Go Module Proxy
+### Go module proxy
 
 For ordinary HTTP/HTTPS ingress:
 
@@ -691,7 +704,7 @@ Go import-path rewriting is applied only to the Go proxy `@v/{version}.zip` modu
 
 When `web.static.dir` is enabled, user static files own `/`, while package/API/browser routes move under
 `web.routing.prefix`, for example `/pkg/{key}/latest`. Stable service routes (`/health`, `/info`, `/metrics`,
-`/openapi.json`) stay at the root. See [Custom Frontend and Nested Mode](#custom-frontend-and-nested-mode).
+`/openapi.json`) stay at the root. See [Custom frontend and nested mode](#custom-frontend-and-nested-mode).
 
 ### Web UI
 
@@ -699,7 +712,7 @@ The built-in Web UI shows the catalog, key pages, version pages, install snippet
 Graph images. If you want your own frontend on the same node, use
 [nested mode](#custom-frontend-and-nested-mode).
 
-### Custom Frontend and Nested Mode
+### Custom frontend and nested mode
 
 `yggvault` can be more than a storage/API backend. It can also serve one self-hosted static site: your frontend comes
 from `web.static.dir`, and the package mirror stays in the same process. This works well for documentation, an internal
@@ -779,9 +792,9 @@ sitemap is available under the prefix, for example `/pkg/sitemap.xml`; URLs insi
 catalog, public metrics when enabled, keys, and newest versions win. For SEO, a common setup is a root sitemap index
 from your static frontend that links to `/pkg/sitemap.xml`.
 
-## How It Works
+## How it works
 
-### Application Startup
+### Application startup
 
 ```mermaid
 flowchart TB
@@ -805,7 +818,7 @@ flowchart TB
 CLI, preset generation, and maintenance entrypoints live in [mod/cli](mod/cli/README.md). Config loading and validation
 live in [mod/config](mod/config/README.md).
 
-### Adding a Repository
+### Adding a repository
 
 ```mermaid
 flowchart TB
@@ -823,7 +836,7 @@ flowchart TB
 Source discovery and egress safety live in [mod/source](mod/source/README.md). Periodic scanning and publish
 coordination live in [mod/rescan](mod/rescan/README.md).
 
-### Rescan Pipeline
+### Rescan pipeline
 
 ```mermaid
 flowchart TB
@@ -839,8 +852,10 @@ flowchart TB
 
 Archive safety is in [mod/archive](mod/archive/README.md). Artifact detection and Go/Composer materialization are in
 [mod/overlay](mod/overlay/README.md). Storage commit semantics are in [mod/storage](mod/storage/README.md).
+Unsafe symlink targets are dropped before publication, and storage records ingest failures/quarantine state in SQLite
+for rescan diagnostics. A rejected version must not become visible or leave indexed blobs behind.
 
-### Serving a Client Request
+### Serving a client request
 
 ```mermaid
 flowchart TB
@@ -873,6 +888,11 @@ The minimal config fragment is in [Enable Yggdrasil](#enable-yggdrasil). For the
 - create a key with `./yggvault --make-ygg-key`;
 - add 2-3 nearby peers to `ygg.peers.initial`.
 
+The peer manager can either select the lowest-latency candidates per URI scheme or keep all configured peers in
+`passive` mode. In selection mode, scheduled refreshes, outage recovery, `min_peers` early recovery, and
+`reprobe_interval` prevent a stale or isolated peer set without continuously probing the network. See the field-level
+rules in [Enable Yggdrasil](#enable-yggdrasil) and [mod/mesh](mod/mesh/README.md).
+
 Choose public peers from [yggdrasil-network/public-peers](https://github.com/yggdrasil-network/public-peers) or by
 online status at [publicpeers.neilalexander.dev](https://publicpeers.neilalexander.dev/). Do not add far-away peers
 just to increase the count; latency and stability of nearby entries matter more.
@@ -891,22 +911,25 @@ GOPROXY="http://${YGG_HOST}" GONOSUMDB="*.pk.ygg" \
 Yggdrasil identity, dial/listen integration, and NodeInfo publishing are described in
 [mod/mesh](mod/mesh/README.md).
 
-## Brother Sync
+## Brother sync
 
 Brother sync lets one `yggvault` read another `yggvault` as an upstream. Ready seed/follower YAML examples are in
-[Brother Seed and Follower](#brother-seed-and-follower); this section describes the exchange model.
+[Brother seed and follower](#brother-seed-and-follower); this section describes the exchange model.
 
 A source is recognized as a brother through `/health`, `/info`, and `Brother.Hello`. If RPC is available, the follower
 pulls index pages, trees, and blob batches through `CONNECT /rpc`. If RPC is closed or unreachable, the source layer
 can fall back to public `releases.json`, release detail, and universal archives. Fallback is slower than RPC, but it
 reads the same read-only data ordinary clients can see.
 
+When a brother advertises keyset pagination, index reads advance by cursor instead of page offset. Older nodes keep the
+page-number path, so mixed deployments can synchronize during rolling upgrades.
+
 In nested mode, a follower can point at a brother URL with a prefix, for example `https://seed.example.org/pkg/errors`.
 The new node reads `route_prefix` from the seed's `/info` and strips the remote prefix when deriving the key `errors`.
 If the remote node is old and does not return `route_prefix`, the previous fallback is used: the local
 `web.routing.prefix`.
 
-### Sync Flow
+### Sync flow
 
 ```mermaid
 flowchart TB
@@ -946,24 +969,25 @@ Brother wire DTOs are in [mod/brotherwire](mod/brotherwire/README.md). The serve
 
 ### CLI
 
-| Command                                                                              | Purpose                                                                       |
-|--------------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
-| `yggvault <config.yml>`                                                              | start the server                                                              |
-| `yggvault --config <config.yml>`                                                     | same, explicit form                                                           |
-| `--validate-config <config.yml>`                                                     | validate config and exit                                                      |
-| `--make-preset <minimal\|medium\|full> [--out <dir>] [--format <yaml\|json\|hjson>]` | generate a config preset                                                      |
-| `--make-ygg-key [--force]`                                                           | create `./yggvault.pem` and print `<hex>.pk.ygg`                              |
-| `--inspect <config.yml>`                                                             | show keys, versions, sizes, and storage orphan estimate                       |
-| `--prune <config.yml> [--force]`                                                     | delete storage keys missing from `release_mirrors`; dry-run without `--force` |
-| `--vacuum <config.yml>`                                                              | run SQLite VACUUM and Pebble compaction                                       |
-| `--rebuild-cache <config.yml>`                                                       | rebuild hot artifacts and digest helpers                                      |
-| `--info` or `-i`                                                                     | show project and dependency versions                                          |
-| `--help` or `-h`                                                                     | show help                                                                     |
+| Command                                                                                                 | Purpose                                                                       |
+|---------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
+| `yggvault <config.yml>`                                                                                 | start the server                                                              |
+| `yggvault --config <config.yml>`                                                                        | same, explicit form                                                           |
+| `--validate-config <config.yml> [--json]`                                                               | validate config and exit                                                      |
+| `--make-preset <minimal\|medium\|full> [--out <dir>] [--format <yaml\|json\|hjson>] [--force] [--json]` | generate a config preset                                                      |
+| `--make-ygg-key [--force] [--json]`                                                                     | create `./yggvault.pem` and print `<hex>.pk.ygg`                              |
+| `--inspect <config.yml> [--json]`                                                                       | show keys, versions, sizes, and storage orphan estimate                       |
+| `--prune <config.yml> [--force] [--json]`                                                               | delete storage keys missing from `release_mirrors`; dry-run without `--force` |
+| `--vacuum <config.yml> [--json]`                                                                        | run SQLite VACUUM and Pebble compaction                                       |
+| `--rebuild-cache <config.yml> [--json]`                                                                 | rebuild hot artifacts and digest helpers                                      |
+| `--info [--json]` or `-i`                                                                               | show project and dependency versions                                          |
+| `--help [--json]` or `-h`                                                                               | show help                                                                     |
 
 Maintenance commands require exclusive access to storage. Stop the running server before `inspect`, `prune`, `vacuum`,
-and `rebuild-cache`.
+and `rebuild-cache`. The command implementation lives in [mod/maintenance](mod/maintenance/README.md); root files only
+adapt CLI input, context cancellation, and output envelopes.
 
-### History, Deletions, and Degraded Upstreams
+### History, deletions, and degraded upstreams
 
 `history_policy` controls what happens when upstream changes or removes a version:
 
@@ -978,21 +1002,25 @@ and `rebuild-cache`.
 `upstream_availability.permanent_after_cycles` sets how many consecutive failed cycles make a source permanently
 unavailable. An error for one key does not cancel the cycle for other keys.
 
-### Security and Limits
+### Security and limits
 
 - `web.ingress.*` limits request URI size, header read timeout, and idle sockets.
 - `rate_limit.web.*` and `rate_limit.ygg.*` provide global and per-peer token buckets.
 - `mod/source` blocks SSRF into private addresses after DNS resolution, limits redirects, and uses bounded reads.
+- `source.rate_limit` caps outbound upstream fan-out per host and reports low-cardinality limiter metrics.
 - Provider credentials apply only to matching provider hosts.
 - `brother.rpc.*` limits public read-only RPC.
 - Public brother fallback reads only public metadata/artifact routes and verifies the tree hash before publishing.
-- `mod/archive` checks traversal, archive type, entry count, compressed/unpacked/per-file sizes.
+- Artifact URLs are resolved against the exact listener context; web and Yggdrasil listener keys do not fall back to
+  each other.
+- `mod/archive` checks traversal, archive type, entry count, compressed/unpacked/per-file sizes, and drops escaping
+  symlink targets.
 - `storage.in_flight_read_bytes`, `storage.archive_limits`, `storage.quota`, and `storage.hot.*` define the main
   resource budgets.
 - `profiling.listen` must be loopback.
 - Public `info` and Yggdrasil NodeInfo must not contain secrets.
 
-## HTTP Routes
+## HTTP routes
 
 Stable service routes are described in [mod/route](mod/route/README.md). Package-manager routes live near the code
 that builds them.
@@ -1001,22 +1029,22 @@ The table below shows root-mode paths. In nested mode, user static files own `/`
 generated media move under `web.routing.prefix`, for example `/pkg/catalog.json` and `/pkg/sitemap.xml`; `/health`,
 `/info`, `/metrics`, and `/openapi.json` stay at the root.
 
-| Group         | Routes                                                                                                               |
-|---------------|----------------------------------------------------------------------------------------------------------------------|
-| Service       | `/health`, `/info`, `/openapi.json`                                                                                  |
-| Metrics       | `/metrics`, `/metrics/core`, `/metrics/cache`, `/metrics/errors`, `/metrics/rescan`, `/metrics/internal`             |
-| Browser/media | `/`, `/{key}`, `/{key}/{version}`, `/favicon.ico`, `/logo/{size}.png`, `/og.png`, `/og/{key}.png`, `/sitemap.xml`    |
-| Release API   | `/catalog.json`, `/{key}/releases.json`, `/{key}/{version}.json`, `/{key}/latest`, `/{key}/list`, `/{key}/list/full` |
-| Archives      | `/{key}/{version}.zip`, `/{key}/{version}.tar.gz`                                                                    |
-| Go proxy      | `/{key}/@latest`, `/{key}/@v/list`, `/{key}/@v/{version}.info`, `/{key}/@v/{version}.mod`, `/{key}/@v/{version}.zip` |
-| Composer      | `/packages.json`, `/packages/list.json`, `/p2/{vendor}/{package}.json`, `/p2/{vendor}/{package}~dev.json`            |
-| Atom          | `/feed.xml`, `/{key}/releases.xml`                                                                                   |
-| Brother       | `CONNECT /rpc`                                                                                                       |
+| Group         | Routes                                                                                                                           |
+|---------------|----------------------------------------------------------------------------------------------------------------------------------|
+| Service       | `/health`, `/info`, `/openapi.json`                                                                                              |
+| Metrics       | `/metrics`, `/metrics/core`, `/metrics/cache`, `/metrics/errors`, `/metrics/rescan`, `/metrics/ygg`, `/metrics/internal`         |
+| Browser/media | `/`, `/{key}`, `/{key}/{version}`, `/favicon.ico`, `/logo/{size}`, `/og.png`, `/og/{key}`, `/og/{key}/{version}`, `/sitemap.xml` |
+| Release API   | `/catalog.json`, `/{key}/releases.json`, `/{key}/{version}.json`, `/{key}/latest`, `/{key}/list`, `/{key}/list/full`             |
+| Archives      | `/{key}/{version}.zip`, `/{key}/{version}.tar.gz`                                                                                |
+| Go proxy      | `/{key}/@latest`, `/{key}/@v/list`, `/{key}/@v/{version}.info`, `/{key}/@v/{version}.mod`, `/{key}/@v/{version}.zip`             |
+| Composer      | `/packages.json`, `/packages/list.json`, `/p2/{vendor}/{package}.json`, `/p2/{vendor}/{package}~dev.json`                        |
+| Atom          | `/feed.xml`, `/{key}/releases.xml`                                                                                               |
+| Brother       | `CONNECT /rpc`                                                                                                                   |
 
 Go routes also support major paths such as `/{key}/vN/@v/list`, `/{key}/vN/@latest`, and related
 `@v/{version}` endpoints.
 
-## For Developers
+## For developers
 
 ### Bootstrap
 
@@ -1052,7 +1080,7 @@ go generate .
 
 `go generate .` cleans `target/*` and `tmp/*` before generation. Do not store hand-written files there.
 
-### Getting Source from a Mirror
+### Getting source from a mirror
 
 There are two different source workflows:
 
@@ -1061,7 +1089,8 @@ There are two different source workflows:
 | Release archive or mirror source archive | you only need to build a binary or inspect release source  | generated files are already included; you can run `go build` directly |
 | Git repository                           | you need to edit code, run generators, and inspect history | run [Bootstrap](#bootstrap); this is the development workflow         |
 
-For self builds without development setup, use a release or mirror source archive. This is the recommended build path:
+For self builds without development setup, use a release or [mirror source archive](#source-mirror-for-builds). This is
+the recommended build path:
 the archive contains generated `target/*` and other generated files, so you do not need to install generators or run
 `go generate`.
 
@@ -1091,7 +1120,7 @@ bash _run/firststart.sh
 After that you can edit sources, run `go generate .`, tests, and local builds. A raw git checkout may be incomplete for
 direct building until bootstrap has generated the local files.
 
-### Tests and Benchmarks
+### Tests and benchmarks
 
 ```bash
 go test ./...
@@ -1127,33 +1156,34 @@ Run exactly `go generate .`, not `go generate ./...`: the root `gen.go` runs gen
 
 After `go mod tidy`, run `go generate .` again so `target/dependencies_gen.go` matches the current `go.mod`.
 
-### Module Map
+### Module map
 
-| Module                                       | Responsibility                                                           |
-|----------------------------------------------|--------------------------------------------------------------------------|
-| [mod/cli](mod/cli/README.md)                 | argv parsing, presets, validation, keygen, maintenance, runtime start    |
-| [mod/config](mod/config/README.md)           | YAML/JSON/HJSON loading, defaults, business validation                   |
-| [mod/logger](mod/logger/README.md)           | console/file/VictoriaLogs logging                                        |
-| [mod/server](mod/server/README.md)           | web/Ygg HTTP listeners, request frame, API handlers, static, brother RPC |
-| [mod/route](mod/route/README.md)             | stable service routes and route constants                                |
-| [mod/view](mod/view/README.md)               | HTML templates, CSS, UI pages, snippets                                  |
-| [mod/mesh](mod/mesh/README.md)               | Yggdrasil node, identity, peers, dial/listen integration                 |
-| [mod/telemetry](mod/telemetry/README.md)     | metric snapshots, JSON groups, Prometheus text, VictoriaMetrics push     |
-| [mod/rescan](mod/rescan/README.md)           | periodic scan, fetch orchestration, publish flow                         |
-| [mod/source](mod/source/README.md)           | git provider access, brother discovery/RPC/public fallback, egress guard |
-| [mod/archive](mod/archive/README.md)         | safe unpacking of zip/tar/tar.gz release archives                        |
-| [mod/overlay](mod/overlay/README.md)         | Go/Composer detection, Go rewrite, artifact planning/building            |
-| [mod/storage](mod/storage/README.md)         | Pebble blobs, SQLite metadata, hot cache, quotas, maintenance            |
-| [mod/cache](mod/cache/README.md)             | RAM byte-cache for small metadata responses                              |
-| [mod/state](mod/state/README.md)             | runtime snapshots visible to serving paths                               |
-| [mod/brotherwire](mod/brotherwire/README.md) | wire DTOs and protocol constants for brother RPC                         |
-| [mod/core](mod/core/README.md)               | hashes, trees, artifacts, semver, shared value objects                   |
-| [mod/internal](mod/internal/README.md)       | internal helpers such as filesystem wrappers                             |
+| Module                                       | Responsibility                                                            |
+|----------------------------------------------|---------------------------------------------------------------------------|
+| [mod/cli](mod/cli/README.md)                 | argv parsing, presets, validation, keygen, maintenance, runtime start     |
+| [mod/maintenance](mod/maintenance/README.md) | inspect, prune, vacuum, rebuild-cache, and maintenance output envelopes   |
+| [mod/config](mod/config/README.md)           | YAML/JSON/HJSON loading, defaults, business validation                    |
+| [mod/logger](mod/logger/README.md)           | console/file/VictoriaLogs logging                                         |
+| [mod/server](mod/server/README.md)           | web/Ygg HTTP listeners, request frame, API handlers, static, brother RPC  |
+| [mod/route](mod/route/README.md)             | stable service routes and route constants                                 |
+| [mod/view](mod/view/README.md)               | HTML templates, CSS, UI pages, snippets                                   |
+| [mod/mesh](mod/mesh/README.md)               | Yggdrasil node, peer recovery, metrics, identity, dial/listen integration |
+| [mod/telemetry](mod/telemetry/README.md)     | metric snapshots including Yggdrasil, JSON groups, Prometheus text, push  |
+| [mod/rescan](mod/rescan/README.md)           | periodic scan, fetch orchestration, publish flow                          |
+| [mod/source](mod/source/README.md)           | git provider access, brother discovery/RPC/public fallback, egress guard  |
+| [mod/archive](mod/archive/README.md)         | safe unpacking of zip/tar/tar.gz release archives                         |
+| [mod/overlay](mod/overlay/README.md)         | Go/Composer detection, Go rewrite, artifact planning/building             |
+| [mod/storage](mod/storage/README.md)         | Pebble blobs, SQLite metadata/quarantine, hot cache, quotas               |
+| [mod/cache](mod/cache/README.md)             | RAM byte-cache for small metadata responses                               |
+| [mod/state](mod/state/README.md)             | runtime snapshots visible to serving paths                                |
+| [mod/brotherwire](mod/brotherwire/README.md) | wire DTOs and protocol constants for brother RPC                          |
+| [mod/core](mod/core/README.md)               | hashes, trees, artifacts, semver, shared value objects                    |
+| [mod/internal](mod/internal/README.md)       | internal helpers such as filesystem wrappers                              |
 
 The composition root is `main.go`: it calls `mod/cli.New()`, then CLI selects runtime, maintenance, or one-shot
 commands. For contribution workflow and PR rules, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Self Build
+## Self build
 
 Most users should take a ready binary from [GitHub Releases](https://github.com/voluminor/yggvault/releases). Build it
 yourself when you need a target without a release asset, custom `GOAMD64`, static CGO, custom `CGO_CFLAGS`, or local
@@ -1167,7 +1197,7 @@ Requirements:
 - Docker only for containerized static CGO builds or the integration test stack.
 
 Run the commands below inside a generated source archive from
-[Getting Source from a Mirror](#getting-source-from-a-mirror), or inside a git checkout after [Bootstrap](#bootstrap).
+[Getting source from a mirror](#getting-source-from-a-mirror), or inside a git checkout after [Bootstrap](#bootstrap).
 
 Portable build uses the pure-Go SQLite driver and pure-Go codecs:
 
@@ -1189,7 +1219,7 @@ CGO_ENABLED=1 go build -ldflags="-s -w" -trimpath -o tmp/yggvault-cgo .
 | `CGO_ENABLED=0` | modernc, pure-Go | pure-Go | static binary, simple cross-compilation, `snappy`/`minlz` |
 | `CGO_ENABLED=1` | mattn, C         | C       | denser zstd without a large CPU/RAM write penalty         |
 
-### CGO Build for a Specific System
+### CGO build for a specific system
 
 Local `CGO_ENABLED=1 go build` dynamically links against the build machine's glibc. For a portable CGO binary, build
 statically on musl and choose the target CPU explicitly:
@@ -1215,7 +1245,7 @@ Check the result: `ldd tmp/yggvault-cgo` should print `not a dynamic executable`
 
 Disk, CPU, memory, and native/CGO build numbers are in [STORAGE-TUNING.md](STORAGE-TUNING.md).
 
-## Project Policy
+## Project policy
 
 - License: GNU Lesser General Public License v2.1. See [LICENSE](LICENSE). If you need the exact SPDX interpretation
   for packaging, check the project notice before publishing downstream packages.

@@ -16,12 +16,14 @@ get:
       description: Composer vendor segment.
       schema:
         type: string
+        example: vendor
     - name: packageFile
       in: path
       required: true
       description: Composer package metadata filename, for example `monolog.json` or `monolog~dev.json`.
       schema:
         type: string
+        example: package.json
     - $ref: parameters/if_none_match
   responses:
     '200':
@@ -31,10 +33,12 @@ get:
           description: Strong cache validator for the generated p2 document.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Cache policy for generated Composer metadata.
           schema:
             type: string
+            example: public, must-revalidate, max-age=300
       content:
         application/json:
           schema:

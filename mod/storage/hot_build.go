@@ -21,11 +21,8 @@ import (
 
 var errArtifactOversize = errors.New("artifact output exceeds expected size")
 
-// errArtifactBuildStalled means the artifact build wrote no data for longer than cArtifactBuildIdle.
 var errArtifactBuildStalled = errors.New("artifact build stalled: no write progress within idle budget")
 
-// cArtifactBuildIdle bounds an idle builder that holds a build slot, snapshot and temp file.
-// This is not an absolute deadline: slow large builds keep going as long as there is write progress.
 var cArtifactBuildIdle = 90 * time.Second
 
 // //
@@ -230,16 +227,17 @@ func (obj *Obj) buildHotFile(ctx context.Context, keyObj core.ArtifactKeyObj, ar
 	artifactObj.BodySha256 = writerObj.sha256Obj.Sum(nil)
 	artifactObj.BodySha1 = writerObj.sha1Obj.Sum(nil)
 
+	retainFlag, err := obj.shouldRetainArtifact(ctx, keyObj)
+	if err != nil {
+		return nil, err
+	}
+
 	obj.writeMu.Lock()
 	defer obj.writeMu.Unlock()
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
-	}
-	retainFlag, err := obj.shouldRetainArtifactLocked(ctx, keyObj)
-	if err != nil {
-		return nil, err
 	}
 	hotTargetText := hotArtifactPath(obj.hotDir, artifactObj)
 	if !retainFlag {

@@ -37,6 +37,7 @@ func measureLoad(ts *httptest.Server, pathText string, workers int, dur time.Dur
 					continue
 				}
 				nBytes, _ := io.Copy(io.Discard, respObj.Body)
+
 				respObj.Body.Close()
 				if respObj.StatusCode != 200 {
 					continue

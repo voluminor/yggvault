@@ -7,3 +7,4 @@ description: >-
   `If-None-Match` for cache revalidation and `If-Range` for ranged downloads.
 schema:
   type: string
+  example: Thu, 16 Jul 2026 18:42:47 GMT

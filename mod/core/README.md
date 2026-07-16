@@ -4,10 +4,10 @@
 configuration side effects. Packages depend on it for stable names for hashes, tree entries, artifact descriptors,
 version metadata, diagnostics inputs, and small formatting helpers.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   source["source"] --> core["mod/core"]
   archive["archive"] --> core
   overlay["overlay"] --> core
@@ -25,7 +25,7 @@ flowchart LR
 - Represent version trees as path, mode, blob hash, and size entries.
 - Describe artifacts, listeners, source metadata, and publish inputs shared across packages.
 - Keep semver and raw-version value checks close to the core model.
-- Provide small time and byte helpers used by generated API responses.
+- Provide canonical time formatting used by generated API responses.
 
 ## Contracts
 
@@ -35,15 +35,16 @@ flowchart LR
 - Comments on fields document non-obvious invariants such as sequence ordering, verification timestamps, and blocked
   Go module zip state.
 
-## Important Files
+## Important files
 
 - `hash.go`: BLAKE3-24 hashing, parsing, and formatting.
 - `tree.go`, `staged.go`: canonical tree and staged publish DTOs.
 - `version.go`: version metadata, deletion state, Go overlay block state, upstream sequence fields.
 - `artifact.go`: artifact kind, listener binding, digest metadata.
-- `time.go`, `bytes.go`: formatting helpers used by API and HTML builders.
+- `time.go`: canonical timestamp formatting used by API and HTML builders.
+- `history.go`, `report.go`: shared history and integrity-report value objects.
 
-## Usage Notes
+## Usage notes
 
 Keep this package dependency-light. It is safe for low-level packages to import `mod/core`, but adding dependencies
 from `core` back to storage, server, config, or source would create cycles and blur the shared model boundary.

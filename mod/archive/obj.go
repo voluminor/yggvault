@@ -70,8 +70,9 @@ type RequestObj struct {
 
 // ResultObj is the extraction result: canonical tree entry paths and deduplicated staged blobs.
 type ResultObj struct {
-	Entries []core.StagedEntryObj
-	Blobs   []core.StagedBlobObj
+	Entries         []core.StagedEntryObj
+	Blobs           []core.StagedBlobObj
+	DroppedSymlinks []string
 }
 
 // //

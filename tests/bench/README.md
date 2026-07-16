@@ -4,7 +4,7 @@
 Go benchmarks; these scripts exercise the same binaries, configs, caches, and HTTP paths used by the integration
 stack.
 
-## Bench Areas
+## Bench areas
 
 ```mermaid
 flowchart TB
@@ -24,15 +24,16 @@ flowchart TB
 - Capture pprof CPU, heap, goroutine, and runtime trace snapshots.
 - Keep benchmark results outside committed source.
 
-## Main Files
+## Main files
 
 - `storage/`: Go storage microbench driver.
 - `loadgen/`: small HTTP load generator used by shell scripts.
 - `run.sh`: storage benchmark wrapper.
 - `highload.sh`: live serving load wrapper.
-- `profile.sh`: pprof and trace collection helper.
+- `system.sh`: live stack benchmark with pprof and trace capture.
+- `system-sweep.sh`: full stack profile and sweep wrapper.
 
-## Typical Runs
+## Typical runs
 
 Storage profile:
 
@@ -48,13 +49,13 @@ CONC=200 DUR=20 bash tests/bench/highload.sh
 bash tests/scripts/down.sh
 ```
 
-## Reading Results
+## Reading results
 
 Use storage numbers to choose compression and Pebble memory settings. Use live results to check whether serving is
 limited by hot-cache misses, artifact rebuilds, TLS edge, or HTTP concurrency. Always record the dataset, CPU, Go
 version, CGO mode, and config profile with any benchmark result you compare later.
 
-## Safety Notes
+## Safety notes
 
 The high-load scripts target local test ports. Do not point them at a public node unless the operator explicitly wants
 that load. Profiles can contain paths, module names, and timing data, so treat result directories as operational data.

@@ -16,12 +16,10 @@ import (
 // // // // // // // // // //
 
 const (
-	// cAssetCacheControl keeps immutable favicon/logo for a day; the strong ETag makes revalidation cheap.
 	cAssetCacheControl = "public, max-age=86400"
 	cOgDateLayout      = "2006-01-02"
 )
 
-// cLogoSizeArr restricts logo PNG sizes; all other sizes get 404.
 var cLogoSizeArr = []int{16, 32, 48, 180, 192, 512}
 
 // //
@@ -31,7 +29,6 @@ type staticAssetObj struct {
 	etag string
 }
 
-// assetSnapshotObj holds favicon and logo PNGs rendered once at startup.
 type assetSnapshotObj struct {
 	favicon staticAssetObj
 	logo    map[int]staticAssetObj
@@ -69,8 +66,6 @@ func ogDate(tsObj time.Time) string {
 	return "updated " + tsObj.UTC().Format(cOgDateLayout)
 }
 
-// ogBottom builds the banner footer from date and configured canonical domain.
-// The domain is node-static, so host-independent banner ETags remain correct.
 func (obj *funcObj) ogBottom(tsObj time.Time) string {
 	text := ogDate(tsObj)
 	if domain := obj.deps.Config.Web.Server.Domain; domain != "" {
@@ -82,7 +77,6 @@ func (obj *funcObj) ogBottom(tsObj time.Time) string {
 	return text
 }
 
-// ogOverlays extracts version overlay names for the banner subline.
 func ogOverlays(ctx context.Context, store DataStoreInterface, key string, version string) []string {
 	detectionObj, ok, err := store.GetDetection(ctx, key, version)
 	if err != nil || !ok {
@@ -159,7 +153,24 @@ func (obj *funcObj) GetSitemap(ctx context.Context, params api.GetSitemapParams)
 		return &api.NotModifiedRespObj{}, nil
 	}
 	body, err := obj.cachedBytes(ctx, etag, func(buildCtx context.Context) ([]byte, error) {
-		return sitemap.Build(buildCtx, obj.deps.Storage, obj.deps.State, obj.linkCtx(lc), obj.sitemapSize(), lc.publicMetricsEnabled)
+		bodyArr, statsObj, buildErr := sitemap.Build(buildCtx, obj.deps.Storage, obj.deps.State, obj.linkCtx(lc), obj.sitemapSize(), lc.publicMetricsEnabled)
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		if statsObj.Truncated() {
+			obj.edgeMetrics.recordSitemap(statsObj)
+			reasonText := "url_cap"
+			if statsObj.ByteTruncated {
+				reasonText = "byte_cap"
+			}
+			obj.deps.Log.Warn().
+				Str("reason", reasonText).
+				Int("urls_written", statsObj.URLsWritten).
+				Int("urls_dropped", statsObj.URLsDropped).
+				Int("body_bytes", len(bodyArr)).
+				Msg("sitemap truncated")
+		}
+		return bodyArr, nil
 	})
 	if err != nil {
 		return nil, err
@@ -217,7 +228,6 @@ func (obj *funcObj) GetOgKey(ctx context.Context, params api.GetOgKeyParams) (ap
 
 // GetOgVersion serves the version's Open Graph banner; unknown key/version yield 404.
 func (obj *funcObj) GetOgVersion(ctx context.Context, params api.GetOgVersionParams) (api.GetOgVersionRes, error) {
-	// keyFreshness changes on version add/delete, so revalidation is safe before the storage probe.
 	etag := etagOf("og-version", view.OGBannerGenVersion, params.Key, params.Version, obj.keyFreshness(params.Key))
 	if condMatch(params.IfNoneMatch, etag) {
 		return &api.NotModifiedRespObj{}, nil

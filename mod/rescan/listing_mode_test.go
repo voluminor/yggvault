@@ -18,7 +18,6 @@ import (
 
 // // // // // // // // // //
 
-// gitStand builds a core-lib git-key fixture with a fake source layer.
 func gitStand(t *testing.T, fakeSrc *fakeSourceObj) (*Obj, *storage.Obj, *state.Obj, context.Context) {
 	t.Helper()
 	configObj := rescanTestConfig(t)
@@ -114,7 +113,6 @@ func TestListingModeTagsDecidedWhenReleasesEmpty(t *testing.T) {
 	if versionObj.ReleaseNotes != "" {
 		t.Fatalf("tag-mode version must have no release notes, got %q", versionObj.ReleaseNotes)
 	}
-	// Section 6: refs advertisement keyed by tag name also works in tags mode.
 	if versionObj.UpstreamRef != tagSHA {
 		t.Fatalf("upstream ref=%q, want %q from refs advertisement", versionObj.UpstreamRef, tagSHA)
 	}
@@ -166,7 +164,6 @@ func TestListingModeConflictFreezesKey(t *testing.T) {
 		t.Fatalf("fetch count after cycle 1 = %d, want 1", got)
 	}
 
-	// A tags key suddenly reports a release: conflict and full update freeze.
 	fakeSrc.releaseArr = []source.GitReleaseObj{{Version: "v9.9.9", ArchiveURL: "https://x/r.zip", Format: "zip"}}
 	for cycleNum := 2; cycleNum <= 3; cycleNum++ {
 		obj.RunOnce(ctx)
@@ -184,7 +181,6 @@ func TestListingModeConflictFreezesKey(t *testing.T) {
 		}
 	}
 
-	// Existing versions keep serving, and mode plus availability stay untouched.
 	if _, ok, err := storageObj.GetVersion(ctx, "core-lib", "v1.0.0"); err != nil || !ok {
 		t.Fatalf("frozen key must keep serving stored versions: ok=%v err=%v", ok, err)
 	}
@@ -232,7 +228,6 @@ func TestListingModeUndecidedWhenBothEmpty(t *testing.T) {
 		t.Fatalf("empty listings must not mark the key down: %+v known=%v", keyStateObj, known)
 	}
 
-	// Decision is delayed until first non-empty listing; releases appeared, so mode is releases.
 	fakeSrc.releaseArr = []source.GitReleaseObj{{Version: "v1.0.0", ArchiveURL: "https://x/r.zip", Format: "zip"}}
 	fakeSrc.archiveBytes = buildZip(t, map[string]string{"core-lib-1.0.0/README.md": "late"})
 	obj.RunOnce(ctx)
@@ -314,7 +309,6 @@ func TestRawVersionDeletionWindowExemption(t *testing.T) {
 		}
 	}
 
-	// The listing window moved up: REL_A is older than the minimum listed seq and is exempt.
 	fakeSrc.tagArr = []source.GitReleaseObj{
 		{Version: "REL_C", ArchiveURL: "https://x/c.zip", Format: "zip"},
 		{Version: "REL_B", ArchiveURL: "https://x/b.zip", Format: "zip"},
@@ -330,7 +324,6 @@ func TestRawVersionDeletionWindowExemption(t *testing.T) {
 		t.Fatal("REL_A below the window must not be marked upstream-deleted")
 	}
 
-	// Real disappearance: REL_C, the top-window item, vanishes and is marked deleted after grace.
 	fakeSrc.tagArr = []source.GitReleaseObj{
 		{Version: "REL_B", ArchiveURL: "https://x/b.zip", Format: "zip"},
 	}
@@ -367,7 +360,6 @@ func TestPermanentIngestFailureSkipsUntilShaChanges(t *testing.T) {
 		t.Fatal("broken archive must not publish")
 	}
 
-	// Same SHA: silent skip without downloads.
 	for cycleNum := 2; cycleNum <= 4; cycleNum++ {
 		obj.RunOnce(ctx)
 		if got := fakeSrc.fetchCount("v1.0.0"); got != 1 {
@@ -375,7 +367,6 @@ func TestPermanentIngestFailureSkipsUntilShaChanges(t *testing.T) {
 		}
 	}
 
-	// Reuploaded tag with changed SHA: one new attempt, then failure is remembered again.
 	fakeSrc.refsMap = map[string]string{"v1.0.0": "9999888877776666555544443333222211110000"}
 	obj.RunOnce(ctx)
 	if got := fakeSrc.fetchCount("v1.0.0"); got != 2 {
@@ -386,17 +377,97 @@ func TestPermanentIngestFailureSkipsUntilShaChanges(t *testing.T) {
 		t.Fatalf("after re-failure: fetch count=%d, want 2 (silent again)", got)
 	}
 
-	// force_refresh bypasses failure memory.
 	obj.ingestGit(ctx, "core-lib", "https://git.example/o/r", time.Now().UTC(), false, true, core.ListingModeTags, true)
 	if got := fakeSrc.fetchCount("v1.0.0"); got != 3 {
 		t.Fatalf("force_refresh: fetch count=%d, want 3", got)
 	}
 
-	// Content is fixed: the version publishes and failure memory is cleared.
 	fakeSrc.archiveBytes = buildZip(t, map[string]string{"core-lib-1.0.0/README.md": "fixed"})
 	fakeSrc.refsMap = map[string]string{"v1.0.0": "1111222233334444555566667777888899990000"}
 	obj.RunOnce(ctx)
 	if _, ok, err := storageObj.GetVersion(ctx, "core-lib", "v1.0.0"); err != nil || !ok {
 		t.Fatalf("fixed archive must publish: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestTerminalSuccessClearsDurableQuarantineAfterLoadMiss(t *testing.T) {
+	refText := verifySHA('a')
+	fakeSrc := &fakeSourceObj{
+		tagArr:       []source.GitReleaseObj{{Version: "v1.0.0", ArchiveURL: "https://x/a.zip", Format: "zip"}},
+		archiveBytes: buildZip(t, map[string]string{"core-lib-1.0.0/README.md": "ok"}),
+		refsMap:      map[string]string{"v1.0.0": refText},
+	}
+	obj, storageObj, _, ctx := gitStand(t, fakeSrc)
+
+	obj.RunOnce(ctx)
+	if _, ok, err := storageObj.GetVersion(ctx, "core-lib", "v1.0.0"); err != nil || !ok {
+		t.Fatalf("precondition publish: ok=%v err=%v", ok, err)
+	}
+	if err := storageObj.PutIngestFailure(ctx, core.IngestFailureObj{
+		Key:     "core-lib",
+		Version: "v1.0.0",
+		RefSHA:  refText,
+		Code:    "archive_invalid",
+		Message: "stale quarantine row from missed startup load",
+	}); err != nil {
+		t.Fatalf("PutIngestFailure returned error: %v", err)
+	}
+
+	obj.permFailMu.Lock()
+	obj.permFailLoadMissObj["core-lib"] = struct{}{}
+	obj.permFailMu.Unlock()
+
+	obj.RunOnce(ctx)
+	failureArr, err := storageObj.ListIngestFailures(ctx, "core-lib")
+	if err != nil {
+		t.Fatalf("ListIngestFailures returned error: %v", err)
+	}
+	if len(failureArr) != 0 {
+		t.Fatalf("stale durable quarantine rows=%+v, want none", failureArr)
+	}
+	if obj.permanentFailureSkip("core-lib", "v1.0.0", refText) {
+		t.Fatal("stale quarantine row must not be reloaded into permanent failure memory")
+	}
+	obj.permFailMu.Lock()
+	_, loadMiss := obj.permFailLoadMissObj["core-lib"]
+	obj.permFailMu.Unlock()
+	if loadMiss {
+		t.Fatal("load-miss marker must be cleared after a successful quarantine summary")
+	}
+}
+
+// TestQuarantineSummarySkipsCleanKeys covers the dirty gate that lets raiseQuarantineSummary skip the
+// per-cycle durable ListIngestFailures round-trip for healthy keys: a key with no quarantine history stays
+// clean, a recorded failure marks it dirty, and reconciliation drops the mark again.
+func TestQuarantineSummarySkipsCleanKeys(t *testing.T) {
+	refText := verifySHA('a')
+	fakeSrc := &fakeSourceObj{
+		tagArr:       []source.GitReleaseObj{{Version: "v1.0.0", ArchiveURL: "https://x/a.zip", Format: "zip"}},
+		archiveBytes: buildZip(t, map[string]string{"core-lib-1.0.0/README.md": "ok"}),
+		refsMap:      map[string]string{"v1.0.0": refText},
+	}
+	obj, _, _, ctx := gitStand(t, fakeSrc)
+
+	isDirty := func() bool {
+		obj.permFailMu.Lock()
+		defer obj.permFailMu.Unlock()
+		_, ok := obj.quarantineDirtyObj["core-lib"]
+		return ok
+	}
+
+	obj.RunOnce(ctx)
+	if isDirty() {
+		t.Fatal("healthy key must not be dirty: quarantine summary would run every cycle")
+	}
+
+	obj.recordPermanentFailure(ctx, "core-lib", "v1.0.0", refText, "archive_invalid", "bad archive")
+	if !isDirty() {
+		t.Fatal("recorded failure must mark the key dirty so the summary reconciles it")
+	}
+
+	obj.clearPermanentFailure(ctx, "core-lib", "v1.0.0")
+	obj.raiseQuarantineSummary(ctx, "core-lib")
+	if isDirty() {
+		t.Fatal("key must be clean after quarantine reconciliation drains all failures")
 	}
 }

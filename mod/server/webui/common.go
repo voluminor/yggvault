@@ -9,7 +9,6 @@ import (
 
 // // // // // // // // // //
 
-// rendererObj holds the shared parsed markup renderer, lazily initialized under sync.Once.
 var (
 	rendererOnce sync.Once
 	rendererObj  *view.RendererObj

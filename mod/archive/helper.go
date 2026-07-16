@@ -31,6 +31,7 @@ type stateObj struct {
 	entryArr            []core.StagedEntryObj
 	blobByHashObj       map[core.HashObj]core.StagedBlobObj
 	symlinkTargetByHash map[core.HashObj][]byte
+	droppedSymlinkArr   []string
 	createdPathArr      []string
 	copyBufferArr       []byte
 }
@@ -196,8 +197,6 @@ func validateCleanPath(requestObj RequestObj, pathText string, headerCount uint)
 	return cleanPath, nil
 }
 
-// validateSymlinkTarget bounds the target length while streaming; hygiene and the escape check run in
-// validateSymlinkTargets after stripCommonTopDir, where the final path is known.
 func validateSymlinkTarget(requestObj RequestObj, targetArr []byte) error {
 	if len(targetArr) > int(requestObj.limitsObj.MaxArchivePathBytes) {
 		return newLimitsErr(requestObj, cCheckPathBytes, util.ErrArchiveEntryPathTooLong, limitFactsObj{pathBytes: uint(len(targetArr))})
@@ -278,7 +277,6 @@ func (obj *stateObj) writeBytesEntry(limitsObj LimitsObj, pathText string, modeT
 	}
 	obj.createdPathArr = append(obj.createdPathArr, filePath)
 	hashObj := core.HashBytes(dataArr)
-	// Symlink targets are needed after strip for escape checks; they are tiny enough to keep inline.
 	if modeText == core.ModeSymlink {
 		obj.symlinkTargetByHash[hashObj] = append([]byte(nil), dataArr...)
 	}
@@ -344,19 +342,42 @@ func (obj *stateObj) writeReaderEntry(ctx context.Context, limitsObj LimitsObj, 
 	return obj.addEntry(pathText, modeText, core.HashFromHasher(hasherObj), sizeBytes, filePath)
 }
 
-// validateSymlinkTargets checks final post-strip paths. A target resolved from the link's directory
-// must stay inside the archive root; stripping the common top-dir can otherwise create an escape.
-func (obj *stateObj) validateSymlinkTargets(entryArr []core.StagedEntryObj) error {
+func (obj *stateObj) filterEscapingSymlinks(entryArr []core.StagedEntryObj) []core.StagedEntryObj {
+	filteredArr := entryArr[:0]
 	for i := range entryArr {
 		if entryArr[i].Mode != core.ModeSymlink {
+			filteredArr = append(filteredArr, entryArr[i])
 			continue
 		}
 		target := string(obj.symlinkTargetByHash[entryArr[i].BlobHash])
 		if err := util.SymlinkTargetWithinRoot(entryArr[i].Path, target); err != nil {
-			return newRejectedErr(obj.requestObj, cCheckSymlinkTarget, entryArr[i].Path, err)
+			obj.droppedSymlinkArr = append(obj.droppedSymlinkArr, entryArr[i].Path)
+			continue
 		}
+		filteredArr = append(filteredArr, entryArr[i])
 	}
-	return nil
+	if len(obj.droppedSymlinkArr) == 0 {
+		return entryArr
+	}
+	obj.dropOrphanBlobs(filteredArr)
+	return filteredArr
+}
+
+func (obj *stateObj) dropOrphanBlobs(entryArr []core.StagedEntryObj) {
+	usedObj := make(map[core.HashObj]struct{}, len(entryArr))
+	for i := range entryArr {
+		usedObj[entryArr[i].BlobHash] = struct{}{}
+	}
+	for hashObj, blobObj := range obj.blobByHashObj {
+		if _, ok := usedObj[hashObj]; ok {
+			continue
+		}
+		if blobObj.FilePath != "" {
+			_ = os.Remove(blobObj.FilePath)
+		}
+		delete(obj.blobByHashObj, hashObj)
+		delete(obj.symlinkTargetByHash, hashObj)
+	}
 }
 
 func (obj *stateObj) result() (ResultObj, error) {
@@ -364,15 +385,14 @@ func (obj *stateObj) result() (ResultObj, error) {
 		return ResultObj{}, newRejectedErr(obj.requestObj, cCheckSpool, "", err)
 	}
 	entryArr := stripCommonTopDir(obj.entryArr)
+	entryArr = obj.filterEscapingSymlinks(entryArr)
 	if err := validateFinalEntries(obj.requestObj, entryArr); err != nil {
 		return ResultObj{}, err
 	}
-	if err := obj.validateSymlinkTargets(entryArr); err != nil {
-		return ResultObj{}, err
-	}
 	resultObj := ResultObj{
-		Entries: entryArr,
-		Blobs:   make([]core.StagedBlobObj, 0, len(obj.blobByHashObj)),
+		Entries:         entryArr,
+		Blobs:           make([]core.StagedBlobObj, 0, len(obj.blobByHashObj)),
+		DroppedSymlinks: append([]string(nil), obj.droppedSymlinkArr...),
 	}
 	for _, blobObj := range obj.blobByHashObj {
 		resultObj.Blobs = append(resultObj.Blobs, blobObj)

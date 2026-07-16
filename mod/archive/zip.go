@@ -16,17 +16,12 @@ import (
 // // // // // // // // // //
 
 const (
-	// cMaxZipCompressionRatio quickly rejects obvious zip bombs by the entry's declared ratio.
-	// Absolute byte caps remain the primary backstop against forged headers.
 	cMaxZipCompressionRatio = 1000
-	// cMinRatioCheckBytes keeps tiny entries from generating noise on the ratio check.
-	cMinRatioCheckBytes = 4096
+	cMinRatioCheckBytes     = 4096
 )
 
 // //
 
-// zipEntryCountErr picks the hard-cap or per-archive files error based on the header count.
-// zip.Reader allocates proportionally to the physical file, so post-open len and a header counter suffice.
 func zipEntryCountErr(requestObj RequestObj, countValue uint64) error {
 	if countValue > uint64(cTreeMaxEntries) {
 		return newLimitsErr(requestObj, cCheckEntryHardCap, nil, limitFactsObj{headerCount: cTreeMaxEntries + 1})
@@ -83,7 +78,6 @@ func (obj *Obj) extractZip(ctx context.Context, requestObj RequestObj, stateObj 
 	if err != nil {
 		return ResultObj{}, newRejectedErr(requestObj, cCheckMalformed, "", err)
 	}
-	// zip.NewReader allocates based on the physical size; len and the header counter cover the count limit.
 	if requestObj.limitsObj.MaxArchiveFiles > 0 && uint64(len(readerObj.File)) > uint64(requestObj.limitsObj.MaxArchiveFiles) {
 		return ResultObj{}, zipEntryCountErr(requestObj, uint64(len(readerObj.File)))
 	}

@@ -4,10 +4,10 @@
 generated into `target/stconf`; this package adds file handling, preset loading, and business validation that depends
 on multiple config sections.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   file["YAML, JSON, or HJSON"] --> config["mod/config"]
   presets["generated presets"] --> config
   config --> schema["target/stconf"]
@@ -31,14 +31,15 @@ flowchart LR
 - Generated files in `target/stconf` are source-of-truth for schema defaults and field documentation.
 - Business validation should stay deterministic and should not perform network calls.
 
-## Important Files
+## Important files
 
-- `load.go`: file loading and format dispatch.
+- `init.go`: generated parser entry and business-validation handoff.
+- `helper.go`: shared patterns, reserved keys, and validation constants.
 - `validate.go`: cross-section validation.
-- `preset.go`: preset rendering helpers.
-- `errors.go`: validation error shaping.
+- `config_test.go`: format, default, and cross-section validation coverage.
+- `profiling_test.go`: profiling-listener safety coverage.
 
-## Operational Notes
+## Operational notes
 
 When adding a new config field, update the schema in `yml/config`, regenerate `target/stconf`, and add business
 validation here only if the rule cannot be expressed in the schema.

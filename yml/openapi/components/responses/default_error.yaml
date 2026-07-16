@@ -5,3 +5,7 @@ content:
   application/json:
     schema:
       $ref: schemas/default_error
+    example:
+      error: not_found
+      message: resource not found
+      request_id: 0123456789abcdef

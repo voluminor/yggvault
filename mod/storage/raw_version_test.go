@@ -49,7 +49,6 @@ func TestPublishRejectsUnstorableVersionNames(t *testing.T) {
 	obj := newTestObj(t, newTestConfigObj(t))
 
 	entriesArr := []core.InputEntryObj{{Path: "a.txt", Mode: core.ModeFile, Content: []byte("x")}}
-	// "v2" is absent: x/mod/semver accepts major-only names, which stay on the semver path.
 	for _, badVersion := range []string{"foo.zip", "list", "latest", "-bad", "bad-", "pathé", "has space"} {
 		_, err := obj.Publish(ctx, core.PublishObj{
 			Key:             "core-lib",
@@ -88,7 +87,6 @@ func TestKeyListingModeSetGetAndPutPreserves(t *testing.T) {
 		t.Fatalf("mode after set=%q ok=%v err=%v, want tags", gotObj.ListingMode, ok, err)
 	}
 
-	// Repeated Put (reclassification) must not erase sticky mode.
 	updatedObj := baseObj
 	updatedObj.OriginURL = "https://origin.example/core-lib/"
 	if err := obj.PutKeySource(ctx, updatedObj); err != nil {

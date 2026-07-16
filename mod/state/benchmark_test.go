@@ -291,8 +291,36 @@ func BenchmarkActiveDiagnosticsCopy64(b *testing.B) {
 }
 
 func BenchmarkRaiseDiagnosticEvictInactive(b *testing.B) {
+	for _, maxRecords := range []int{128, 4096} {
+		b.Run(fmt.Sprintf("records_%d", maxRecords), func(b *testing.B) {
+			obj := newBenchmarkObj(b, 128)
+			obj.maxDiagnostics = maxRecords
+			for i := 0; i < obj.maxDiagnostics; i++ {
+				version := fmt.Sprintf("v1.0.%d", i)
+				diagnosticObj := benchmarkBuildDiagnosticObj("key-0064", version)
+				if err := obj.RaiseDiagnostic(diagnosticObj); err != nil {
+					b.Fatalf("RaiseDiagnostic setup returned error: %v", err)
+				}
+			}
+			obj.ClearAllDiagnostics()
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				if i%obj.maxDiagnostics == 0 {
+					obj.ClearAllDiagnostics()
+				}
+				version := fmt.Sprintf("v2.0.%d", i)
+				diagnosticObj := benchmarkBuildDiagnosticObj("key-0064", version)
+				_ = obj.RaiseDiagnostic(diagnosticObj)
+			}
+		})
+	}
+}
+
+func BenchmarkRaiseDiagnosticFullActiveRegistry(b *testing.B) {
 	obj := newBenchmarkObj(b, 128)
-	obj.maxDiagnostics = 128
+	obj.maxDiagnostics = cDefaultMaxDiagnostics
 	for i := 0; i < obj.maxDiagnostics; i++ {
 		version := fmt.Sprintf("v1.0.%d", i)
 		diagnosticObj := benchmarkBuildDiagnosticObj("key-0064", version)
@@ -300,16 +328,26 @@ func BenchmarkRaiseDiagnosticEvictInactive(b *testing.B) {
 			b.Fatalf("RaiseDiagnostic setup returned error: %v", err)
 		}
 	}
-	obj.ClearAllDiagnostics()
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		if i%obj.maxDiagnostics == 0 {
-			obj.ClearAllDiagnostics()
-		}
 		version := fmt.Sprintf("v2.0.%d", i)
 		diagnosticObj := benchmarkBuildDiagnosticObj("key-0064", version)
-		_ = obj.RaiseDiagnostic(diagnosticObj)
+		if err := obj.RaiseDiagnostic(diagnosticObj); err == nil {
+			b.Fatal("RaiseDiagnostic accepted new diagnostic over full active registry")
+		}
+	}
+}
+
+func BenchmarkClearVersionDiagnosticsNoop(b *testing.B) {
+	obj := newBenchmarkObj(b, 128)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if err := obj.ClearVersionDiagnostics("key-0064", "v9.9.9"); err != nil {
+			b.Fatalf("ClearVersionDiagnostics returned error: %v", err)
+		}
 	}
 }

@@ -1,7 +1,3 @@
-/* yggvault — deep-mesh ledger: monospace-as-brand, copper rune accent.
-   Токены и темы — по стайлбуку ratatoskr.space; тёмная тема по умолчанию,
-   светлая — через prefers-color-scheme (auto) либо radio+:has() без JS, либо data-theme от JS. */
-
 :root {
     --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -25,7 +21,6 @@
     --shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
 }
 
-/* auto: светлая системная тема, когда выбран режим auto или переключателя нет вовсе */
 @media (prefers-color-scheme: light) {
     :root:not([data-theme]):has(#theme-auto:checked),
     :root:not([data-theme]):not(:has(.theme-control)) {
@@ -49,8 +44,6 @@
     }
 }
 
-/* явный выбор светлой через data-theme от JS; блок отделён от :has(),
-   иначе браузер без :has() отбросил бы весь список селекторов целиком */
 :root[data-theme="light"] {
     color-scheme: light;
     --surface: #f3e8d2;
@@ -71,7 +64,6 @@
     --shadow: 0 18px 42px rgba(92, 58, 30, 0.16);
 }
 
-/* явный выбор светлой radio-переключателем без JS */
 :root:has(#theme-light:checked) {
     color-scheme: light;
     --surface: #f3e8d2;
@@ -133,12 +125,10 @@ a:hover {
     margin-inline: auto;
 }
 
-/* видимость по наличию JS: html.js ставит инлайновый скрипт в head */
 html:not(.js) .only-js {
     display: none;
 }
 
-/* без JS и без :has() переключатель темы мёртв — прячем его */
 @supports not (selector(:root:has(input))) {
     html:not(.js) .theme-control {
         display: none;
@@ -161,7 +151,6 @@ html.js .no-js-only {
     border: 0;
 }
 
-/* masthead — шапка сайта: бренд с логотипом, badge канала, переключатель темы, навигация */
 .masthead {
     border-bottom: 1px solid var(--line);
     padding: 20px 0 16px;
@@ -212,7 +201,6 @@ html.js .no-js-only {
     flex: 1;
 }
 
-/* badge — статус входа (web/ygg), пилюля с точкой как в референсе */
 .badge {
     display: inline-flex;
     align-items: center;
@@ -244,7 +232,6 @@ html.js .no-js-only {
     border-color: color-mix(in srgb, var(--dim) 28%, transparent);
 }
 
-/* theme control — radio без JS через :has(), c JS выбор пишется в localStorage */
 .theme-control {
     display: inline-flex;
     align-items: center;
@@ -316,13 +303,11 @@ html.js .no-js-only {
     color: var(--ink-strong);
 }
 
-/* feed-link — кнопка Atom-ленты в навигации, открывается в новой вкладке */
 .feed-link {
     color: var(--rune);
     border-color: color-mix(in srgb, var(--rune) 40%, var(--line-strong));
 }
 
-/* filter — клиентский JS-поиск по текущей странице; без JS скрыт классом .only-js */
 .filter {
     margin-top: 22px;
     margin-bottom: -8px;
@@ -347,7 +332,6 @@ html.js .no-js-only {
     border-color: color-mix(in srgb, var(--dim) 48%, var(--line-strong));
 }
 
-/* свёрнутые блоки альтернативного входа и alt-сниппетов */
 .alt-entry, .snip-alt {
     margin-top: 12px;
     font-size: 12px;
@@ -376,7 +360,6 @@ html.js .no-js-only {
     font-size: 12px;
 }
 
-/* eyebrow + headings */
 .eyebrow {
     color: var(--dim);
     font-size: 11px;
@@ -429,7 +412,6 @@ h2 {
     margin-bottom: 6px;
 }
 
-/* hash text — с JS кликабелен для копирования */
 .hash {
     font-family: var(--mono);
     color: var(--dim);
@@ -467,7 +449,6 @@ html.js span.hash, html.js dd.hash, html.js td.hash, html.js div.hash, html.js .
     word-break: break-all;
 }
 
-/* ledger rows (catalog keys / versions / metric groups) */
 .ledger {
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -513,7 +494,6 @@ html.js span.hash, html.js dd.hash, html.js td.hash, html.js div.hash, html.js .
     flex: 1;
 }
 
-/* tags (overlays / classification) */
 .tag {
     display: inline-block;
     padding: 1px 8px;
@@ -548,7 +528,6 @@ html.js span.hash, html.js dd.hash, html.js td.hash, html.js div.hash, html.js .
     margin-top: 10px;
 }
 
-/* source / status dot */
 .dot {
     display: inline-block;
     width: 7px;
@@ -588,7 +567,6 @@ html.js span.hash, html.js dd.hash, html.js td.hash, html.js div.hash, html.js .
     margin-top: 12px;
 }
 
-/* download table */
 .dl {
     width: 100%;
     border-collapse: collapse;
@@ -655,7 +633,6 @@ html.js span.hash, html.js dd.hash, html.js td.hash, html.js div.hash, html.js .
     border: 0;
 }
 
-/* install snippets — код всегда тёмный, в обеих темах */
 .snip {
     margin: 0 0 14px;
 }
@@ -678,7 +655,6 @@ html.js span.hash, html.js dd.hash, html.js td.hash, html.js div.hash, html.js .
     font-size: 13px;
 }
 
-/* release notes — the single humanist-sans surface */
 .notes {
     font-family: var(--sans);
     line-height: 1.62;
@@ -726,7 +702,6 @@ html.js span.hash, html.js dd.hash, html.js td.hash, html.js div.hash, html.js .
     color: var(--ink-strong);
 }
 
-/* degraded banner */
 .degraded {
     margin-top: 16px;
     border-left: 2px solid var(--warn);
@@ -736,7 +711,6 @@ html.js span.hash, html.js dd.hash, html.js td.hash, html.js div.hash, html.js .
     border-radius: 4px;
 }
 
-/* nav */
 .histnav {
     display: flex;
     justify-content: space-between;
@@ -765,7 +739,6 @@ html.js span.hash, html.js dd.hash, html.js td.hash, html.js div.hash, html.js .
     margin: 8px 0 0;
 }
 
-/* публичная карточка ноды на главной (config info) */
 .about {
     margin-top: 16px;
     padding: 14px 16px;
@@ -790,7 +763,6 @@ html.js span.hash, html.js dd.hash, html.js td.hash, html.js div.hash, html.js .
     padding-top: 10px;
 }
 
-/* metrics — карточки групп (no-js) и живой блок (js) */
 .cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));

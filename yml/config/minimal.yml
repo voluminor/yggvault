@@ -16,7 +16,7 @@ web:
       listen: "127.0.0.1:8080"
 
 ygg:
-  pem_key: "./yggvault.pem"
+  pem_key: ""
   peers:
     initial:
       # Pick nearby public peers:

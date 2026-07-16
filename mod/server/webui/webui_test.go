@@ -79,8 +79,10 @@ func (f *fakeDetailStoreObj) GetArtifact(_ context.Context, keyObj core.Artifact
 func (f *fakeDetailStoreObj) ListVersionsKeyset(_ context.Context, key string, _ bool, afterSeq int64, afterVersion string, limit int) ([]core.VersionObj, error) {
 	return keysetForward(f.versions[key], afterSeq, afterVersion, limit), nil
 }
+func (f *fakeDetailStoreObj) ListVersionsKeysetBefore(_ context.Context, key string, _ bool, beforeSeq int64, beforeVersion string, limit int) ([]core.VersionObj, error) {
+	return keysetBefore(f.versions[key], beforeSeq, beforeVersion, limit), nil
+}
 
-// keysetForward returns the newest-first slice strictly after the (seq,version) cursor; empty starts at head.
 func keysetForward(arr []core.VersionObj, afterSeq int64, afterVersion string, limit int) []core.VersionObj {
 	start := 0
 	if afterVersion != "" {
@@ -101,8 +103,6 @@ func keysetForward(arr []core.VersionObj, afterSeq int64, afterVersion string, l
 	return arr[start:end]
 }
 
-// keysetBefore returns versions newer than the cursor in ascending order, closest to the cursor first,
-// mirroring real ListVersionsKeysetBefore over a newest-first slice.
 func keysetBefore(arr []core.VersionObj, beforeSeq int64, beforeVersion string, limit int) []core.VersionObj {
 	cursorIdx := len(arr)
 	for i := range arr {
@@ -118,7 +118,6 @@ func keysetBefore(arr []core.VersionObj, beforeSeq int64, beforeVersion string, 
 	return out
 }
 
-// fakeOverlayObj simulates overlay binding for one entry; module path is built from its host.
 type fakeOverlayObj struct {
 	host        string
 	publishable bool
@@ -299,7 +298,6 @@ func TestKeyGoSnippetMajorSuffix(t *testing.T) {
 		t.Error("suffix-less module path must not survive for a v2 latest")
 	}
 
-	// v1 latest: no suffix is added.
 	v1State := seedState()
 	ksObj := v1State.byKey[key]
 	ksObj.LatestVersion = "v1.5.0"
@@ -361,17 +359,21 @@ func TestFillHistoryNavNeighbors(t *testing.T) {
 	store := &fakeDetailStoreObj{versions: map[string][]core.VersionObj{
 		key: {mk("v3.0.0", 3), mk("v2.0.0", 2), mk("v1.0.0", 1)},
 	}}
-	cases := []struct{ version, newer, older string }{
-		{"v3.0.0", "", "v2.0.0"},
-		{"v2.0.0", "v3.0.0", "v1.0.0"},
-		{"v1.0.0", "v2.0.0", ""},
+	cases := []struct {
+		target core.VersionObj
+		newer  string
+		older  string
+	}{
+		{mk("v3.0.0", 3), "", "v2.0.0"},
+		{mk("v2.0.0", 2), "v3.0.0", "v1.0.0"},
+		{mk("v1.0.0", 1), "v2.0.0", ""},
 	}
 	for _, tc := range cases {
 		var viewModel view.VersionObj
-		fillHistoryNav(context.Background(), store, key, tc.version, &viewModel)
+		fillHistoryNav(context.Background(), store, tc.target, &viewModel)
 		if viewModel.History.NewerVersion != tc.newer || viewModel.History.OlderVersion != tc.older {
 			t.Errorf("%s: got newer=%q older=%q, want newer=%q older=%q",
-				tc.version, viewModel.History.NewerVersion, viewModel.History.OlderVersion, tc.newer, tc.older)
+				tc.target.Version, viewModel.History.NewerVersion, viewModel.History.OlderVersion, tc.newer, tc.older)
 		}
 	}
 }
@@ -466,8 +468,6 @@ func TestVersionPageFiltersOtherListenerArtifacts(t *testing.T) {
 
 // // // // // // // // // //
 
-// altSnippetFixture builds a version page with go+composer detection and per-entry universal artifacts.
-// sha256 values differ like they do in real storage.
 func altSnippetFixture(t *testing.T, includeAltArtifact bool, altPublishable bool) string {
 	t.Helper()
 	key, version := "pkg/alpha", "v2.0.0"
@@ -509,7 +509,6 @@ func TestVersionAltGoSnippetHostsConsistent(t *testing.T) {
 	if !strings.Contains(body, wantAlt) {
 		t.Errorf("alt go snippet must target the alt host end-to-end, want %q", wantAlt)
 	}
-	// Mixed bug shape: alternate-entry GOPROXY with current-entry module path.
 	if strings.Contains(body, "node.pk.ygg/* go get vault.test/") {
 		t.Error("alt go snippet must not mix alt GOPROXY with current-listener module path")
 	}
@@ -534,6 +533,43 @@ func TestVersionAltBazelUsesAltArtifactSha(t *testing.T) {
 	}
 }
 
+func TestVersionAltDownloadUsesAltArtifactSha(t *testing.T) {
+	key, version := "pkg/alpha", "v2.0.0"
+	webSha := bytes.Repeat([]byte{0xAA}, 32)
+	yggSha := bytes.Repeat([]byte{0xBB}, 32)
+	vObj := core.VersionObj{Key: key, Version: version, IngestTS: time.Now(), SourceSizeBytes: 200, TreeHash: core.HashBytes([]byte("tree"))}
+	store := &fakeDetailStoreObj{
+		found:     true,
+		versionOf: map[string]core.VersionObj{key + "@" + version: vObj},
+		versions:  map[string][]core.VersionObj{key: {vObj}},
+		artifacts: []core.ArtifactObj{
+			{MaterializerID: cUniversalMatzer, ArtifactKind: "zip", ListenerID: stcode.ListenerWeb.String(), Key: key, Version: version, BodyHash: core.HashBytes([]byte("web-body")), BodySha256: webSha, SizeBytes: 100},
+			{MaterializerID: cUniversalMatzer, ArtifactKind: "zip", ListenerID: stcode.ListenerYgg.String(), Key: key, Version: version, BodyHash: core.HashBytes([]byte("ygg-body")), BodySha256: yggSha, SizeBytes: 100},
+		},
+	}
+	lnk := link.Obj{Scheme: "https", EntryHost: "vault.test"}
+	st := seedState()
+	ctxObj := testContext(st, lnk)
+	ctxObj.Alternate = view.AlternateObj{Channel: "ygg", Scheme: "http", Host: "[200:1::1]", CopyHost: "node.pk.ygg"}
+
+	bodyArr, found, err := Version(context.Background(), st, store, fakeOverlayObj{}, lnk, ctxObj, key, version, stcode.ListenerWeb.String(), nil, stcode.ListenerYgg.String())
+	if err != nil || !found {
+		t.Fatalf("Version: err=%v found=%v", err, found)
+	}
+	body := string(bodyArr)
+	webHex := strings.Repeat("aa", 32)
+	yggHex := strings.Repeat("bb", 32)
+	if !strings.Contains(body, "download via yggdrasil mesh") {
+		t.Error("version page must expose alternate download commands when alternate artifacts are available")
+	}
+	if !strings.Contains(body, "http://node.pk.ygg/pkg/alpha/v2.0.0.zip") || !strings.Contains(body, yggHex) {
+		t.Error("alternate download command must use the alternate host and artifact sha256")
+	}
+	if strings.Contains(body, "http://node.pk.ygg/pkg/alpha/v2.0.0.zip\nprintf '%s  %s\\n' '"+webHex) {
+		t.Error("alternate download command must not reuse the current-listener sha256")
+	}
+}
+
 // Without artifact or publishability on the alternate entry, matching snippets disappear silently.
 func TestVersionAltSnippetsSkippedWhenAltUnavailable(t *testing.T) {
 	body := altSnippetFixture(t, false, false)
@@ -543,7 +579,6 @@ func TestVersionAltSnippetsSkippedWhenAltUnavailable(t *testing.T) {
 	if strings.Contains(body, "go get node.pk.ygg") {
 		t.Error("alt go snippet must be absent when the alt listener is not publishable")
 	}
-	// Composer snippets include the mirror host, so the alternate entry shows its own variant.
 	if got := strings.Count(body, "composer require acme/alpha:v2.0.0"); got != 2 {
 		t.Errorf("composer snippet must appear once per entry, got %d", got)
 	}
@@ -552,6 +587,47 @@ func TestVersionAltSnippetsSkippedWhenAltUnavailable(t *testing.T) {
 	}
 	if !strings.Contains(body, "composer config secure-http false\ncomposer config repositories.yggvault composer http://node.pk.ygg") {
 		t.Error("alt composer snippet must disable secure-http and target the alt host")
+	}
+}
+
+// Nested mode: the composer repository URL must carry the route prefix on both pages,
+// because packages.json is served under it.
+func TestComposerSnippetNestedPrefix(t *testing.T) {
+	key, version := "pkg/alpha", "v2.0.0"
+	lnk := link.Obj{Scheme: "https", EntryHost: "vault.test", RoutePrefix: "mirror"}
+	detectionObj := core.DetectionObj{IsComposer: true, EvidenceJSON: `{"composer_name":"acme/alpha"}`}
+	want := "composer config repositories.yggvault composer https://vault.test/mirror\ncomposer require acme/alpha"
+	st := seedState()
+
+	vStore := &fakeVersionStoreObj{
+		versions: map[string][]core.VersionObj{
+			key: {{Key: key, Version: version, IngestTS: time.Now(), SourceSizeBytes: 100, TreeHash: core.HashBytes([]byte("t"))}},
+		},
+		detection:   detectionObj,
+		detectionOK: true,
+	}
+	bodyArr, found, err := Key(context.Background(), st, vStore, lnk, testContext(st, lnk), key, PageCursorObj{}, 10)
+	if err != nil || !found {
+		t.Fatalf("Key: err=%v found=%v", err, found)
+	}
+	if !strings.Contains(string(bodyArr), want) {
+		t.Error("key page composer snippet must include the nested prefix in the repository URL")
+	}
+
+	vObj := core.VersionObj{Key: key, Version: version, IngestTS: time.Now(), SourceSizeBytes: 200, TreeHash: core.HashBytes([]byte("tree"))}
+	dStore := &fakeDetailStoreObj{
+		found:       true,
+		versionOf:   map[string]core.VersionObj{key + "@" + version: vObj},
+		versions:    map[string][]core.VersionObj{key: {vObj}},
+		detection:   detectionObj,
+		detectionOK: true,
+	}
+	bodyArr, found, err = Version(context.Background(), st, dStore, fakeOverlayObj{}, lnk, testContext(st, lnk), key, version, cListenerGlobal, nil, "")
+	if err != nil || !found {
+		t.Fatalf("Version: err=%v found=%v", err, found)
+	}
+	if !strings.Contains(string(bodyArr), want) {
+		t.Error("version page composer snippet must include the nested prefix in the repository URL")
 	}
 }
 

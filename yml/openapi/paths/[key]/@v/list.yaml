@@ -5,8 +5,10 @@ get:
   summary: Unpaginated Go-compatible version list
   description: >-
     Returns the Go proxy `@v/list` body: one canonical version per line,
-    newest first. The route is available only for keys and major lines where
-    content detection has published a Go overlay. Query parameters are rejected.
+    newest first. Major-version paths such as `/{key}/v2/@v/list` are accepted
+    and mapped to the same operation. The route is available only for keys and
+    major lines where content detection has published a Go overlay. Query
+    parameters are rejected.
   parameters:
     - $ref: parameters/key
     - $ref: parameters/if_none_match
@@ -18,14 +20,19 @@ get:
           description: Strong cache validator for the generated response body.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Cache policy for generated metadata.
           schema:
             type: string
+            example: public, must-revalidate, max-age=300
       content:
         text/plain:
           schema:
             type: string
+          example: |
+            v0.3.4
+            v0.3.3
     '304':
       $ref: responses/not_modified
     '400':

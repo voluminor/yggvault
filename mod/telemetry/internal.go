@@ -1,7 +1,6 @@
 package telemetry
 
 import (
-	"context"
 	"runtime"
 	runtimemetrics "runtime/metrics"
 
@@ -12,14 +11,13 @@ import (
 
 // // // // // // // // // //
 
-// Indices of the runtime samples in the reused slice; runtime/metrics avoids the STW pause of ReadMemStats.
 const (
-	miHeapObjectsBytes  = iota // /memory/classes/heap/objects:bytes ~ MemStats.HeapAlloc
-	miHeapUnusedBytes          // /memory/classes/heap/unused:bytes
-	miHeapFreeBytes            // /memory/classes/heap/free:bytes
-	miHeapReleasedBytes        // /memory/classes/heap/released:bytes
-	miGCHeapObjects            // /gc/heap/objects:objects ~ MemStats.HeapObjects
-	miGCCyclesTotal            // /gc/cycles/total:gc-cycles ~ MemStats.NumGC
+	miHeapObjectsBytes = iota
+	miHeapUnusedBytes
+	miHeapFreeBytes
+	miHeapReleasedBytes
+	miGCHeapObjects
+	miGCCyclesTotal
 )
 
 func runtimeSampleArr() []runtimemetrics.Sample {
@@ -51,48 +49,25 @@ func (obj *Obj) registerInternal() error {
 		return err
 	}
 
-	goroutines, err := meterObj.Int64ObservableGauge("go_goroutines",
-		metric.WithDescription("number of live goroutines"))
-	if err != nil {
-		return err
-	}
-	heapAlloc, err := meterObj.Int64ObservableGauge("go_memstats_heap_alloc_bytes",
-		metric.WithUnit("By"), metric.WithDescription("heap bytes allocated and still in use"))
-	if err != nil {
-		return err
-	}
-	heapSys, err := meterObj.Int64ObservableGauge("go_memstats_heap_sys_bytes",
-		metric.WithUnit("By"), metric.WithDescription("heap bytes obtained from the system"))
-	if err != nil {
-		return err
-	}
-	heapObjects, err := meterObj.Int64ObservableGauge("go_memstats_heap_objects",
-		metric.WithDescription("number of allocated heap objects"))
-	if err != nil {
-		return err
-	}
-	gcCycles, err := meterObj.Int64ObservableCounter("go_gc_cycles",
-		metric.WithDescription("number of completed GC cycles"))
-	if err != nil {
-		return err
-	}
-
-	// sampleArr is reused across collections; ManualReader.Collect invokes callbacks single-threaded.
 	sampleArr := runtimeSampleArr()
-	_, err = meterObj.RegisterCallback(
-		func(_ context.Context, observerObj metric.Observer) error {
-			observerObj.ObserveInt64(goroutines, int64(runtime.NumGoroutine()))
-			runtimemetrics.Read(sampleArr)
-			heapAllocBytes := sampleArr[miHeapObjectsBytes].Value.Uint64()
-			heapSysBytes := heapAllocBytes + sampleArr[miHeapUnusedBytes].Value.Uint64() +
-				sampleArr[miHeapFreeBytes].Value.Uint64() + sampleArr[miHeapReleasedBytes].Value.Uint64()
-			observerObj.ObserveInt64(heapAlloc, int64(heapAllocBytes))
-			observerObj.ObserveInt64(heapSys, int64(heapSysBytes))
-			observerObj.ObserveInt64(heapObjects, int64(sampleArr[miGCHeapObjects].Value.Uint64()))
-			observerObj.ObserveInt64(gcCycles, int64(sampleArr[miGCCyclesTotal].Value.Uint64()))
-			return nil
-		},
-		goroutines, heapAlloc, heapSys, heapObjects, gcCycles,
-	)
+	_, err = RegisterSpecs(meterObj, []SpecObj{
+		{Name: "go_goroutines", Help: "number of live goroutines"},
+		{Name: "go_memstats_heap_alloc_bytes", Help: "heap bytes allocated and still in use", Unit: "By"},
+		{Name: "go_memstats_heap_sys_bytes", Help: "heap bytes obtained from the system", Unit: "By"},
+		{Name: "go_memstats_heap_objects", Help: "number of allocated heap objects"},
+		{Name: "go_gc_cycles", Help: "number of completed GC cycles", Counter: true},
+	}, func() ([]int64, bool) {
+		runtimemetrics.Read(sampleArr)
+		heapAllocBytes := sampleArr[miHeapObjectsBytes].Value.Uint64()
+		heapSysBytes := heapAllocBytes + sampleArr[miHeapUnusedBytes].Value.Uint64() +
+			sampleArr[miHeapFreeBytes].Value.Uint64() + sampleArr[miHeapReleasedBytes].Value.Uint64()
+		return []int64{
+			int64(runtime.NumGoroutine()),
+			int64(heapAllocBytes),
+			int64(heapSysBytes),
+			int64(sampleArr[miGCHeapObjects].Value.Uint64()),
+			int64(sampleArr[miGCCyclesTotal].Value.Uint64()),
+		}, true
+	})
 	return err
 }

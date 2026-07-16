@@ -12,12 +12,8 @@ import (
 
 // // // // // // // // // //
 
-// cFirstPublishExpr marks the first publish event for a key/version.
-// This lets feeds distinguish a release from archive updates.
 const cFirstPublishExpr = "NOT EXISTS (SELECT 1 FROM history_events p WHERE p.key = h.key AND p.version = h.version AND p.event_type = 'publish' AND p.id < h.id)"
 
-// hashFromNullable maps SQL NULL to a zero hash and decodes a HashSize slice.
-// Any other length is treated as corruption, not silently as a zero hash.
 func hashFromNullable(dataArr []byte) (core.HashObj, error) {
 	if len(dataArr) == 0 {
 		return core.HashObj{}, nil

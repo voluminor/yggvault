@@ -29,7 +29,6 @@ func validateKey(key string) error {
 	return nil
 }
 
-// validateVersion accepts strict semver and universal-only raw names.
 func validateVersion(version string) error {
 	if !util.IsStorableSemver(version) && !util.IsStorableRawVersion(version) {
 		return fmt.Errorf("version %q must be a strict semver or a storable raw name: %w", version, ErrInvalidRef)
@@ -37,7 +36,6 @@ func validateVersion(version string) error {
 	return nil
 }
 
-// validateUpstreamRef accepts an empty ref or a lowercase git SHA (sha1=40, sha256=64 chars).
 func validateUpstreamRef(ref string) error {
 	if ref == "" {
 		return nil
@@ -120,8 +118,6 @@ func validateEntryPath(path string, maxPathBytes uint) (string, error) {
 	return util.CleanArchiveEntryPath(path)
 }
 
-// cMaxBlobBytesHardLimit sets the absolute OOM backstop for a single blob.
-// Blobs are fully loaded into RAM on read and write, so the cap is mandatory regardless of config.
 const cMaxBlobBytesHardLimit uint64 = 256 << 20
 
 func (obj *Obj) maxBlobBytes() uint64 {

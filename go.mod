@@ -15,7 +15,7 @@ require (
 	github.com/pressly/goose/v3 v3.27.2
 	github.com/rs/zerolog v1.35.1
 	github.com/voluminor/lightweigit-loader v0.3.2
-	github.com/voluminor/ratatoskr v0.3.0
+	github.com/voluminor/ratatoskr v1.1.0
 	github.com/yggdrasil-network/yggdrasil-go v0.5.14
 	github.com/yuin/goldmark v1.8.2
 	github.com/zeebo/blake3 v0.2.4

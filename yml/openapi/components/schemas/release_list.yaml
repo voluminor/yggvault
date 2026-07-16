@@ -4,6 +4,7 @@ properties:
   key:
     type: string
     description: Registry key for this page.
+    example: yggvault
   source:
     $ref: schemas/source_status
   releases:
@@ -14,3 +15,4 @@ properties:
   next:
     type: string
     description: Opaque keyset cursor for the next page. Omitted on the last page.
+    example: NDIAdjAuMy40

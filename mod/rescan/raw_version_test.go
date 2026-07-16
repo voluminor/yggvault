@@ -18,7 +18,6 @@ import (
 // // // // // // // // // //
 
 func TestRawVersionPublishesUniversalOnlyWithoutDetect(t *testing.T) {
-	// The raw archive intentionally contains a valid Go module; Detect would make IsGo true.
 	rawZip := buildZip(t, map[string]string{
 		"core-lib-raw/go.mod":        "module example.com/core-lib\n\ngo 1.22\n",
 		"core-lib-raw/a.go":          "package corelib\n",
@@ -28,7 +27,6 @@ func TestRawVersionPublishesUniversalOnlyWithoutDetect(t *testing.T) {
 		"core-lib-1.0.0/go.mod": "module example.com/core-lib\n\ngo 1.22\n",
 		"core-lib-1.0.0/a.go":   "package corelib\n",
 	})
-	// Newest-first listing: the raw version is newer than semver and must become latest by seq.
 	fakeSrc := &fakeSourceObj{
 		releaseArr: []source.GitReleaseObj{
 			{Version: "INKSCAPE_1_3_2", BodyMD: "raw notes", ArchiveURL: "https://x/raw.zip", Format: "zip"},
@@ -44,7 +42,6 @@ func TestRawVersionPublishesUniversalOnlyWithoutDetect(t *testing.T) {
 
 	obj.RunOnce(ctx)
 
-	// The raw version is published and release notes are stored.
 	rawVersionObj, ok, err := storageObj.GetVersion(ctx, "core-lib", "INKSCAPE_1_3_2")
 	if err != nil || !ok {
 		t.Fatalf("GetVersion raw: ok=%v err=%v", ok, err)
@@ -53,7 +50,6 @@ func TestRawVersionPublishesUniversalOnlyWithoutDetect(t *testing.T) {
 		t.Fatalf("raw release notes=%q, want kept in releases mode", rawVersionObj.ReleaseNotes)
 	}
 
-	// Detection stays empty with raw_version evidence despite go.mod and composer.json in the tree.
 	detectionObj, ok, err := storageObj.GetDetection(ctx, "core-lib", "INKSCAPE_1_3_2")
 	if err != nil || !ok {
 		t.Fatalf("GetDetection raw: ok=%v err=%v", ok, err)
@@ -65,7 +61,6 @@ func TestRawVersionPublishesUniversalOnlyWithoutDetect(t *testing.T) {
 		t.Fatalf("raw evidence=%q, want raw_version marker", detectionObj.EvidenceJSON)
 	}
 
-	// Raw-version artifacts are only universal zip and tar.gz.
 	artifactArr, err := storageObj.ListArtifacts(ctx, "core-lib", "INKSCAPE_1_3_2")
 	if err != nil {
 		t.Fatalf("ListArtifacts raw: %v", err)
@@ -81,13 +76,11 @@ func TestRawVersionPublishesUniversalOnlyWithoutDetect(t *testing.T) {
 		t.Fatalf("raw version must have universal zip+tar.gz, got %v", kindSet)
 	}
 
-	// Mixed key: the neighboring semver version is detected as Go normally.
 	goDetectionObj, ok, err := storageObj.GetDetection(ctx, "core-lib", "v1.0.0")
 	if err != nil || !ok || !goDetectionObj.IsGo {
 		t.Fatalf("semver version must still run detection: ok=%v det=%+v err=%v", ok, goDetectionObj, err)
 	}
 
-	// Latest by seq is the raw version, first in the listing.
 	latestObj, ok, err := storageObj.LatestVersion(ctx, "core-lib")
 	if err != nil || !ok {
 		t.Fatalf("LatestVersion: ok=%v err=%v", ok, err)
@@ -96,7 +89,6 @@ func TestRawVersionPublishesUniversalOnlyWithoutDetect(t *testing.T) {
 		t.Fatalf("latest=%q, want raw version by upstream seq", latestObj.Version)
 	}
 
-	// An unstorable name is dropped before download.
 	if got := fakeSrc.fetchCount("not storable name!"); got != 0 {
 		t.Fatalf("unstorable name fetched %d times, want 0", got)
 	}
@@ -107,7 +99,6 @@ func TestRawVersionPublishesUniversalOnlyWithoutDetect(t *testing.T) {
 
 // //
 
-// brotherStand builds a key fixture with the supplied config for brother replication.
 func brotherStand(t *testing.T, configObj *stconf.ConfigObj, fakeSrc *fakeSourceObj) (*Obj, *storage.Obj, context.Context) {
 	t.Helper()
 	ctx := context.Background()
@@ -135,7 +126,6 @@ func TestBrotherReplicatesRawVersionWithoutDetect(t *testing.T) {
 	configObj := rescanTestConfig(t)
 	configObj.ReleaseMirrors = map[string]string{"core-lib": "https://brother.example/core-lib/"}
 
-	// The brother raw version has composer.json in the tree; the replica must still skip detection.
 	sessionObj := &fakeBrotherSessionObj{
 		notesByVersion: map[string]string{"blockly-v9.3.3": ""},
 		blobByVersion:  map[string][]byte{"blockly-v9.3.3": []byte(`{"name":"vendor/pkg"}`)},

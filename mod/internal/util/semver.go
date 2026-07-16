@@ -9,7 +9,6 @@ import (
 
 // // // // // // // // // //
 
-// cMaxSemverBytes caps version length before semver scanning.
 const cMaxSemverBytes = 256
 
 // // // // // // // // // //

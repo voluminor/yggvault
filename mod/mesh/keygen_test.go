@@ -6,8 +6,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/voluminor/ratatoskr/mod/resolver"
 )
 
 // // // // // // // // // //
@@ -22,7 +20,6 @@ func writeKey(t *testing.T, pemBytes []byte) string {
 	if err != nil {
 		t.Fatalf("Stat returned error: %v", err)
 	}
-	// Windows does not honor unix permissions — check only on unix
 	if runtime.GOOS != "windows" {
 		if perm := info.Mode().Perm(); perm != 0o600 {
 			t.Fatalf("key file perm = %o, want 600", perm)
@@ -41,8 +38,8 @@ func TestGenerateKeyRoundTrip(t *testing.T) {
 	if len(pemBytes) == 0 {
 		t.Fatal("GenerateKey returned empty pem")
 	}
-	if !strings.HasSuffix(host, resolver.NameMappingSuffix) {
-		t.Fatalf("host %q lacks naming suffix %q", host, resolver.NameMappingSuffix)
+	if !strings.HasSuffix(host, cHostSuffix) {
+		t.Fatalf("host %q lacks naming suffix %q", host, cHostSuffix)
 	}
 
 	derived, err := HostFromKey(writeKey(t, pemBytes))

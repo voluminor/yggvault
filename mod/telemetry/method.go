@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 )
 
 // // // // // // // // // //
@@ -14,14 +15,18 @@ func (obj *Obj) Enabled() bool {
 }
 
 // MeterProvider returns the provider to pass into ogen via api.WithMeterProvider.
+// A nil receiver yields a noop provider, matching the nil tolerance of Enabled.
 func (obj *Obj) MeterProvider() metric.MeterProvider {
+	if obj == nil {
+		return noop.NewMeterProvider()
+	}
 	return obj.provider
 }
 
 // Meter returns a group meter for producers such as cache, rescan and errors.
 // Metric names and attributes must stay low-cardinality: key, version and raw path are never recorded.
 func (obj *Obj) Meter(group Group) metric.Meter {
-	return obj.provider.Meter(cScopePrefix + string(group))
+	return obj.MeterProvider().Meter(cScopePrefix + string(group))
 }
 
 // InternalOM returns the prebuilt full Prometheus text document across all groups.

@@ -103,6 +103,44 @@ func TestGetOrBuildSingleflightDedup(t *testing.T) {
 	}
 }
 
+func TestGetOrBuildBuildGateCapsDifferentKeys(t *testing.T) {
+	obj := New(stconf.CacheObj{MetadataMaxSize: stconf.SizeObj(1 << 20)}, NewBuildGate(2))
+	var (
+		currentObj atomic.Int64
+		maxObj     atomic.Int64
+	)
+	buildFn := func(_ context.Context) (EntryObj, error) {
+		nowValue := currentObj.Add(1)
+		for {
+			maxValue := maxObj.Load()
+			if nowValue <= maxValue || maxObj.CompareAndSwap(maxValue, nowValue) {
+				break
+			}
+		}
+		time.Sleep(40 * time.Millisecond)
+		currentObj.Add(-1)
+		return EntryObj{Payload: []byte("built")}, nil
+	}
+
+	const countValue = 10
+	var wgObj sync.WaitGroup
+	wgObj.Add(countValue)
+	for i := 0; i < countValue; i++ {
+		go func(idx int) {
+			defer wgObj.Done()
+			keyText := fmt.Sprintf("cold-%02d", idx)
+			if _, _, err := obj.GetOrBuild(context.Background(), keyText, time.Minute, buildFn); err != nil {
+				t.Errorf("GetOrBuild(%s): %v", keyText, err)
+			}
+		}(i)
+	}
+	wgObj.Wait()
+
+	if got := maxObj.Load(); got > 2 {
+		t.Fatalf("max concurrent builds=%d want <= 2", got)
+	}
+}
+
 func TestGetOrBuildErrorNotCached(t *testing.T) {
 	obj := newTestCache(1 << 20)
 	buildErr := errors.New("boom")

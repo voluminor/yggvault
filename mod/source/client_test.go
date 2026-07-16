@@ -19,7 +19,6 @@ func TestStallReaderThroughputFloor(t *testing.T) {
 		}
 	}
 
-	// Saturated window: twice the minimum, so no cancellation and the counter resets.
 	healthy := newReader()
 	healthy.windowStart = time.Now().Add(-cDownloadRateWindow - time.Second)
 	healthy.windowBytes = int64(cDownloadRateWindow.Seconds()) * cMinDownloadBytesPerSec * 2
@@ -31,7 +30,6 @@ func TestStallReaderThroughputFloor(t *testing.T) {
 		t.Fatalf("healthy window must reset counter, got %d", healthy.windowBytes)
 	}
 
-	// Drip feed: almost nothing over a full window, so throughput floor cancels.
 	cancelled = nil
 	starved := newReader()
 	starved.windowStart = time.Now().Add(-cDownloadRateWindow - time.Second)

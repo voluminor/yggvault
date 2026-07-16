@@ -46,7 +46,6 @@ func New(configObj *stcfg.ConfigObj) (*Obj, error) {
 		keyMap:          make(map[string]*keyMutObj, len(configObj.ReleaseMirrors)),
 		diagnosticMap:   make(map[diagnosticKeyObj]*diagnosticRecordObj),
 		diagnosticByKey: make(map[string]map[diagnosticKeyObj]struct{}),
-		diagnosticOrder: make([]diagnosticKeyObj, 0),
 		permanentAt:     uint32(permanentValue),
 		maxDiagnostics:  cDefaultMaxDiagnostics,
 		recentBuffer:    int(configObj.Metrics.Errors.RecentBuffer),

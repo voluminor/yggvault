@@ -159,8 +159,6 @@ func PathsOverlap(leftPath string, rightPath string) (bool, error) {
 	return IsInsideOrEqual(rightPath, leftPath)
 }
 
-// archiveNameHygiene rejects bytes that make an archive path or a symlink target unsafe regardless of its
-// relative form: empty, non-UTF-8, backslashes, absolute, Windows volume/colon, and control characters.
 func archiveNameHygiene(name string) error {
 	if name == "" {
 		return errors.New("archive path is empty")

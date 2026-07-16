@@ -24,7 +24,6 @@ func testSHA(symbolByte byte) string {
 	return strings.Repeat(string(symbolByte), 40)
 }
 
-// refsBody builds a valid v0 advertisement: header, flush, ref lines with first-line capabilities, flush.
 func refsBody(refLineArr ...string) string {
 	builderObj := strings.Builder{}
 	builderObj.WriteString(pktLine(cRefsServiceHeader))
@@ -161,7 +160,6 @@ func TestRefsSendsNoCredentials(t *testing.T) {
 	configObj.Source.Credentials.Others = map[string]string{"127.0.0.1": "Authorization: Bearer test-secret"}
 	obj := newTestObj(t, configObj)
 
-	// Test self-check: the authorizing client adds this header.
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, tsObj.URL+"/probe", nil)
 	resp, err := obj.metaClient.Do(req)
 	if err != nil {

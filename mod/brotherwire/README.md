@@ -5,10 +5,10 @@ method names, default caps, and the protocol version live here; dialing, validat
 `mod/source`, `mod/rescan`, and `mod/server/brother`. The public API fallback for brothers does not use this package;
 it reads normal release metadata and artifact routes.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   client["source brother session"] --> wire["mod/brotherwire"]
   wire --> server["server brother handler"]
   server --> store["storage"]
@@ -35,11 +35,11 @@ flowchart LR
   the lower local/remote value.
 - DTOs must not import runtime packages other than this package's own constants.
 
-## Important Files
+## Important files
 
 - `wire.go`: constants, DTOs, method names, and `BrotherInterface`.
 
-## Operational Notes
+## Operational notes
 
 This package should remain boring. Complex validation belongs on both sides of the wire: the server advertises and
 enforces configured caps before sending, and the client revalidates sizes, hashes, page order, and source info before

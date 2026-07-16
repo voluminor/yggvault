@@ -18,7 +18,6 @@ import (
 
 // // // // // // // // // //
 
-// errRateLimited is a sentinel mapped to 429 by the error handler.
 var errRateLimited = errors.New("rate limit exceeded")
 
 // // // // // // // // // //
@@ -32,6 +31,7 @@ func isDataOp(operationName api.OperationName) bool {
 		api.GetMetricsCacheOperation,
 		api.GetMetricsErrorsOperation,
 		api.GetMetricsRescanOperation,
+		api.GetMetricsYggOperation,
 		api.GetMetricsInternalOperation:
 		return false
 	default:
@@ -82,8 +82,6 @@ func errorHandler(ctx context.Context, w http.ResponseWriter, r *http.Request, e
 
 // // // // // // // // // //
 
-// parseKeyCursor reads the ?before / ?after keyset cursor for the key page plus a cache key that folds it
-// into the ETag. A malformed or absent token degrades to the newest page.
 func parseKeyCursor(q url.Values) (webui.PageCursorObj, string) {
 	if tok := q.Get("before"); tok != "" {
 		if seq, ver, ok := webui.DecodeCursor(tok); ok {
@@ -100,7 +98,7 @@ func parseKeyCursor(q url.Values) (webui.PageCursorObj, string) {
 
 // // // // // // // // // //
 
-func (obj *ServerObj) notFound(w http.ResponseWriter, r *http.Request) {
+func (obj *Obj) notFound(w http.ResponseWriter, r *http.Request) {
 	lc := listenerCtxFrom(r.Context())
 	if lc.rateLimited(r) {
 		writeError(w, r, http.StatusTooManyRequests, "rate_limited", "rate limit exceeded")
@@ -115,7 +113,6 @@ func (obj *ServerObj) notFound(w http.ResponseWriter, r *http.Request) {
 	lnk := obj.funcImplObj.linkCtx(lc)
 	viewCtxObj := obj.funcImplObj.viewContext(lc)
 
-	// ETag gate before rendering; matching If-None-Match avoids full HTML render and inline CSS.
 	if len(segArr) == 0 {
 		etag := etagOf("catalog-page", lc.listenerID.String(), lc.scheme(), obj.funcImplObj.crossFreshness())
 		if writeHTMLNotModified(w, r, etag) {

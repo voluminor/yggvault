@@ -15,14 +15,14 @@ properties:
       - entries
       - bytes
     properties:
-      hits: { type: integer, format: int64 }
-      misses: { type: integer, format: int64 }
-      materializations: { type: integer, format: int64 }
-      materializations_aborted: { type: integer, format: int64 }
-      evictions: { type: integer, format: int64 }
-      singleflight_shared: { type: integer, format: int64 }
-      entries: { type: integer, format: int64 }
-      bytes: { type: integer, format: int64 }
+      hits: { type: integer, format: int64, example: 1824 }
+      misses: { type: integer, format: int64, example: 37 }
+      materializations: { type: integer, format: int64, example: 29 }
+      materializations_aborted: { type: integer, format: int64, example: 1 }
+      evictions: { type: integer, format: int64, example: 4 }
+      singleflight_shared: { type: integer, format: int64, example: 12 }
+      entries: { type: integer, format: int64, example: 96 }
+      bytes: { type: integer, format: int64, example: 8388608 }
   storage:
     type: object
     description: Pebble engine gauges, event counters, and hot-cache enforcement counters.
@@ -48,23 +48,23 @@ properties:
       - hot_enforce_walks
       - hot_enforce_walk_duration_nanos
     properties:
-      live_bytes: { type: integer, format: int64 }
-      obsolete_bytes: { type: integer, format: int64 }
-      zombie_bytes: { type: integer, format: int64 }
-      wal_bytes: { type: integer, format: int64 }
-      memtable_bytes: { type: integer, format: int64 }
-      compaction_debt_bytes: { type: integer, format: int64 }
-      compaction_inprogress_bytes: { type: integer, format: int64 }
-      compactions: { type: integer, format: int64 }
-      flushes: { type: integer, format: int64 }
-      block_cache_hits: { type: integer, format: int64 }
-      block_cache_misses: { type: integer, format: int64 }
-      write_stalls: { type: integer, format: int64 }
-      background_errors: { type: integer, format: int64 }
-      data_corruptions: { type: integer, format: int64 }
-      disk_slow: { type: integer, format: int64 }
-      possible_api_misuse: { type: integer, format: int64 }
-      flush_duration_nanos: { type: integer, format: int64 }
-      compaction_duration_nanos: { type: integer, format: int64 }
-      hot_enforce_walks: { type: integer, format: int64 }
-      hot_enforce_walk_duration_nanos: { type: integer, format: int64 }
+      live_bytes: { type: integer, format: int64, example: 2147483648 }
+      obsolete_bytes: { type: integer, format: int64, example: 67108864 }
+      zombie_bytes: { type: integer, format: int64, example: 0 }
+      wal_bytes: { type: integer, format: int64, example: 4194304 }
+      memtable_bytes: { type: integer, format: int64, example: 33554432 }
+      compaction_debt_bytes: { type: integer, format: int64, example: 16777216 }
+      compaction_inprogress_bytes: { type: integer, format: int64, example: 0 }
+      compactions: { type: integer, format: int64, example: 14 }
+      flushes: { type: integer, format: int64, example: 31 }
+      block_cache_hits: { type: integer, format: int64, example: 4096 }
+      block_cache_misses: { type: integer, format: int64, example: 128 }
+      write_stalls: { type: integer, format: int64, example: 0 }
+      background_errors: { type: integer, format: int64, example: 0 }
+      data_corruptions: { type: integer, format: int64, example: 0 }
+      disk_slow: { type: integer, format: int64, example: 0 }
+      possible_api_misuse: { type: integer, format: int64, example: 0 }
+      flush_duration_nanos: { type: integer, format: int64, example: 824000000 }
+      compaction_duration_nanos: { type: integer, format: int64, example: 3210000000 }
+      hot_enforce_walks: { type: integer, format: int64, example: 24 }
+      hot_enforce_walk_duration_nanos: { type: integer, format: int64, example: 142000000 }

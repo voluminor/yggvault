@@ -1,4 +1,4 @@
-package main
+package maintenance
 
 import (
 	"bufio"
@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/voluminor/yggvault/mod/cli"
 	"github.com/voluminor/yggvault/mod/storage"
 )
 
@@ -67,7 +66,7 @@ type rebuildViewObj struct {
 	Created     uint64             `json:"created"`
 	Pruned      uint64             `json:"pruned"`
 	HostChanged bool               `json:"host_changed"`
-	Items       []artifactDriftObj `json:"items,omitempty"`
+	Items       []ArtifactDriftObj `json:"items,omitempty"`
 }
 
 type errorViewObj struct {
@@ -93,11 +92,21 @@ func renderErrorJSON(writerObj io.Writer, command string, err error) {
 	_ = writeJSON(writerObj, errorViewObj{Command: command, Ok: false, Error: err.Error()})
 }
 
+func writeLine(writerObj io.Writer, argArr ...any) error {
+	_, err := fmt.Fprintln(writerObj, argArr...)
+	return err
+}
+
+func writeFormat(writerObj io.Writer, formatText string, argArr ...any) error {
+	_, err := fmt.Fprintf(writerObj, formatText, argArr...)
+	return err
+}
+
 // // // // // // // // // //
 
 func renderInspect(inspectObj storage.InspectObj, jsonOutput bool) error {
 	viewObj := inspectViewObj{
-		Command:             cli.CommandInspect,
+		Command:             cCommandInspect,
 		Ok:                  true,
 		RootPath:            inspectObj.RootPath,
 		SqlitePath:          inspectObj.SQLitePath,
@@ -116,24 +125,48 @@ func renderInspect(inspectObj storage.InspectObj, jsonOutput bool) error {
 		return writeJSON(os.Stdout, viewObj)
 	}
 	bufObj := bufio.NewWriter(os.Stdout)
-	fmt.Fprintln(bufObj, "storage inspect")
-	fmt.Fprintf(bufObj, "  root            %s\n", viewObj.RootPath)
-	fmt.Fprintf(bufObj, "  sqlite          %s\n", viewObj.SqlitePath)
-	fmt.Fprintf(bufObj, "  pebble          %s\n", viewObj.PebblePath)
-	fmt.Fprintf(bufObj, "  hot             %s\n", viewObj.HotPath)
-	fmt.Fprintf(bufObj, "  versions        %d\n", viewObj.Versions)
-	fmt.Fprintf(bufObj, "  blobs           %d\n", viewObj.Blobs)
-	fmt.Fprintf(bufObj, "  artifacts       %d\n", viewObj.Artifacts)
-	fmt.Fprintf(bufObj, "  history events  %d\n", viewObj.HistoryEvents)
-	fmt.Fprintf(bufObj, "  pebble disk     %s (real %s)\n", humanBytes(viewObj.PebbleDiskBytes), humanBytes(viewObj.PebbleRealDiskBytes))
-	fmt.Fprintf(bufObj, "  sqlite disk     %s\n", humanBytes(viewObj.SqliteDiskBytes))
-	fmt.Fprintf(bufObj, "  hot disk        %s\n", humanBytes(viewObj.HotBytes))
+	if err := writeLine(bufObj, "storage inspect"); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  root            %s\n", viewObj.RootPath); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  sqlite          %s\n", viewObj.SqlitePath); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  pebble          %s\n", viewObj.PebblePath); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  hot             %s\n", viewObj.HotPath); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  versions        %d\n", viewObj.Versions); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  blobs           %d\n", viewObj.Blobs); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  artifacts       %d\n", viewObj.Artifacts); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  history events  %d\n", viewObj.HistoryEvents); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  pebble disk     %s (real %s)\n", humanBytes(viewObj.PebbleDiskBytes), humanBytes(viewObj.PebbleRealDiskBytes)); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  sqlite disk     %s\n", humanBytes(viewObj.SqliteDiskBytes)); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  hot disk        %s\n", humanBytes(viewObj.HotBytes)); err != nil {
+		return err
+	}
 	return bufObj.Flush()
 }
 
 func renderVacuum(resultObj storage.VacuumResultObj, jsonOutput bool) error {
 	viewObj := vacuumViewObj{
-		Command:     cli.CommandVacuum,
+		Command:     cCommandVacuum,
 		Ok:          true,
 		BeforeBytes: resultObj.BeforeBytes,
 		AfterBytes:  resultObj.AfterBytes,
@@ -143,34 +176,48 @@ func renderVacuum(resultObj storage.VacuumResultObj, jsonOutput bool) error {
 		return writeJSON(os.Stdout, viewObj)
 	}
 	bufObj := bufio.NewWriter(os.Stdout)
-	fmt.Fprintln(bufObj, "storage vacuum")
-	fmt.Fprintf(bufObj, "  before  %s\n", humanBytes(viewObj.BeforeBytes))
-	fmt.Fprintf(bufObj, "  after   %s\n", humanBytes(viewObj.AfterBytes))
-	fmt.Fprintf(bufObj, "  freed   %s\n", humanBytes(viewObj.FreedBytes))
+	if err := writeLine(bufObj, "storage vacuum"); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  before  %s\n", humanBytes(viewObj.BeforeBytes)); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  after   %s\n", humanBytes(viewObj.AfterBytes)); err != nil {
+		return err
+	}
+	if err := writeFormat(bufObj, "  freed   %s\n", humanBytes(viewObj.FreedBytes)); err != nil {
+		return err
+	}
 	return bufObj.Flush()
 }
 
 func renderPrune(resultObj pruneResultViewObj, jsonOutput bool) error {
 	if jsonOutput {
-		return writeJSON(os.Stdout, pruneViewObj{Command: cli.CommandPrune, Ok: true, pruneResultViewObj: resultObj})
+		return writeJSON(os.Stdout, pruneViewObj{Command: cCommandPrune, Ok: true, pruneResultViewObj: resultObj})
 	}
 	bufObj := bufio.NewWriter(os.Stdout)
 	if resultObj.DryRun {
-		fmt.Fprintf(bufObj, "storage prune (dry-run): %d stale key(s) — use --force to apply\n", len(resultObj.StaleKeys))
+		if err := writeFormat(bufObj, "storage prune (dry-run): %d stale key(s) — use --force to apply\n", len(resultObj.StaleKeys)); err != nil {
+			return err
+		}
 	} else {
-		fmt.Fprintf(bufObj, "storage prune: deleted %d key(s), %d version(s), reclaimed %s\n",
-			resultObj.DeletedKeys, resultObj.DeletedVersions, humanBytes(resultObj.ReclaimedBytes))
+		if err := writeFormat(bufObj, "storage prune: deleted %d key(s), %d version(s), reclaimed %s\n",
+			resultObj.DeletedKeys, resultObj.DeletedVersions, humanBytes(resultObj.ReclaimedBytes)); err != nil {
+			return err
+		}
 	}
 	for i := range resultObj.StaleKeys {
 		keyObj := resultObj.StaleKeys[i]
-		fmt.Fprintf(bufObj, "  %s  versions=%d  est=%s\n", keyObj.Key, keyObj.Versions, humanBytes(keyObj.ReclaimBytesEstimate))
+		if err := writeFormat(bufObj, "  %s  versions=%d  est=%s\n", keyObj.Key, keyObj.Versions, humanBytes(keyObj.ReclaimBytesEstimate)); err != nil {
+			return err
+		}
 	}
 	return bufObj.Flush()
 }
 
-func renderRebuild(resultObj rebuildResultObj, hostChanged bool, jsonOutput bool) error {
+func renderRebuild(resultObj RebuildResultObj, hostChanged bool, jsonOutput bool) error {
 	viewObj := rebuildViewObj{
-		Command:     cli.CommandRebuildCache,
+		Command:     cCommandRebuildCache,
 		Ok:          true,
 		Scanned:     resultObj.Scanned,
 		Drift:       resultObj.Drift,
@@ -185,14 +232,20 @@ func renderRebuild(resultObj rebuildResultObj, hostChanged bool, jsonOutput bool
 	}
 	bufObj := bufio.NewWriter(os.Stdout)
 	if hostChanged {
-		fmt.Fprintln(bufObj, "rebuild-cache: WARNING host identity (domain/routing-prefix/ygg-host) changed since the last rebuild; host-sensitive artifacts were re-homed to new module paths")
+		if err := writeLine(bufObj, "rebuild-cache: WARNING host identity (domain/routing-prefix/ygg-host) changed since the last rebuild; host-sensitive artifacts were re-homed to new module paths"); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintf(bufObj, "rebuild-cache: scanned %d, drift %d, updated %d, created %d, pruned %d\n", viewObj.Scanned, viewObj.Drift, viewObj.Updated, viewObj.Created, viewObj.Pruned)
+	if err := writeFormat(bufObj, "rebuild-cache: scanned %d, drift %d, updated %d, created %d, pruned %d\n", viewObj.Scanned, viewObj.Drift, viewObj.Updated, viewObj.Created, viewObj.Pruned); err != nil {
+		return err
+	}
 	for i := range viewObj.Items {
 		itemObj := viewObj.Items[i]
-		fmt.Fprintf(bufObj, "  %s@%s %s/%s/%s f%d  %s -> %s\n",
+		if err := writeFormat(bufObj, "  %s@%s %s/%s/%s f%d  %s -> %s\n",
 			itemObj.Key, itemObj.Version, itemObj.MaterializerID, itemObj.ArtifactKind, itemObj.ListenerID,
-			itemObj.FormatVersion, itemObj.StoredHash, itemObj.RebuiltHash)
+			itemObj.FormatVersion, itemObj.StoredHash, itemObj.RebuiltHash); err != nil {
+			return err
+		}
 	}
 	return bufObj.Flush()
 }

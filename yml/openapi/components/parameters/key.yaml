@@ -10,3 +10,4 @@ description: >-
   `og.png`, `favicon.ico`, and `sitemap.xml`.
 schema:
   type: string
+  example: yggvault

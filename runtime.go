@@ -13,6 +13,7 @@ import (
 	"github.com/voluminor/yggvault/mod/cache"
 	"github.com/voluminor/yggvault/mod/cli"
 	"github.com/voluminor/yggvault/mod/logger"
+	"github.com/voluminor/yggvault/mod/maintenance"
 	"github.com/voluminor/yggvault/mod/mesh"
 	"github.com/voluminor/yggvault/mod/overlay"
 	"github.com/voluminor/yggvault/mod/rescan"
@@ -21,6 +22,7 @@ import (
 	"github.com/voluminor/yggvault/mod/state"
 	"github.com/voluminor/yggvault/mod/storage"
 	"github.com/voluminor/yggvault/mod/telemetry"
+	"github.com/voluminor/yggvault/target"
 	"github.com/voluminor/yggvault/target/stcode"
 	"github.com/voluminor/yggvault/target/stconf"
 )
@@ -28,11 +30,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cDefaultShutdownBudget — fallback graceful-shutdown budget when shutdown_timeout is not set.
 	cDefaultShutdownBudget = 10 * time.Second
 
-	// cStorageCloseBudget — guaranteed budget for storage.Close: integrity (WAL checkpoint,
-	// step 6) is not sacrificed to draining. The real bound is storage's internal timers.
 	cStorageCloseBudget = 30 * time.Second
 )
 
@@ -50,8 +49,8 @@ type runtimeObj struct {
 	source    *source.Obj
 	archive   *archive.Obj
 	rescan    *rescan.Obj
-	server    *server.ServerObj
-	profiling *http.Server // pprof loopback listener (nil when profiling.enabled=false)
+	server    *server.Obj
+	profiling *http.Server
 
 	reconcileDone chan struct{}
 }
@@ -88,6 +87,8 @@ func runRuntime(bootObj *cli.Obj) error {
 	}
 
 	rt.loggerObj.Zero().Info().
+		Str("version", target.Version).
+		Str("hash", target.Hash[len(target.Hash)-8:]).
 		Str("domain", rt.configObj.Web.Server.Domain).
 		Bool("ygg", rt.mesh.Enabled()).
 		Bool("metrics", rt.telemetry.Enabled()).
@@ -114,8 +115,9 @@ func (rt *runtimeObj) build(ctx context.Context) error {
 	if rt.state, err = state.New(configObj); err != nil {
 		return fmt.Errorf("init state: %w", err)
 	}
-	rt.cache = cache.New(configObj.Cache)
-	if rt.mesh, err = mesh.New(ctx, configObj, *rt.loggerObj.Zero()); err != nil {
+	buildGateObj := cache.NewBuildGate(configObj.Cache.BuildMaxParallel)
+	rt.cache = cache.New(configObj.Cache, buildGateObj)
+	if rt.mesh, err = mesh.New(configObj, *rt.loggerObj.Zero()); err != nil {
 		return fmt.Errorf("start mesh: %w", err)
 	}
 	if rt.source, err = source.New(configObj, rt.mesh); err != nil {
@@ -143,6 +145,7 @@ func (rt *runtimeObj) build(ctx context.Context) error {
 		Composer:  rt.rescan,
 		Mesh:      rt.mesh,
 		Log:       *rt.loggerObj.Zero(),
+		BuildGate: buildGateObj,
 	}); err != nil {
 		return fmt.Errorf("init server: %w", err)
 	}
@@ -165,11 +168,17 @@ func (rt *runtimeObj) registerMetrics() error {
 	if err := rt.cache.RegisterMetrics(meterObj); err != nil {
 		return fmt.Errorf("register cache metrics: %w", err)
 	}
+	if err := rt.source.RegisterMetrics(rt.telemetry.Meter(telemetry.GroupRescan)); err != nil {
+		return fmt.Errorf("register source metrics: %w", err)
+	}
 	if err := rt.rescan.RegisterMetrics(rt.telemetry.Meter(telemetry.GroupRescan)); err != nil {
 		return fmt.Errorf("register rescan metrics: %w", err)
 	}
 	if err := rt.state.RegisterMetrics(rt.telemetry.Meter(telemetry.GroupErrors)); err != nil {
 		return fmt.Errorf("register errors metrics: %w", err)
+	}
+	if err := rt.mesh.RegisterMetrics(rt.telemetry.Meter(telemetry.GroupYgg)); err != nil {
+		return fmt.Errorf("register mesh metrics: %w", err)
 	}
 	if err := rt.loggerObj.RegisterMetrics(rt.telemetry.Meter(telemetry.GroupInternal)); err != nil {
 		return fmt.Errorf("register logger metrics: %w", err)
@@ -177,10 +186,31 @@ func (rt *runtimeObj) registerMetrics() error {
 	return nil
 }
 
+func (rt *runtimeObj) applyKeySourceReconcile(ctx context.Context) {
+	suppressedSet, e1Arr, verdictArr, listErr := maintenance.ReconcileKeySources(ctx, rt.storage, rt.configObj)
+	zlog := rt.loggerObj.Zero()
+	if listErr != nil {
+		zlog.Warn().Err(listErr).Msg("key_source reconciliation skipped: could not read bindings; name-to-url changes are not enforced this start")
+	}
+	for i := range verdictArr {
+		zlog.Error().
+			Str("key", verdictArr[i].Key).
+			Str("reconcile", verdictArr[i].Code).
+			Msg(verdictArr[i].Detail)
+	}
+	if len(suppressedSet) > 0 {
+		rt.rescan.SetSuppressed(suppressedSet)
+	}
+	now := time.Now().UTC()
+	for _, key := range e1Arr {
+		_ = rt.state.MarkUnavailable(key, now)
+	}
+}
+
 func (rt *runtimeObj) runFormatSelfTest(ctx context.Context, yggHost string) {
 	zlog := rt.loggerObj.Zero()
-	listenerArr := listenerContextsFromConfig(rt.configObj, yggHost)
-	driftArr, err := selfTestFormats(ctx, rt.storage, rt.overlay, listenerArr)
+	listenerArr := maintenance.ListenersFromConfig(rt.configObj, yggHost)
+	driftArr, err := maintenance.SelfTestFormats(ctx, rt.storage, rt.overlay, listenerArr)
 	if err != nil {
 		if ctx.Err() != nil {
 			return
@@ -216,38 +246,63 @@ func (rt *runtimeObj) maybeReconcileArtifacts(ctx context.Context) {
 	if rt.mesh.Enabled() {
 		yggHost = rt.mesh.Host()
 	}
-	current := artifactLayoutFingerprint()
-	stored, ok, err := rt.storage.GetGlobal(ctx, cArtifactLayoutGlobalKey)
+	current := maintenance.ArtifactLayoutFingerprint()
+	stored, ok, err := rt.storage.GetGlobal(ctx, maintenance.ArtifactLayoutGlobalKey)
 	if err != nil {
 		rt.loggerObj.Zero().Warn().Err(err).Msg("artifact-layout check failed; skipping background reconcile")
 		return
 	}
 	if ok && stored == current {
+		rt.loggerObj.Zero().Debug().
+			Str("layout", current).
+			Msg("artifact layout current; background reconcile skipped")
 		return
 	}
+	startEventObj := rt.loggerObj.Zero().Warn().
+		Bool("stored_layout_present", ok).
+		Str("current_layout", current)
+	if ok {
+		startEventObj = startEventObj.Str("stored_layout", stored)
+	}
+	startEventObj.Msg("artifact layout mismatch; background artifact reconcile started")
 	rt.reconcileDone = make(chan struct{})
 	go rt.runArtifactReconcile(ctx, yggHost, current)
 }
 
 func (rt *runtimeObj) runArtifactReconcile(ctx context.Context, yggHost string, fingerprint string) {
 	defer close(rt.reconcileDone)
-	listenerArr := listenerContextsFromConfig(rt.configObj, yggHost)
-	resultObj, err := rebuildAllArtifacts(ctx, rt.storage, rt.overlay, listenerArr)
+	startTime := time.Now()
+	listenerArr := maintenance.ListenersFromConfig(rt.configObj, yggHost)
+	resultObj, err := maintenance.RebuildArtifacts(ctx, rt.storage, rt.overlay, listenerArr)
 	if err != nil {
 		if ctx.Err() == nil {
-			rt.loggerObj.Zero().Warn().Err(err).Msg("background artifact reconcile failed; will retry on next start")
+			rt.loggerObj.Zero().Warn().
+				Err(err).
+				Dur("elapsed", time.Since(startTime)).
+				Msg("background artifact reconcile failed; will retry on next start")
 		}
 		return
 	}
-	if err = rt.storage.SetGlobal(ctx, cArtifactLayoutGlobalKey, fingerprint); err != nil {
-		rt.loggerObj.Zero().Warn().Err(err).Msg("failed to persist artifact-layout fingerprint")
+	if err = rt.storage.SetGlobal(ctx, maintenance.ArtifactLayoutGlobalKey, fingerprint); err != nil {
+		rt.loggerObj.Zero().Warn().
+			Err(err).
+			Dur("elapsed", time.Since(startTime)).
+			Msg("failed to persist artifact-layout fingerprint")
 		return
 	}
-	rt.loggerObj.Zero().Info().
+	changed := resultObj.Drift > 0 || resultObj.Created > 0 || resultObj.Updated > 0 || resultObj.Pruned > 0
+	completeEventObj := rt.loggerObj.Zero().Info()
+	if changed {
+		completeEventObj = rt.loggerObj.Zero().Warn()
+	}
+	completeEventObj.
 		Uint64("scanned", resultObj.Scanned).
+		Uint64("drift", resultObj.Drift).
 		Uint64("created", resultObj.Created).
 		Uint64("updated", resultObj.Updated).
 		Uint64("pruned", resultObj.Pruned).
+		Bool("changed", changed).
+		Dur("elapsed", time.Since(startTime)).
 		Msg("background artifact reconcile complete")
 }
 

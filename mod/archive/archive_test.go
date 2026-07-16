@@ -128,7 +128,7 @@ func writeTarSourceObj(t testing.TB, sourcePath string, gzipFlag bool, trailingA
 		if headerObj.Typeflag == 0 {
 			headerObj.Typeflag = tar.TypeReg
 		}
-		if headerObj.Typeflag != tar.TypeReg && headerObj.Typeflag != tar.TypeRegA {
+		if headerObj.Typeflag != tar.TypeReg {
 			headerObj.Size = 0
 		}
 		if err = tarWriterObj.WriteHeader(headerObj); err != nil {
@@ -359,16 +359,25 @@ func TestExtractZipRejectsNonAdjacentFileChildConflict(t *testing.T) {
 	}
 }
 
-func TestExtractTarGzRejectsUnsafeSymlink(t *testing.T) {
+func TestExtractTarGzDropsUnsafeSymlink(t *testing.T) {
 	archiveObj := newTestObj(t, testLimitsObj())
 	sourcePath := filepath.Join(t.TempDir(), "source.tar.gz")
 	writeTarSourceObj(t, sourcePath, true, nil, []tarTestEntryObj{
+		{path: "repo/file.txt", body: []byte("body")},
 		{path: "repo/link", linkPath: "../escape", typeFlag: tar.TypeSymlink},
 	})
 	spoolPath := t.TempDir()
 
-	_, err := extractSourceObj(t, archiveObj, FormatTarGz, sourcePath, spoolPath)
-	expectRejectedCheckObj(t, err, cCheckSymlinkTarget)
+	resultObj, err := extractSourceObj(t, archiveObj, FormatTarGz, sourcePath, spoolPath)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if len(resultObj.Entries) != 1 || resultObj.Entries[0].Path != "file.txt" {
+		t.Fatalf("entries=%+v, want only safe file", resultObj.Entries)
+	}
+	if len(resultObj.DroppedSymlinks) != 1 || resultObj.DroppedSymlinks[0] != "link" {
+		t.Fatalf("dropped=%+v, want link", resultObj.DroppedSymlinks)
+	}
 }
 
 // Forgejo regression: a relative symlink inside the archive must be accepted. After common top-dir stripping,
@@ -397,9 +406,8 @@ func TestExtractTarGzAcceptsInRootRelativeSymlink(t *testing.T) {
 	}
 }
 
-// Security: a depth-1 symlink under a common top-dir whose target escapes after strip must be rejected.
-// Escape checks use the final post-strip path, not the pre-strip path.
-func TestExtractTarGzRejectsStripDepthSymlinkEscape(t *testing.T) {
+// The escape check uses the path after stripCommonTopDir and drops only the dangerous symlink.
+func TestExtractTarGzDropsStripDepthSymlinkEscape(t *testing.T) {
 	archiveObj := newTestObj(t, testLimitsObj())
 	sourcePath := filepath.Join(t.TempDir(), "source.tar.gz")
 	writeTarSourceObj(t, sourcePath, true, nil, []tarTestEntryObj{
@@ -408,8 +416,16 @@ func TestExtractTarGzRejectsStripDepthSymlinkEscape(t *testing.T) {
 	})
 	spoolPath := t.TempDir()
 
-	_, err := extractSourceObj(t, archiveObj, FormatTarGz, sourcePath, spoolPath)
-	expectRejectedCheckObj(t, err, cCheckSymlinkTarget)
+	resultObj, err := extractSourceObj(t, archiveObj, FormatTarGz, sourcePath, spoolPath)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if len(resultObj.Entries) != 1 || resultObj.Entries[0].Path != "file.txt" {
+		t.Fatalf("entries=%+v, want only safe file", resultObj.Entries)
+	}
+	if len(resultObj.DroppedSymlinks) != 1 || resultObj.DroppedSymlinks[0] != "shallow" {
+		t.Fatalf("dropped=%+v, want shallow", resultObj.DroppedSymlinks)
+	}
 }
 
 func TestExtractTarRejectsHiddenPAXMetadataLimit(t *testing.T) {
@@ -457,6 +473,50 @@ func TestExtractTarGzRejectsTrailingData(t *testing.T) {
 	expectRejectedCheckObj(t, err, cCheckGzipTrailing)
 	if countValue := spoolEntryCount(t, spoolPath); countValue != 0 {
 		t.Fatalf("spool entries=%d, want 0", countValue)
+	}
+}
+
+func TestExtractTarGzAcceptsRecordPadding(t *testing.T) {
+	var tarBufObj bytes.Buffer
+	tarWriterObj := tar.NewWriter(&tarBufObj)
+	bodyArr := []byte("hello record padding\n")
+	if err := tarWriterObj.WriteHeader(&tar.Header{Name: "repo/a.txt", Mode: 0o644, Size: int64(len(bodyArr)), Typeflag: tar.TypeReg}); err != nil {
+		t.Fatalf("WriteHeader returned error: %v", err)
+	}
+	if _, err := tarWriterObj.Write(bodyArr); err != nil {
+		t.Fatalf("tar Write returned error: %v", err)
+	}
+	if err := tarWriterObj.Close(); err != nil {
+		t.Fatalf("tar Close returned error: %v", err)
+	}
+	const recordSize = 10240
+	if padCount := recordSize - tarBufObj.Len()%recordSize; padCount != recordSize {
+		tarBufObj.Write(make([]byte, padCount))
+	}
+
+	sourcePath := filepath.Join(t.TempDir(), "padded.tar.gz")
+	fileObj, err := os.Create(sourcePath)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	gzipWriterObj := gzip.NewWriter(fileObj)
+	if _, err = gzipWriterObj.Write(tarBufObj.Bytes()); err != nil {
+		t.Fatalf("gzip Write returned error: %v", err)
+	}
+	if err = gzipWriterObj.Close(); err != nil {
+		t.Fatalf("gzip Close returned error: %v", err)
+	}
+	if err = fileObj.Close(); err != nil {
+		t.Fatalf("file Close returned error: %v", err)
+	}
+
+	archiveObj := newTestObj(t, testLimitsObj())
+	spoolPath := t.TempDir()
+	if _, err = extractSourceObj(t, archiveObj, FormatTarGz, sourcePath, spoolPath); err != nil {
+		t.Fatalf("extract of record-padded tar.gz returned error: %v", err)
+	}
+	if countValue := spoolEntryCount(t, spoolPath); countValue != 1 {
+		t.Fatalf("spool entries=%d, want 1", countValue)
 	}
 }
 

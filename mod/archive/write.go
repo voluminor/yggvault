@@ -22,9 +22,7 @@ import (
 const (
 	cArchiveFileMode    = 0o644
 	cArchiveSymlinkMode = 0o777
-	// cMaxTarEntrySize guards the uint64->int64 conversion for tar.Header.Size.
-	// Actual sizes are bounded below by MaxArchiveFileBytes/MaxArchiveUnpackedSize.
-	cMaxTarEntrySize = uint64(1<<63 - 1)
+	cMaxTarEntrySize    = uint64(1<<63 - 1)
 )
 
 var archiveModTimeObj = time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC)

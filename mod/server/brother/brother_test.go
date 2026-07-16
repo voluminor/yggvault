@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -31,6 +32,8 @@ func (c *bufConnObj) Close() error                { c.closed = true; return nil 
 
 type fakeStoreObj struct {
 	versionsPage map[string][]core.VersionObj
+	keysetCalls  int
+	keysetAfter  []string
 	versionOf    map[string]core.VersionObj
 	trees        map[core.HashObj][]core.TreeEntryObj
 	blobs        map[core.HashObj][]byte
@@ -51,6 +54,28 @@ func (f *fakeStoreObj) ListVersionsPage(_ context.Context, key string, _ bool, l
 		end = len(arr)
 	}
 	return arr[offset:end], nil
+}
+func (f *fakeStoreObj) ListVersionsKeyset(_ context.Context, key string, _ bool, afterSeq int64, afterVersion string, limit int) ([]core.VersionObj, error) {
+	f.keysetCalls++
+	f.keysetAfter = append(f.keysetAfter, fmt.Sprintf("%d/%s", afterSeq, afterVersion))
+	arr := f.versionsPage[key]
+	start := 0
+	if afterVersion != "" {
+		for i := range arr {
+			if arr[i].UpstreamSeq == afterSeq && arr[i].Version == afterVersion {
+				start = i + 1
+				break
+			}
+		}
+	}
+	if start >= len(arr) {
+		return nil, nil
+	}
+	end := start + limit
+	if end > len(arr) {
+		end = len(arr)
+	}
+	return arr[start:end], nil
 }
 func (f *fakeStoreObj) GetVersion(_ context.Context, key string, version string) (core.VersionObj, bool, error) {
 	vObj, ok := f.versionOf[key+"@"+version]
@@ -175,6 +200,9 @@ func TestHandlerHello(t *testing.T) {
 	if reply.MaxFetchBatchCount != brotherwire.DefaultMaxFetchBatchCount {
 		t.Errorf("max fetch batch count: want %d, got %d", brotherwire.DefaultMaxFetchBatchCount, reply.MaxFetchBatchCount)
 	}
+	if !reply.IndexKeyset {
+		t.Error("IndexKeyset capability must be advertised")
+	}
 }
 
 func TestHandlerIndexPageUpperBound(t *testing.T) {
@@ -203,7 +231,7 @@ func TestHandlerIndexNextPage(t *testing.T) {
 	key := "pkg/alpha"
 	arr := make([]core.VersionObj, cIndexPageSize+1)
 	for i := range arr {
-		arr[i] = core.VersionObj{Key: key, Version: "v" + itoa(i)}
+		arr[i] = core.VersionObj{Key: key, Version: "v" + itoa(i), UpstreamSeq: int64(cIndexPageSize + 1 - i)}
 	}
 	store := &fakeStoreObj{versionsPage: map[string][]core.VersionObj{key: arr}}
 	h := newHandler(store, map[string]string{key: "https://up.test/alpha"})
@@ -217,6 +245,53 @@ func TestHandlerIndexNextPage(t *testing.T) {
 	}
 	if reply.NextPage != 2 {
 		t.Errorf("NextPage: want 2, got %d", reply.NextPage)
+	}
+	if store.keysetCalls != 1 || store.listCalls != 0 {
+		t.Fatalf("first page must use keyset: keyset=%d offset=%d", store.keysetCalls, store.listCalls)
+	}
+}
+
+func TestHandlerIndexKeysetCursor(t *testing.T) {
+	key := "pkg/alpha"
+	arr := []core.VersionObj{
+		{Key: key, Version: "v3.0.0", UpstreamSeq: 3},
+		{Key: key, Version: "v2.0.0", UpstreamSeq: 2},
+		{Key: key, Version: "v1.0.0", UpstreamSeq: 1},
+	}
+	store := &fakeStoreObj{versionsPage: map[string][]core.VersionObj{key: arr}}
+	h := newHandler(store, nil)
+
+	var reply brotherwire.IndexReplyObj
+	if err := h.Index(brotherwire.IndexArgObj{Key: key, Page: 2, AfterSeq: 2, AfterVersion: "v2.0.0"}, &reply); err != nil {
+		t.Fatalf("Index: %v", err)
+	}
+	if store.keysetCalls != 1 || store.listCalls != 0 {
+		t.Fatalf("cursor request must use keyset: keyset=%d offset=%d", store.keysetCalls, store.listCalls)
+	}
+	if len(reply.Entries) != 1 || reply.Entries[0].Version != "v1.0.0" {
+		t.Fatalf("unexpected keyset page: %+v", reply.Entries)
+	}
+	if got := store.keysetAfter[0]; got != "2/v2.0.0" {
+		t.Fatalf("keyset cursor=%q", got)
+	}
+}
+
+func TestHandlerIndexLegacyPageFallback(t *testing.T) {
+	key := "pkg/alpha"
+	arr := []core.VersionObj{
+		{Key: key, Version: "v3.0.0"},
+		{Key: key, Version: "v2.0.0"},
+		{Key: key, Version: "v1.0.0"},
+	}
+	store := &fakeStoreObj{versionsPage: map[string][]core.VersionObj{key: arr}}
+	h := newHandler(store, nil)
+
+	var reply brotherwire.IndexReplyObj
+	if err := h.Index(brotherwire.IndexArgObj{Key: key, Page: 2}, &reply); err != nil {
+		t.Fatalf("Index: %v", err)
+	}
+	if store.keysetCalls != 0 || store.listCalls != 1 {
+		t.Fatalf("legacy page must use offset fallback: keyset=%d offset=%d", store.keysetCalls, store.listCalls)
 	}
 }
 
@@ -358,7 +433,6 @@ func itoa(n int) string {
 	return string(buf[i:])
 }
 
-// errReadCloser is a sanity assertion that bufConnObj satisfies io.ReadWriteCloser.
 var _ io.ReadWriteCloser = (*bufConnObj)(nil)
 
 // // // // // // // // // //
@@ -367,8 +441,11 @@ var _ io.ReadWriteCloser = (*bufConnObj)(nil)
 // and cleans the map, while distinct peers are counted independently.
 func TestPerPeerSessionCap(t *testing.T) {
 	srvObj := &ServerObj{peerMax: 2}
-	if !srvObj.acquirePeerSlot("peerA") || !srvObj.acquirePeerSlot("peerA") {
-		t.Fatal("peerA must get its first two slots")
+	if !srvObj.acquirePeerSlot("peerA") {
+		t.Fatal("peerA must get its first slot")
+	}
+	if !srvObj.acquirePeerSlot("peerA") {
+		t.Fatal("peerA must get its second slot")
 	}
 	if srvObj.acquirePeerSlot("peerA") {
 		t.Fatal("peerA must be rejected past peerMax")

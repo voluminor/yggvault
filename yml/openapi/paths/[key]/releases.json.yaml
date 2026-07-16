@@ -8,8 +8,7 @@ get:
     size, and a link to the detail document; release notes and artifact lists
     are intentionally omitted. Pagination uses keyset cursors:
     `?after=<next-from-previous-response>`. The `next` field is omitted on the
-    last page. Clients should treat both `application/json` and `text/plain`
-    variants as the same JSON document.
+    last page.
   parameters:
     - $ref: parameters/key
     - $ref: parameters/after
@@ -22,10 +21,12 @@ get:
           description: Strong cache validator for the generated response body.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Cache policy for generated metadata.
           schema:
             type: string
+            example: public, must-revalidate, max-age=300
       content:
         application/json:
           schema:
@@ -33,6 +34,8 @@ get:
         text/plain:
           schema:
             type: string
+          example: >-
+            {"key":"yggvault","source":{"url":"https://github.com/voluminor/yggvault","status":"available","last_scan":"2026-07-16T18:40:00Z"},"releases":[{"version":"v0.3.4","time":"2026-07-16T18:42:47Z","size":7340032,"url":"/yggvault/v0.3.4.json"}]}
     '304':
       $ref: responses/not_modified
     '400':

@@ -16,20 +16,16 @@ import (
 // // // // // // // // // //
 
 const (
-	// Connection pool caps; stdlib defaults can be too open on a weak mesh.
 	cMaxConnsPerHost     = 8
 	cMaxIdleConns        = 32
 	cMaxIdleConnsPerHost = 4
 	cIdleConnTimeout     = 90 * time.Second
 	cTLSHandshakeTimeout = 10 * time.Second
 
-	// cMaxRedirects caps redirects; cross-scheme redirects into or out of Yggdrasil are forbidden.
 	cMaxRedirects = 5
 
 	cUserAgent = "yggvault"
 
-	// Minimum body throughput per window. The idle timer catches silence; this floor catches
-	// byte-per-idle slowloris streams that would hold a download slot and rescan cycle.
 	cMinDownloadBytesPerSec = 1024
 	cDownloadRateWindow     = 30 * time.Second
 )
@@ -93,25 +89,21 @@ func (obj *Obj) buildClients() {
 	}
 
 	obj.metaClient = &http.Client{
-		Transport:     obj.withAuth(newTransport()),
+		Transport:     obj.withLimit(obj.withAuth(newTransport())),
 		Timeout:       obj.requestTimeout,
 		CheckRedirect: obj.checkRedirect,
 	}
-	// refs (git smart HTTP) runs anonymously: git endpoints reject Bearer on public GitHub repos,
-	// and API rate limits do not apply to this protocol. SSRF guards and timeouts remain identical.
 	obj.refsClient = &http.Client{
-		Transport:     newTransport(),
+		Transport:     obj.withLimit(newTransport()),
 		Timeout:       obj.requestTimeout,
 		CheckRedirect: obj.checkRedirect,
 	}
 	obj.downloadClient = &http.Client{
-		Transport:     obj.withAuth(newTransport()),
+		Transport:     obj.withLimit(obj.withAuth(newTransport())),
 		CheckRedirect: obj.checkRedirect,
 	}
 }
 
-// probeBody distinguishes "the endpoint definitively does not exist" (4xx) from
-// "the host does not answer reliably" (network/5xx/429): for source classification these are different outcomes.
 func (obj *Obj) probeBody(ctx context.Context, rawURL string, maxBytes int64) ([]byte, probeOutcomeObj) {
 	reqCtx, cancel := context.WithTimeout(ctx, obj.dialTimeout())
 	defer cancel()
@@ -137,9 +129,6 @@ func (obj *Obj) probeBody(ctx context.Context, rawURL string, maxBytes int64) ([
 	default:
 		return nil, probeOutcomeIndeterminate
 	}
-	// Read maxBytes+1: a body exactly at the limit is indistinguishable from a truncated one.
-	// Oversize cannot be a compact vault marker (/health and /info are tiny JSON), so it is a
-	// definitive miss rather than "unknown"; large forge health pages must not stall discovery forever.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return nil, probeOutcomeIndeterminate
@@ -176,7 +165,6 @@ type stallReaderObj struct {
 	idle   time.Duration
 	armed  atomic.Bool
 
-	// Throughput floor: idle timeout alone misses drip feeds, so every window must meet minRate*elapsed.
 	cancel      context.CancelCauseFunc
 	minRate     int64
 	window      time.Duration
@@ -195,7 +183,6 @@ func (r *stallReaderObj) Read(dataArr []byte) (int, error) {
 	return n, err
 }
 
-// checkThroughput cancels the request when a window receives less than minRate*elapsed bytes.
 func (r *stallReaderObj) checkThroughput(n int) {
 	if r.minRate <= 0 || r.cancel == nil {
 		return
@@ -227,6 +214,11 @@ func (obj *Obj) streamToSpool(ctx context.Context, rawURL, destPath string, stat
 
 	reqCtx, reqCancel := context.WithCancelCause(ctx)
 	defer reqCancel(nil)
+	if obj.maxDownloadDuration > 0 {
+		var deadlineCancel context.CancelFunc
+		reqCtx, deadlineCancel = context.WithTimeout(reqCtx, obj.maxDownloadDuration)
+		defer deadlineCancel()
+	}
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return 0, permanent(err)

@@ -64,7 +64,6 @@ func (obj *ServerObj) serveRPC(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rpc rate limit exceeded", http.StatusServiceUnavailable)
 		return
 	}
-	// Enforce the per-peer cap before the global slot so one peer cannot occupy sessionSem.
 	peerHost := peerHostFromAddr(r.RemoteAddr)
 	if !obj.acquirePeerSlot(peerHost) {
 		http.Error(w, "rpc per-peer concurrency limit exceeded", http.StatusServiceUnavailable)

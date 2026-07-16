@@ -72,7 +72,6 @@ func formatFloat(value float64) string {
 	return strconv.FormatFloat(value, 'g', -1, 64)
 }
 
-// formatNumber renders int64 exactly in base 10, and float64 via formatFloat.
 func formatNumber[N int64 | float64](value N) string {
 	if intValue, ok := any(value).(int64); ok {
 		return strconv.FormatInt(intValue, 10)

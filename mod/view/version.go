@@ -29,6 +29,7 @@ type (
 		Overlays             []string
 		Degraded             []string
 		Downloads            []ArtifactEntryObj
+		AltDownloads         []ArtifactEntryObj
 		Install              []CodeSnippetObj
 		AltInstall           []CodeSnippetObj
 		ReleaseNotesMarkdown string
@@ -43,6 +44,7 @@ type (
 		SizeBytes uint64
 		Hashes    []ArtifactHashObj
 		URL       string
+		AbsURL    string
 		GoModule  bool
 	}
 
@@ -68,6 +70,7 @@ type (
 
 	downloadObj struct {
 		Name, Kind, Size, URL string
+		AbsURL, SHA256        string
 		Hashes                []hashRowObj
 	}
 
@@ -82,6 +85,7 @@ type (
 		Source                                 SourceObj
 		Degraded                               []string
 		Downloads                              []downloadObj
+		AltDownloads                           []downloadObj
 		GoDownloads                            []downloadObj
 		Snippets                               []CodeSnippetObj
 		AltSnippets                            []CodeSnippetObj
@@ -93,7 +97,6 @@ type (
 
 // // // // // // // // // //
 
-// cTagRe strips tags from already sanitized HTML for a plain-text excerpt.
 var cTagRe = regexp.MustCompile(`<[^>]*>`)
 
 func upstreamLabel(deleted bool) string {
@@ -103,14 +106,12 @@ func upstreamLabel(deleted bool) string {
 	return "present"
 }
 
-// notesExcerpt builds a short plain-text excerpt from rendered release notes for og:description.
 func notesExcerpt(notesHTML []byte, maxRunes int) string {
 	if len(notesHTML) == 0 {
 		return ""
 	}
 	text := html.UnescapeString(cTagRe.ReplaceAllString(string(notesHTML), " "))
 	text = strings.Join(strings.Fields(text), " ")
-	// Count runes incrementally to avoid allocating a full []rune for long notes.
 	runeCount, cutOffset := 0, 0
 	for byteIdx := range text {
 		if runeCount == maxRunes-1 {
@@ -126,7 +127,6 @@ func notesExcerpt(notesHTML []byte, maxRunes int) string {
 
 // // // // // // // // // //
 
-// fmtTimestamp formats UTC time; zero time means no data and renders empty.
 func fmtTimestamp(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -134,7 +134,6 @@ func fmtTimestamp(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04 UTC")
 }
 
-// fmtISO returns an RFC3339 timestamp for <time datetime>; zero time renders empty.
 func fmtISO(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -142,24 +141,30 @@ func fmtISO(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// buildVersion derives template-only fields for version.html.
-func buildVersion(inputObj VersionObj, css template.CSS) versionTemplateObj {
+func buildDownloadRows(ctxObj ContextObj, entryArr []ArtifactEntryObj) ([]downloadObj, []downloadObj) {
 	var downloadArr, goDownloadArr []downloadObj
-	for i := range inputObj.Downloads {
-		artifactObj := inputObj.Downloads[i]
+	for i := range entryArr {
+		artifactObj := entryArr[i]
 		hashArr := make([]hashRowObj, 0, len(artifactObj.Hashes))
+		sha256Text := ""
 		for _, hashObj := range artifactObj.Hashes {
 			if len(hashObj.Sum) == 0 {
 				continue
 			}
-			hashArr = append(hashArr, hashRowObj{Algo: hashObj.Algo, Hex: hex.EncodeToString(hashObj.Sum)})
+			hexText := hex.EncodeToString(hashObj.Sum)
+			hashArr = append(hashArr, hashRowObj{Algo: hashObj.Algo, Hex: hexText})
+			if hashObj.Algo == "sha256" {
+				sha256Text = hexText
+			}
 		}
 		rowObj := downloadObj{
 			Name:   artifactObj.Name,
 			Kind:   artifactObj.Kind,
 			Size:   humanBytes(artifactObj.SizeBytes),
-			Hashes: hashArr,
 			URL:    artifactObj.URL,
+			AbsURL: nonEmpty(artifactObj.AbsURL, absPath(ctxObj, artifactObj.URL)),
+			SHA256: sha256Text,
+			Hashes: hashArr,
 		}
 		if artifactObj.GoModule {
 			goDownloadArr = append(goDownloadArr, rowObj)
@@ -167,7 +172,12 @@ func buildVersion(inputObj VersionObj, css template.CSS) versionTemplateObj {
 			downloadArr = append(downloadArr, rowObj)
 		}
 	}
+	return downloadArr, goDownloadArr
+}
 
+func buildVersion(inputObj VersionObj, css template.CSS) versionTemplateObj {
+	downloadArr, goDownloadArr := buildDownloadRows(inputObj.Context, inputObj.Downloads)
+	altDownloadArr, _ := buildDownloadRows(inputObj.Context, inputObj.AltDownloads)
 	newerURL, olderURL := "", ""
 	if inputObj.History.NewerVersion != "" {
 		newerURL = versionPath(inputObj.Context, inputObj.Key, inputObj.History.NewerVersion)
@@ -177,7 +187,6 @@ func buildVersion(inputObj VersionObj, css template.CSS) versionTemplateObj {
 	}
 
 	srcObj := normalizeSource(inputObj.Source)
-	// Render notes once; NotesHTML and the OG excerpt share the same sanitized result.
 	notesHTML := markdown.SafeHTML(inputObj.ReleaseNotesMarkdown)
 
 	descParts := []string{
@@ -197,28 +206,29 @@ func buildVersion(inputObj VersionObj, css template.CSS) versionTemplateObj {
 		desc += " — " + excerpt
 	}
 	return versionTemplateObj{
-		Head:        head(inputObj.Context, css, inputObj.Key+"@"+inputObj.Version+" - "+inputObj.Context.Service.Name, desc, "og/"+inputObj.Key+"/"+inputObj.Version, versionPath(inputObj.Context, inputObj.Key, inputObj.Version), homePath(inputObj.Context, inputObj.Key)+"/releases.xml"),
-		Key:         inputObj.Key,
-		KeyURL:      homePath(inputObj.Context, inputObj.Key),
-		Version:     inputObj.Version,
-		Size:        humanBytes(inputObj.SourceSizeBytes),
-		Ingested:    fmtTimestamp(inputObj.IngestedAt),
-		Verified:    fmtTimestamp(inputObj.VerifiedAt),
-		IngestedISO: fmtISO(inputObj.IngestedAt),
-		VerifiedISO: fmtISO(inputObj.VerifiedAt),
-		Detected:    inputObj.Detected,
-		Overlays:    inputObj.Overlays,
-		Source:      srcObj,
-		Degraded:    inputObj.Degraded,
-		Downloads:   downloadArr,
-		GoDownloads: goDownloadArr,
-		Snippets:    inputObj.Install,
-		AltSnippets: inputObj.AltInstall,
-		AltLabel:    altChannelLabel(inputObj.Context.Alternate.Channel),
-		NotesHTML:   template.HTML(notesHTML),
-		NewerURL:    newerURL,
-		NewerVer:    inputObj.History.NewerVersion,
-		OlderURL:    olderURL,
-		OlderVer:    inputObj.History.OlderVersion,
+		Head:         head(inputObj.Context, css, inputObj.Key+"@"+inputObj.Version+" - "+inputObj.Context.Service.Name, desc, "og/"+inputObj.Key+"/"+inputObj.Version, versionPath(inputObj.Context, inputObj.Key, inputObj.Version), homePath(inputObj.Context, inputObj.Key)+"/releases.xml"),
+		Key:          inputObj.Key,
+		KeyURL:       homePath(inputObj.Context, inputObj.Key),
+		Version:      inputObj.Version,
+		Size:         humanBytes(inputObj.SourceSizeBytes),
+		Ingested:     fmtTimestamp(inputObj.IngestedAt),
+		Verified:     fmtTimestamp(inputObj.VerifiedAt),
+		IngestedISO:  fmtISO(inputObj.IngestedAt),
+		VerifiedISO:  fmtISO(inputObj.VerifiedAt),
+		Detected:     inputObj.Detected,
+		Overlays:     inputObj.Overlays,
+		Source:       srcObj,
+		Degraded:     inputObj.Degraded,
+		Downloads:    downloadArr,
+		AltDownloads: altDownloadArr,
+		GoDownloads:  goDownloadArr,
+		Snippets:     inputObj.Install,
+		AltSnippets:  inputObj.AltInstall,
+		AltLabel:     altChannelLabel(inputObj.Context.Alternate.Channel),
+		NotesHTML:    template.HTML(notesHTML),
+		NewerURL:     newerURL,
+		NewerVer:     inputObj.History.NewerVersion,
+		OlderURL:     olderURL,
+		OlderVer:     inputObj.History.OlderVersion,
 	}
 }

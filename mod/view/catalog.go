@@ -51,16 +51,18 @@ type (
 	}
 
 	catalogTemplateObj struct {
-		Head  headObj
-		About aboutObj
-		Count int
-		Keys  []catalogKeyObj
+		Head         headObj
+		About        aboutObj
+		Count        int
+		OnlineCount  int
+		ProblemCount int
+		HealthStatus string
+		Keys         []catalogKeyObj
 	}
 )
 
 // // // // // // // // // //
 
-// aboutBlock builds the public node card; http(s) contacts become links.
 func aboutBlock(serviceObj ServiceObj) aboutObj {
 	outObj := aboutObj{Description: serviceObj.Description, Location: serviceObj.Location}
 	for _, groupObj := range serviceObj.Contacts {
@@ -81,7 +83,6 @@ func aboutBlock(serviceObj ServiceObj) aboutObj {
 
 // // // // // // // // // //
 
-// buildCatalog derives template-only fields for catalog.html.
 func buildCatalog(inputObj CatalogObj, css template.CSS) catalogTemplateObj {
 	keyArr := make([]catalogKeyObj, 0, len(inputObj.Keys))
 	for i := range inputObj.Keys {
@@ -101,12 +102,20 @@ func buildCatalog(inputObj CatalogObj, css template.CSS) catalogTemplateObj {
 			onlineCount++
 		}
 	}
+	problemCount := len(keyArr) - onlineCount
+	healthStatus := "ok"
+	if problemCount > 0 {
+		healthStatus = "temporary_down"
+	}
 	desc := inputObj.Context.Service.Tagline + " · " + strconv.Itoa(len(keyArr)) + " packages mirrored · " +
 		strconv.Itoa(onlineCount) + " sources online · served over regular web and yggdrasil mesh"
 	return catalogTemplateObj{
-		Head:  head(inputObj.Context, css, inputObj.Context.Service.Name+" - vault index", desc, "og.png", cleanHome(inputObj.Context), homePath(inputObj.Context, "feed.xml")),
-		About: aboutBlock(inputObj.Context.Service),
-		Count: len(keyArr),
-		Keys:  keyArr,
+		Head:         head(inputObj.Context, css, inputObj.Context.Service.Name+" - vault index", desc, "og.png", cleanHome(inputObj.Context), homePath(inputObj.Context, "feed.xml")),
+		About:        aboutBlock(inputObj.Context.Service),
+		Count:        len(keyArr),
+		OnlineCount:  onlineCount,
+		ProblemCount: problemCount,
+		HealthStatus: healthStatus,
+		Keys:         keyArr,
 	}
 }

@@ -31,3 +31,4 @@ log_reason:
   - cache_quota_exceeded
   - artifact_materialization_failed
   - go_overlay_degraded
+  - content_rejected

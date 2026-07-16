@@ -20,7 +20,7 @@ type composerManifestObj struct {
 	Require    map[string]string          `json:"require"`
 	RequireDev map[string]string          `json:"require-dev"`
 	Autoload   map[string]json.RawMessage `json:"autoload"`
-	License    json.RawMessage            `json:"license"` // in the wild: string | []string
+	License    json.RawMessage            `json:"license"`
 }
 
 // ComposerVersionInputObj is one version build input assembled by rescan/server: version, time, universal dist, and

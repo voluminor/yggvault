@@ -58,6 +58,10 @@ func (rt *runtimeObj) startProfiling() error {
 		ReadHeaderTimeout: rt.configObj.Web.Ingress.ReadHeaderTimeout,
 		IdleTimeout:       rt.configObj.Web.Ingress.IdleTimeout,
 	}
+	rt.loggerObj.Zero().Info().
+		Str("component", "profiling").
+		Str("addr", netListener.Addr().String()).
+		Msg("pprof listener started")
 	go func() {
 		if serveErr := rt.profiling.Serve(netListener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			rt.loggerObj.Zero().Error().Err(serveErr).Msg("pprof listener stopped")

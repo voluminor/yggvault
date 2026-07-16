@@ -17,7 +17,6 @@ import (
 
 const cMaxKeySegmentBytes = 256
 
-// errNotVault is the internal classifyGit marker: the source is definitively not a yggvault.
 var errNotVault = errors.New("source is not a vault")
 
 // // // // // // // // // //
@@ -76,8 +75,6 @@ func deriveRemoteKey(localKey, rootURL, prefix string) (string, error) {
 
 // // // // // // // // // //
 
-// probeOutcomeObj is the outcome of a single HTTP probe: a body was received, the endpoint
-// is definitively absent (4xx), or the answer is unreliable (network/5xx/429).
 type probeOutcomeObj int
 
 const (
@@ -86,8 +83,6 @@ const (
 	probeOutcomeIndeterminate
 )
 
-// probeVerdictObj is the classification result for a single endpoint: yggvault confirmed,
-// definitively not a yggvault, or no judgment possible.
 type probeVerdictObj int
 
 const (
@@ -115,8 +110,6 @@ func (obj *Obj) probeHealth(ctx context.Context, healthURL string) probeVerdictO
 	return probeVerdictVault
 }
 
-// probeInfo confirms a vault by its /info card: JSON with a non-empty name.
-// Used only as a cross-check when /health answers negatively.
 func (obj *Obj) probeInfo(ctx context.Context, rootURL string) probeVerdictObj {
 	infoURL, err := instanceURLFor(rootURL, route.Info)
 	if err != nil {
@@ -138,9 +131,6 @@ func (obj *Obj) probeInfo(ctx context.Context, rootURL string) probeVerdictObj {
 	return probeVerdictVault
 }
 
-// classifyGit decides whether the source can be reliably deemed a git forge.
-// Git is confirmed only by two independent denials (/health and /info);
-// any unreliable answer is a transient error with no classification recorded.
 func (obj *Obj) classifyGit(ctx context.Context, key string, rootURL string, healthURL string) error {
 	switch obj.probeHealth(ctx, healthURL) {
 	case probeVerdictVault:
@@ -181,8 +171,6 @@ func (obj *Obj) Discover(ctx context.Context, key, rootURL string) (DiscoveryRes
 
 	webAddr, yggAddr, routePrefix, infoOK := obj.fetchBrotherInfo(ctx, rootURL)
 
-	// Parse the remote key under the prefix the remote node actually serves; fall back to the
-	// local prefix only for nodes that do not advertise route_prefix.
 	remotePrefix := obj.routingPrefix
 	if routePrefix != nil {
 		remotePrefix = *routePrefix

@@ -96,36 +96,20 @@ func NameSuffix(artifactObj core.ArtifactObj) (name string, suffix string) {
 	}
 }
 
-func candidates(listenerID stcode.ListenerType) []stcode.ListenerType {
-	if listenerID == stcode.ListenerGlobal {
-		return []stcode.ListenerType{stcode.ListenerGlobal}
-	}
-	return []stcode.ListenerType{listenerID, stcode.ListenerGlobal}
-}
-
-// // // // // // // // // //
-
-// LocateKey finds a registered artifact from listener-specific to global scope without materialization,
-// returning both metadata and the matched key. Metadata first lets callers answer 304 before expensive
-// builds; the returned key lets a follow-up open reuse the resolved scope instead of re-querying it (OpenResolved).
+// LocateKey looks up an artifact only in the exact listener scope; the go-zip global row is legacy.
 func LocateKey(ctx context.Context, store StoreInterface, materializerID string, kind string, key string, version string, listenerID stcode.ListenerType) (core.ArtifactObj, core.ArtifactKeyObj, bool, error) {
-	for _, lidObj := range candidates(listenerID) {
-		keyObj := core.ArtifactKeyObj{
-			MaterializerID: materializerID,
-			ArtifactKind:   kind,
-			ListenerID:     lidObj.String(),
-			Key:            key,
-			Version:        version,
-		}
-		artifactObj, ok, err := store.GetArtifact(ctx, keyObj)
-		if err != nil {
-			return core.ArtifactObj{}, core.ArtifactKeyObj{}, false, err
-		}
-		if ok {
-			return artifactObj, keyObj, true, nil
-		}
+	keyObj := core.ArtifactKeyObj{
+		MaterializerID: materializerID,
+		ArtifactKind:   kind,
+		ListenerID:     listenerID.String(),
+		Key:            key,
+		Version:        version,
 	}
-	return core.ArtifactObj{}, core.ArtifactKeyObj{}, false, nil
+	artifactObj, ok, err := store.GetArtifact(ctx, keyObj)
+	if err != nil || !ok {
+		return core.ArtifactObj{}, core.ArtifactKeyObj{}, ok, err
+	}
+	return artifactObj, keyObj, true, nil
 }
 
 // LocateGlobalFormatKey finds a global-scope artifact only when its format version matches the current descriptor.

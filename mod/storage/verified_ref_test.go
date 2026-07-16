@@ -43,7 +43,6 @@ func TestUpstreamRefVerifiedRoundTrip(t *testing.T) {
 		t.Fatalf("verified_ts=%v, want %v", versionObj.VerifiedTS, verifiedTS)
 	}
 
-	// Publish without ref: empty upstream_ref and zero verified_ts must survive as unknown/not verified.
 	publishTestVersion(t, obj, "v1.1.0", []core.InputEntryObj{{Path: "f.txt", Content: []byte("two")}})
 	listArr, err := obj.ListVersions(ctx, "core-lib", false)
 	if err != nil || len(listArr) != 2 {

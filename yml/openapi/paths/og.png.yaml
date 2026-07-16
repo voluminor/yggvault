@@ -17,10 +17,12 @@ get:
           description: Strong cache validator derived from content freshness.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Cache policy for generated metadata.
           schema:
             type: string
+            example: public, must-revalidate, max-age=300
       content:
         image/png:
           schema:

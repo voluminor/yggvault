@@ -23,6 +23,13 @@ func composerNameOf(evidenceJSON string) string {
 }
 
 func (obj *Obj) raiseComposerCollision(collisionObj overlay.ComposerCollisionObj) {
+	obj.logObj.Warn().
+		Str("component", "rescan").
+		Str("code", "composer_name_collision").
+		Str("key", collisionObj.Key).
+		Str("conflicting_key", collisionObj.ConflictingKey).
+		Str("composer_name", collisionObj.Name).
+		Msg("composer package name collision; conflicting key is hidden from composer p2 until the operator resolves the conflict")
 	if diagErr := obj.stateObj.RaiseDiagnostic(state.DiagnosticObj{
 		Code:    "composer_name_collision",
 		Scope:   stcode.LogScopeKey,
@@ -70,7 +77,6 @@ func (obj *Obj) finishCycle(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			// Latest was already reconciled per key before this barrier; use state without another storage read.
 			keyStateObj, known := obj.stateObj.KeyState(keyValue)
 			if !known || keyStateObj.LatestVersion == "" {
 				return
@@ -103,18 +109,13 @@ func (obj *Obj) finishCycle(ctx context.Context) {
 	obj.composerKeyByName = nameToKey
 	obj.composerMu.Unlock()
 
-	obj.pruneMissMap()
+	obj.pruneMissMap(ctx)
 
 	if contentHashObj, err := obj.storageObj.ContentChecksum(ctx); err == nil {
 		obj.stateObj.SetContentChecksum(contentHashObj)
 	}
 }
 
-// reconcileKeyStats refreshes one key's mirror stats (latest version, count, last-publish) from storage and
-// publishes them immediately. Running this at the end of the key's OWN runKey — instead of the cycle-final
-// batch — makes a key's newest version visible (web page + go-proxy ETag) as soon as that key finishes, so a
-// slow or stuck key no longer freezes the whole fleet's "latest" until the cycle ends. Snapshot swaps stay
-// cheap: publishKeyViewsChangedLocked is a no-op unless the stats actually changed.
 func (obj *Obj) reconcileKeyStats(ctx context.Context, key string) {
 	if ctx.Err() != nil {
 		return
@@ -135,7 +136,7 @@ func (obj *Obj) reconcileKeyStats(ctx context.Context, key string) {
 	})
 }
 
-func (obj *Obj) pruneMissMap() {
+func (obj *Obj) pruneMissMap(ctx context.Context) {
 	validSet := make(map[string]struct{}, len(obj.keyArr))
 	for _, keyText := range obj.keyArr {
 		validSet[keyText] = struct{}{}
@@ -148,14 +149,42 @@ func (obj *Obj) pruneMissMap() {
 	}
 	obj.missMu.Unlock()
 
-	// permFailMap follows configured keys; removed keys must not retain failure memory.
 	obj.permFailMu.Lock()
 	for failObj := range obj.permFailMap {
 		if _, ok := validSet[failObj.key]; !ok {
 			delete(obj.permFailMap, failObj)
 		}
 	}
+	for keyText := range obj.permFailLoadMissObj {
+		if _, ok := validSet[keyText]; !ok {
+			delete(obj.permFailLoadMissObj, keyText)
+		}
+	}
 	obj.permFailMu.Unlock()
+
+	if obj.storageObj == nil || ctx.Err() != nil {
+		return
+	}
+	quarantineKeyArr, err := obj.storageObj.ListIngestFailureKeys(ctx)
+	if err != nil {
+		obj.logObj.Warn().
+			Str("component", "rescan").
+			Str("error", err.Error()).
+			Msg("failed to list ingest quarantine keys for pruning")
+		return
+	}
+	for _, keyText := range quarantineKeyArr {
+		if _, ok := validSet[keyText]; ok {
+			continue
+		}
+		if delErr := obj.storageObj.DeleteKeyIngestFailures(ctx, keyText); delErr != nil {
+			obj.logObj.Warn().
+				Str("component", "rescan").
+				Str("key", keyText).
+				Str("error", delErr.Error()).
+				Msg("failed to prune ingest quarantine for removed key")
+		}
+	}
 }
 
 // // // // // // // // // //

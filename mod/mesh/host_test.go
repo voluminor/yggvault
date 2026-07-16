@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/voluminor/ratatoskr/mod/resolver"
 	yggconfig "github.com/yggdrasil-network/yggdrasil-go/src/config"
 )
 
@@ -32,12 +31,12 @@ func TestHostFromKey(t *testing.T) {
 	}
 
 	pubKey := ed25519.PrivateKey(cfg.PrivateKey).Public().(ed25519.PublicKey)
-	wantHost := hex.EncodeToString(pubKey) + resolver.NameMappingSuffix
+	wantHost := hex.EncodeToString(pubKey) + cHostSuffix
 	if host != wantHost {
 		t.Fatalf("host = %q, want %q", host, wantHost)
 	}
-	if !strings.HasSuffix(host, resolver.NameMappingSuffix) {
-		t.Fatalf("host %q missing %q suffix", host, resolver.NameMappingSuffix)
+	if !strings.HasSuffix(host, cHostSuffix) {
+		t.Fatalf("host %q missing %q suffix", host, cHostSuffix)
 	}
 }
 
@@ -75,7 +74,7 @@ func TestLoadNodeConfigCertMatchesKey(t *testing.T) {
 		t.Fatalf("HostFromKey: %v", err)
 	}
 	certPub := certKey.Public().(ed25519.PublicKey)
-	wantHost := hex.EncodeToString(certPub) + resolver.NameMappingSuffix
+	wantHost := hex.EncodeToString(certPub) + cHostSuffix
 	if host != wantHost {
 		t.Fatalf("HostFromKey %q != certificate-derived host %q", host, wantHost)
 	}

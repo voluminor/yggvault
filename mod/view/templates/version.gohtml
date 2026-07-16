@@ -36,8 +36,20 @@
 </dl>
 <div class="origin-row">{{template "origin" .Source}}</div>
 
+{{if .NotesHTML}}
+    <h2>release notes</h2>
+    <div class="notes">{{.NotesHTML}}</div>
+{{end}}
+
 {{if .Downloads}}
     <h2>download</h2>
+    {{template "download_snippets" .Downloads}}
+    {{if .AltDownloads}}
+        <details class="snip-alt">
+            <summary>download via {{.AltLabel}}</summary>
+            {{template "download_snippets" .AltDownloads}}
+        </details>
+    {{end}}
     {{template "downloads" .Downloads}}
 {{end}}
 
@@ -59,11 +71,6 @@
     {{end}}
 {{end}}
 
-{{if .NotesHTML}}
-    <h2>release notes</h2>
-    <div class="notes">{{.NotesHTML}}</div>
-{{end}}
-
 {{if or .NewerURL .OlderURL}}
     <div class="histnav">{{if .NewerURL}}<a href="{{.NewerURL}}">&larr; {{.NewerVer}}</a>{{else}}
             <span></span>{{end}}{{if
@@ -72,7 +79,25 @@
 {{end}}
 {{template "shell_close" .}}{{end}}
 
+{{define "download_snippets"}}
+    {{range .}}
+        <div class="snip">
+            <div class="lbl">unix &middot; {{.Kind}}</div>
+            <pre>curl -fL -o {{.Name}} {{.AbsURL}}{{if .SHA256}}
+                    printf '%s  %s\n' '{{.SHA256}}' '{{.Name}}' | sha256sum -c -{{end}}</pre>
+        </div>
+        <div class="snip">
+            <div class="lbl">windows &middot; {{.Kind}}</div>
+            <pre>$url = "{{.AbsURL}}"
+$out = "{{.Name}}"
+Invoke-WebRequest -Uri $url -OutFile $out{{if .SHA256}}
+if ((Get-FileHash $out -Algorithm SHA256).Hash.ToLowerInvariant() -ne "{{.SHA256}}") { throw "sha256 mismatch" }{{end}}</pre>
+        </div>
+    {{end}}
+{{end}}
+
 {{define "downloads"}}
+    <div class="table-wrap">
     <table class="dl">
         <thead>
         <tr>
@@ -98,4 +123,5 @@
         {{end}}
         </tbody>
     </table>
+    </div>
 {{end}}

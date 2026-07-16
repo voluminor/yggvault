@@ -6,9 +6,6 @@ import (
 
 // // // // // // // // // //
 
-// accumulateFamily folds a metric family into scalar values for the JSON endpoints.
-// Sum and Gauge are summed across all label sets; Histogram yields `<name>_sum` and `<name>_count`.
-// Keys match the sanitized OpenMetrics names.
 func accumulateFamily(valuesObj map[string]float64, familyObj metricdata.Metrics) {
 	name := sanitizeName(familyObj.Name)
 	switch data := familyObj.Data.(type) {

@@ -7,3 +7,4 @@ description: >-
   `web.pages.list_page_size`.
 schema:
   type: string
+  example: NDIAdjAuMy40

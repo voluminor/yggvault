@@ -346,15 +346,27 @@ func (obj *Obj) runDurableGCLoop() {
 		case <-tickerObj.C:
 		case <-obj.gcTrigger:
 		}
-		_ = obj.CollectGarbage(obj.rootCtx)
+		if err := obj.CollectGarbage(obj.rootCtx); err != nil && obj.rootCtx.Err() == nil {
+			obj.logObj.Warn().
+				Err(err).
+				Str("component", "storage").
+				Msg("storage background garbage collection failed")
+		}
 		if maxEvents := obj.configObj.HistoryPolicy.MaxEvents; maxEvents > 0 {
-			obj.pruneHistoryUnderLock(obj.rootCtx, maxEvents)
+			if err := obj.pruneHistoryUnderLock(obj.rootCtx, maxEvents); err != nil && obj.rootCtx.Err() == nil {
+				obj.logObj.Warn().
+					Err(err).
+					Str("component", "storage").
+					Uint("max_events", maxEvents).
+					Msg("storage background history pruning failed")
+			}
 		}
 	}
 }
 
-func (obj *Obj) pruneHistoryUnderLock(ctx context.Context, maxEvents uint) {
+func (obj *Obj) pruneHistoryUnderLock(ctx context.Context, maxEvents uint) error {
 	obj.writeMu.Lock()
 	defer obj.writeMu.Unlock()
-	_, _ = obj.indexObj.PruneHistory(ctx, maxEvents)
+	_, err := obj.indexObj.PruneHistory(ctx, maxEvents)
+	return err
 }

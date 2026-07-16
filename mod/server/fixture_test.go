@@ -29,14 +29,11 @@ import (
 // // // // // // // // // //
 
 const (
-	// cArtifactBytes is the seeded universal.zip body streamed from disk through EnsureArtifactFile.
 	cArtifactBytes = "ZIPDATA!"
 
-	// cArtifactETag is the seeded artifact ETag used to verify If-None-Match 304 handling.
 	cArtifactETag = `"deadbeef"`
 )
 
-// errMeshDisabled is a sentinel for disabled mesh in web-only tests.
 var errMeshDisabled = errors.New("mesh disabled in test")
 
 // // // // // // // // // //
@@ -54,7 +51,6 @@ type fakeStoreObj struct {
 	feed        []core.FeedEventObj
 	artifactRaw []byte
 	tdir        string
-	// keysetCalls counts ListVersionsKeyset calls so cache tests can detect storage hits.
 	keysetCalls atomic.Int64
 }
 
@@ -250,19 +246,40 @@ func (fakeMeshObj) DialContext(_ context.Context, _ string, _ string) (net.Conn,
 func (fakeMeshObj) ListenerFor(_ mesh.TransportType) (net.Listener, error) {
 	return nil, errMeshDisabled
 }
-func (fakeMeshObj) Host() string                  { return "" }
-func (fakeMeshObj) Address() net.IP               { return nil }
-func (fakeMeshObj) OwnsHost(_ string) bool        { return false }
-func (fakeMeshObj) Enabled() bool                 { return false }
-func (fakeMeshObj) Close(_ context.Context) error { return nil }
+func (fakeMeshObj) Host() string                             { return "" }
+func (fakeMeshObj) Address() net.IP                          { return nil }
+func (fakeMeshObj) OwnsHost(_ string) bool                   { return false }
+func (fakeMeshObj) Enabled() bool                            { return false }
+func (fakeMeshObj) PeerList() ([]mesh.PeerSnapshotObj, bool) { return nil, false }
+func (fakeMeshObj) Close(_ context.Context) error            { return nil }
 
 var _ mesh.NodeInterface = fakeMeshObj{}
+
+// enabledFakeMeshObj models a running node with one connected peer for ygg metrics tests.
+type enabledFakeMeshObj struct{ fakeMeshObj }
+
+func (enabledFakeMeshObj) Enabled() bool { return true }
+func (enabledFakeMeshObj) PeerList() ([]mesh.PeerSnapshotObj, bool) {
+	return []mesh.PeerSnapshotObj{{
+		URI:           "tls://peer.example:443",
+		Up:            true,
+		PublicKey:     "aabb",
+		LatencyNanos:  1500000,
+		Cost:          10,
+		RXBytes:       2048,
+		TXBytes:       1024,
+		UptimeSeconds: 12.5,
+	}}, true
+}
+
+var _ mesh.NodeInterface = enabledFakeMeshObj{}
 
 // // // // // // // // // //
 
 type testOptionsObj struct {
 	publicMetrics      bool
 	internalMetrics    bool
+	yggPublicMetrics   bool
 	rateLimitRPS       uint
 	rateLimitBurst     uint
 	staticDir          string
@@ -278,6 +295,10 @@ type testOptionFunc func(*testOptionsObj)
 
 func withPublicMetrics() testOptionFunc {
 	return func(o *testOptionsObj) { o.publicMetrics = true }
+}
+
+func withYggPublicMetrics() testOptionFunc {
+	return func(o *testOptionsObj) { o.yggPublicMetrics = true }
 }
 
 func withInternalMetrics() testOptionFunc {
@@ -300,33 +321,25 @@ func withCache() testOptionFunc {
 	return func(o *testOptionsObj) { o.cacheEnabled = true }
 }
 
-// withNonGoNewestVersion adds a newest version without go detection:
-// go routes must filter it per-version instead of killing the whole major.
 func withNonGoNewestVersion() testOptionFunc {
 	return func(o *testOptionsObj) { o.nonGoNewest = true }
 }
 
-// withV2Version adds newest v2.44.0 with Go detection: major >=2 serves through
-// `/{key}/vN/@v/...` and does not mix with v1.
 func withV2Version() testOptionFunc {
 	return func(o *testOptionsObj) { o.v2Version = true }
 }
 
-// withGoZipBlockedNewestVersion adds the newest Go-detected version with blocked go-zip.
-// Go routes must exclude it, just like a version without Go detection.
 func withGoZipBlockedNewestVersion() testOptionFunc {
 	return func(o *testOptionsObj) { o.goZipBlockedNewest = true }
 }
 
-// withRawNewestVersion adds the newest raw version (non-semver, universal-only).
-// Mirror listings include it, while go-proxy and composer p2 never see it.
 func withRawNewestVersion() testOptionFunc {
 	return func(o *testOptionsObj) { o.rawNewest = true }
 }
 
 // // // // // // // // // //
 
-func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listenerCtxObj) {
+func newTestServer(t *testing.T, optArr ...testOptionFunc) (*Obj, listenerCtxObj) {
 	t.Helper()
 
 	optionsObj := testOptionsObj{}
@@ -347,7 +360,7 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 		detections: map[string]core.DetectionObj{vkey("lib", "v1.0.0"): {IsGo: true, EvidenceJSON: `{"go_module_path":"mirror.example/lib"}`}},
 		artifacts: map[string][]core.ArtifactObj{vkey("lib", "v1.0.0"): {
 			{MaterializerID: stcode.MaterializerUniversal.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v1.0.0", BodyHash: core.HashBytes([]byte("z")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.UniversalZipFormatVersion, ETag: cArtifactETag, BodySha1: []byte{0x01, 0x02}},
-			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v1.0.0", BodyHash: core.HashBytes([]byte("gz")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.GoZipFormatVersion, ETag: `"goz"`, BodySha1: []byte{0x03, 0x04}},
+			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerWeb.String(), Key: "lib", Version: "v1.0.0", BodyHash: core.HashBytes([]byte("gz")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.GoZipFormatVersion, ETag: `"goz"`, BodySha1: []byte{0x03, 0x04}},
 		}},
 		feed:        []core.FeedEventObj{{Key: "lib", Version: "v1.0.0", EventTS: now, TreeHash: treeHash, ReleaseNotes: "release **notes**", FirstPublish: true}},
 		artifactRaw: []byte(cArtifactBytes),
@@ -407,7 +420,7 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 		}, storeObj.versions["lib"]...)
 		storeObj.detections[vkey("lib", "v2.44.0")] = core.DetectionObj{IsGo: true, EvidenceJSON: `{"go_module_path":"mirror.example/lib"}`}
 		storeObj.artifacts[vkey("lib", "v2.44.0")] = []core.ArtifactObj{
-			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerGlobal.String(), Key: "lib", Version: "v2.44.0", BodyHash: core.HashBytes([]byte("gz2")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.GoZipFormatVersion, ETag: `"goz2"`, BodySha1: []byte{0x05, 0x06}},
+			{MaterializerID: stcode.MaterializerGo.String(), ArtifactKind: "zip", ListenerID: stcode.ListenerWeb.String(), Key: "lib", Version: "v2.44.0", BodyHash: core.HashBytes([]byte("gz2")), SizeBytes: uint64(len(cArtifactBytes)), FormatVersion: overlay.GoZipFormatVersion, ETag: `"goz2"`, BodySha1: []byte{0x05, 0x06}},
 		}
 		keyStateObj := stateObj.keyStates["lib"]
 		keyStateObj.LatestVersion = "v2.44.0"
@@ -429,7 +442,6 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 	cfgObj := stconf.FullConfig()
 	cfgObj.Web.Server.Domain = "mirror.example"
 	cfgObj.Web.Static.Dir = optionsObj.staticDir
-	// macOS: t.TempDir lives under the symlinked /var — resolve it, otherwise New rejects the symlink component
 	storageDir, evalErr := filepath.EvalSymlinks(t.TempDir())
 	if evalErr != nil {
 		t.Fatalf("EvalSymlinks returned error: %v", evalErr)
@@ -437,6 +449,7 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 	cfgObj.Storage.Dir = storageDir
 	cfgObj.Metrics.Web.Public = optionsObj.publicMetrics
 	cfgObj.Metrics.Web.Internal = optionsObj.internalMetrics
+	cfgObj.Metrics.Ygg.Public = optionsObj.yggPublicMetrics
 	cfgObj.RateLimit.Web.Http.RequestsPerSecond = optionsObj.rateLimitRPS
 	cfgObj.RateLimit.Web.Http.Burst = optionsObj.rateLimitBurst
 
@@ -472,13 +485,22 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*ServerObj, listener
 	return serverObj, serverObj.webListenerCtx(false)
 }
 
-func stateFor(t *testing.T, serverObj *ServerObj) *fakeStateObj {
+func stateFor(t *testing.T, serverObj *Obj) *fakeStateObj {
 	t.Helper()
 	stateObj, ok := serverObj.funcImplObj.deps.State.(*fakeStateObj)
 	if !ok {
 		t.Fatalf("server state is not *fakeStateObj")
 	}
 	return stateObj
+}
+
+func storeFor(t *testing.T, serverObj *Obj) *fakeStoreObj {
+	t.Helper()
+	storeObj, ok := serverObj.funcImplObj.deps.Storage.(*fakeStoreObj)
+	if !ok {
+		t.Fatalf("server storage is not *fakeStoreObj")
+	}
+	return storeObj
 }
 
 // // // // // // // // // //
@@ -497,7 +519,7 @@ func doReq(t *testing.T, ts *httptest.Server, method string, pathText string, he
 		t.Fatalf("%s %s: %v", method, pathText, err)
 	}
 	bodyArr, _ := io.ReadAll(respObj.Body)
-	respObj.Body.Close()
+	_ = respObj.Body.Close()
 	return respObj, bodyArr
 }
 

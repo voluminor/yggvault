@@ -6,31 +6,42 @@ properties:
     description: >-
       Public node name from `info.name`; when empty, the server derives it from
       the configured domain or Yggdrasil host.
+    example: modules.example.org
   version:
     type: string
-    description: "Build version of the running node from compiled build metadata (for example `v0.1.7`)."
+    description: "Build version of the running node from compiled build metadata."
+    example: v0.3.4
   description:
     type: string
     description: "Free-form public node description or peering policy from `info.description`; omitted when unset."
+    example: Public release mirror for Go modules and Composer packages.
   location:
     type: string
     description: "Optional physical or administrative location from `info.location`; omitted when unset."
+    example: Warsaw, PL
   contacts:
     type: object
     description: "Public contact map from `info.contacts`, grouped by contact type; omitted when unset."
+    example:
+      email: [ admin@example.org ]
+      matrix: [ "@operator:example.org" ]
     additionalProperties:
       type: array
       items:
         type: string
+        example: admin@example.org
   domain:
     type: string
     description: "Configured clearnet domain from `web.server.domain`; empty when the web entry is disabled."
+    example: modules.example.org
   ygg_host:
     type: string
     description: "Public Yggdrasil identity host (`<hex>.pk.ygg`); empty when the Yggdrasil entry is disabled."
+    example: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.pk.ygg
   route_prefix:
     type: string
     description: >-
       URL segment the package API is mounted under when the node runs embedded behind a custom
       static frontend (nested mode); empty when the API is served at the root. For example `pkg`
       means routes live under `/pkg/...`. Absent on nodes that predate this field.
+    example: pkg

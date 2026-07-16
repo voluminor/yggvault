@@ -2,6 +2,7 @@ package sitemap
 
 import (
 	"context"
+	"encoding/xml"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ type fakeStoreObj struct {
 
 func (f *fakeStoreObj) ListVersionsKeyset(_ context.Context, key string, _ bool, _ int64, afterVersion string, limit int) ([]core.VersionObj, error) {
 	if afterVersion != "" {
-		return nil, nil // single-page fixture: the first page returns everything
+		return nil, nil
 	}
 	arr := f.versions[key]
 	if len(arr) > limit {
@@ -56,19 +57,22 @@ func mkStore() *fakeStoreObj {
 
 func TestBuildNestedAbsoluteURLsAndLastmod(t *testing.T) {
 	linkObj := link.Obj{Scheme: "https", EntryHost: "vault.test", RoutePrefix: "pkg"}
-	body, err := Build(context.Background(), mkStore(), mkState(), linkObj, 100, true)
+	body, statsObj, err := Build(context.Background(), mkStore(), mkState(), linkObj, 100, true)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
+	}
+	if statsObj.Truncated() {
+		t.Fatalf("small sitemap was truncated: %+v", statsObj)
 	}
 	text := string(body)
 
 	for _, want := range []string{
 		`<?xml version="1.0" encoding="UTF-8"?>`,
 		`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`,
-		`<loc>https://vault.test/pkg/</loc>`,              // catalog
-		`<loc>https://vault.test/metrics</loc>`,           // metrics (service route at root)
-		`<loc>https://vault.test/pkg/errors</loc>`,        // key page
-		`<loc>https://vault.test/pkg/errors/v0.7.1</loc>`, // version page
+		`<loc>https://vault.test/pkg/</loc>`,
+		`<loc>https://vault.test/metrics</loc>`,
+		`<loc>https://vault.test/pkg/errors</loc>`,
+		`<loc>https://vault.test/pkg/errors/v0.7.1</loc>`,
 		`<loc>https://vault.test/pkg/errors/v0.7.0</loc>`,
 		`</urlset>`,
 	} {
@@ -86,7 +90,7 @@ func TestBuildNestedAbsoluteURLsAndLastmod(t *testing.T) {
 
 func TestBuildMetricsExcludedWhenDisabled(t *testing.T) {
 	linkObj := link.Obj{Scheme: "https", EntryHost: "vault.test", RoutePrefix: "pkg"}
-	body, err := Build(context.Background(), mkStore(), mkState(), linkObj, 100, false)
+	body, _, err := Build(context.Background(), mkStore(), mkState(), linkObj, 100, false)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -97,23 +101,55 @@ func TestBuildMetricsExcludedWhenDisabled(t *testing.T) {
 
 func TestBuildCapTruncatesNewestFirst(t *testing.T) {
 	linkObj := link.Obj{Scheme: "https", EntryHost: "vault.test", RoutePrefix: "pkg"}
-	// cap=2 keeps catalog and the key page, then cuts the walk off before versions.
-	body, err := Build(context.Background(), mkStore(), mkState(), linkObj, 2, false)
+	body, statsObj, err := Build(context.Background(), mkStore(), mkState(), linkObj, 2, false)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	if n := strings.Count(string(body), "<url>"); n != 2 {
 		t.Fatalf("cap=2 produced %d urls, want 2:\n%s", n, body)
 	}
+	if !statsObj.URLTruncated || statsObj.URLsDropped == 0 {
+		t.Fatalf("stats should report URL truncation: %+v", statsObj)
+	}
 }
 
 func TestBuildRootWhenNoPrefix(t *testing.T) {
 	linkObj := link.Obj{Scheme: "https", EntryHost: "vault.test"}
-	body, err := Build(context.Background(), mkStore(), mkState(), linkObj, 100, false)
+	body, _, err := Build(context.Background(), mkStore(), mkState(), linkObj, 100, false)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	if !strings.Contains(string(body), "<loc>https://vault.test/errors/v0.7.1</loc>") {
 		t.Fatalf("root-mode version URL missing:\n%s", body)
+	}
+}
+
+func TestBuildByteCapKeepsValidXML(t *testing.T) {
+	longVersion := "v" + strings.Repeat("x", 9000)
+	versionsArr := make([]core.VersionObj, 1024)
+	for i := range versionsArr {
+		versionsArr[i] = core.VersionObj{Key: "huge", Version: longVersion + string(rune('a'+i%26)), IngestTS: time.Unix(int64(10000-i), 0)}
+	}
+	storeObj := &fakeStoreObj{versions: map[string][]core.VersionObj{"huge": versionsArr}}
+	stateObj := &fakeStateObj{keys: []state.KeyStateObj{{Key: "huge", VersionCount: 2000, LatestVersion: versionsArr[0].Version, LastPublishTS: time.Unix(10000, 0)}}}
+
+	body, statsObj, err := Build(context.Background(), storeObj, stateObj, link.Obj{Scheme: "https", EntryHost: "vault.test"}, 50000, false)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if len(body) > cMaxBytes {
+		t.Fatalf("body has %d bytes, want <= %d", len(body), cMaxBytes)
+	}
+	if !statsObj.ByteTruncated || statsObj.URLsDropped == 0 {
+		t.Fatalf("stats should report byte truncation: %+v", statsObj)
+	}
+	var docObj struct {
+		XMLName xml.Name `xml:"urlset"`
+	}
+	if err := xml.Unmarshal(body, &docObj); err != nil {
+		t.Fatalf("sitemap XML is invalid: %v", err)
+	}
+	if !strings.HasSuffix(string(body), "</urlset>\n") {
+		t.Fatalf("sitemap missing closing urlset")
 	}
 }

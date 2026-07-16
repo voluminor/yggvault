@@ -34,34 +34,16 @@ func moduleBoundary(dataArr []byte, start int, end int) bool {
 	return true
 }
 
-func rewriteContent(dataArr []byte, oldArr []byte, newArr []byte) []byte {
+func rewriteScan(dataArr []byte, oldArr []byte, newArr []byte, contentFlag bool) ([]byte, int) {
 	if len(oldArr) == 0 || bytes.Equal(oldArr, newArr) {
-		return dataArr
-	}
-	resultArr := make([]byte, 0, len(dataArr))
-	pos := 0
-	for {
-		idx := bytes.Index(dataArr[pos:], oldArr)
-		if idx < 0 {
-			resultArr = append(resultArr, dataArr[pos:]...)
-			break
+		if contentFlag {
+			return dataArr, len(dataArr)
 		}
-		start := pos + idx
-		end := start + len(oldArr)
-		resultArr = append(resultArr, dataArr[pos:start]...)
-		if moduleBoundary(dataArr, start, end) {
-			resultArr = append(resultArr, newArr...)
-		} else {
-			resultArr = append(resultArr, oldArr...)
-		}
-		pos = end
+		return nil, len(dataArr)
 	}
-	return resultArr
-}
-
-func rewrittenSize(dataArr []byte, oldArr []byte, newArr []byte) int {
-	if len(oldArr) == 0 || bytes.Equal(oldArr, newArr) {
-		return len(dataArr)
+	var resultArr []byte
+	if contentFlag {
+		resultArr = make([]byte, 0, len(dataArr))
 	}
 	delta := len(newArr) - len(oldArr)
 	total := len(dataArr)
@@ -69,15 +51,36 @@ func rewrittenSize(dataArr []byte, oldArr []byte, newArr []byte) int {
 	for {
 		idx := bytes.Index(dataArr[pos:], oldArr)
 		if idx < 0 {
+			if contentFlag {
+				resultArr = append(resultArr, dataArr[pos:]...)
+			}
 			break
 		}
 		start := pos + idx
 		end := start + len(oldArr)
+		if contentFlag {
+			resultArr = append(resultArr, dataArr[pos:start]...)
+		}
 		if moduleBoundary(dataArr, start, end) {
 			total += delta
+			if contentFlag {
+				resultArr = append(resultArr, newArr...)
+			}
+		} else if contentFlag {
+			resultArr = append(resultArr, oldArr...)
 		}
 		pos = end
 	}
+	return resultArr, total
+}
+
+func rewriteContent(dataArr []byte, oldArr []byte, newArr []byte) []byte {
+	resultArr, _ := rewriteScan(dataArr, oldArr, newArr, true)
+	return resultArr
+}
+
+func rewrittenSize(dataArr []byte, oldArr []byte, newArr []byte) int {
+	_, total := rewriteScan(dataArr, oldArr, newArr, false)
 	return total
 }
 
@@ -133,7 +136,6 @@ func (obj *Obj) GoPublishable(key string, version string, detectionObj core.Dete
 	if !detectionObj.IsGo || detectionObj.Conflict || candidateObj == nil {
 		return false
 	}
-	// Unbuildable module-zip trees are deliberately excluded from Go overlay routes.
 	if detectionObj.GoZipBlocked {
 		return false
 	}

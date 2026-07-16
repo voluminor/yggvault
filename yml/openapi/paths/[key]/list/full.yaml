@@ -19,14 +19,18 @@ get:
           description: Strong cache validator for the generated response body.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Cache policy for generated metadata.
           schema:
             type: string
+            example: public, must-revalidate, max-age=300
       content:
         text/plain:
           schema:
             type: string
+          example: >-
+            [{"version":"v0.3.4","hash":"0123456789abcdef0123456789abcdef0123456789abcdef","size":7340032}]
     '304':
       $ref: responses/not_modified
     '400':

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/voluminor/yggvault/mod/archive"
 	"github.com/voluminor/yggvault/mod/core"
@@ -19,19 +21,16 @@ import (
 // // // // // // // // // //
 
 const (
-	// cVerifyRecentRanks is the recent tier boundary: ranks 1..N use recent_interval, older ranks use archive_interval.
 	cVerifyRecentRanks = 10
 
-	// cMaxDeepVerifiesPerKey caps scheduled deep checks per key per cycle; latest is outside this cap.
-	// Rows created before verified_ts existed look immediately due, so the cap prevents a single large key
-	// from causing a download storm after upgrade.
 	cMaxDeepVerifiesPerKey = 5
+
+	cMaxReleaseNotesBytes = 128 << 10
 )
 
 // // // // // // // // // //
 
 func (obj *Obj) runKey(ctx context.Context, key string, forceRefresh bool, cycleStart time.Time) {
-	// Key stats are reconciled per key so one slow key does not delay latest visibility for the rest.
 	defer obj.reconcileKeyStats(ctx, key)
 	if obj.suppressedKey(key) {
 		if statsObj := obj.cycleStats(); statsObj != nil {
@@ -39,6 +38,7 @@ func (obj *Obj) runKey(ctx context.Context, key string, forceRefresh bool, cycle
 		}
 		return
 	}
+	defer obj.raiseQuarantineSummary(ctx, key)
 	if statsObj := obj.cycleStats(); statsObj != nil {
 		statsObj.keysProcessed.Add(1)
 	}
@@ -85,49 +85,64 @@ func (obj *Obj) runKey(ctx context.Context, key string, forceRefresh bool, cycle
 
 func (obj *Obj) persistDiscovery(ctx context.Context, key string, rootURL string, discoveryObj source.DiscoveryResultObj, priorObj core.KeySourceObj) core.KeySourceObj {
 	ksObj := core.KeySourceObj{
-		Key:       key,
-		URL:       rootURL,
-		Class:     discoveryObj.Class.String(),
-		WebAddr:   discoveryObj.WebAddr,
-		YggAddr:   discoveryObj.YggAddr,
-		OriginURL: priorObj.OriginURL,
-		// Listing mode survives reclassification so recovery cannot erase conflict protection.
+		Key:         key,
+		URL:         rootURL,
+		Class:       discoveryObj.Class.String(),
+		WebAddr:     discoveryObj.WebAddr,
+		YggAddr:     discoveryObj.YggAddr,
+		OriginURL:   priorObj.OriginURL,
 		ListingMode: priorObj.ListingMode,
 	}
 	_ = obj.storageObj.PutKeySource(ctx, ksObj)
 	return ksObj
 }
 
-// dropUnstorableReleases removes names that cannot be published as semver or raw versions.
-// The input slice is not mutated because it may belong to the source layer.
-func dropUnstorableReleases(releaseArr []source.GitReleaseObj) []source.GitReleaseObj {
+func dropUnstorableVersions[T any](entryArr []T, versionOf func(T) string) []T {
 	storable := func(version string) bool {
 		return util.IsStorableSemver(version) || util.IsStorableRawVersion(version)
 	}
 	firstBad := -1
-	for i := range releaseArr {
-		if !storable(releaseArr[i].Version) {
+	for i := range entryArr {
+		if !storable(versionOf(entryArr[i])) {
 			firstBad = i
 			break
 		}
 	}
 	if firstBad < 0 {
-		return releaseArr
+		return entryArr
 	}
-	outArr := make([]source.GitReleaseObj, 0, len(releaseArr)-1)
-	outArr = append(outArr, releaseArr[:firstBad]...)
-	for i := firstBad + 1; i < len(releaseArr); i++ {
-		if storable(releaseArr[i].Version) {
-			outArr = append(outArr, releaseArr[i])
+	outArr := make([]T, 0, len(entryArr)-1)
+	outArr = append(outArr, entryArr[:firstBad]...)
+	for i := firstBad + 1; i < len(entryArr); i++ {
+		if storable(versionOf(entryArr[i])) {
+			outArr = append(outArr, entryArr[i])
 		}
 	}
 	return outArr
 }
 
-// listGitVersions implements sticky listing mode: releases are preferred, tags are fallback.
-// Mode selection, conflict probes, and availability use only storable names, so rolling aliases and prereleases
-// cannot lock a key into an empty releases mode. persistMode=false is used for opportunistic brother-origin
-// fallback; the decision is then ephemeral and cannot freeze the key.
+func dropUnstorableReleases(releaseArr []source.GitReleaseObj) []source.GitReleaseObj {
+	return dropUnstorableVersions(releaseArr, func(releaseObj source.GitReleaseObj) string { return releaseObj.Version })
+}
+
+func truncateUTF8(text string, maxBytes int, suffix string) string {
+	if len(text) <= maxBytes {
+		return text
+	}
+	limitValue := maxBytes - len(suffix)
+	if limitValue < 0 {
+		limitValue = 0
+	}
+	for limitValue > 0 && !utf8.RuneStart(text[limitValue]) {
+		limitValue--
+	}
+	return text[:limitValue] + suffix
+}
+
+func truncateReleaseNotes(notesText string) string {
+	return truncateUTF8(notesText, cMaxReleaseNotesBytes, "\n\n_[notes truncated]_")
+}
+
 func (obj *Obj) listGitVersions(ctx context.Context, key string, sourceURL string, listingMode string, persistMode bool, cycleStart time.Time) ([]source.GitReleaseObj, bool, bool) {
 	depth := obj.configObj.Rescan.InitialDepth
 
@@ -144,11 +159,12 @@ func (obj *Obj) listGitVersions(ctx context.Context, key string, sourceURL strin
 			return nil, false, false
 		}
 		releaseArr = dropUnstorableReleases(releaseArr)
-		_ = obj.stateObj.MarkAvailable(key, len(releaseArr) > 0, cycleStart)
+		if err := obj.stateObj.MarkAvailable(key, len(releaseArr) > 0, cycleStart); err == nil {
+			obj.clearKeyUnavailable(key)
+		}
 		return releaseArr, truncated, true
 
 	case core.ListingModeTags:
-		// A failed probe is not a conflict: transient upstream errors must not freeze a key.
 		probeArr, _, probeErr := obj.sourceObj.Releases(ctx, sourceURL, 1)
 		if probeErr == nil && len(dropUnstorableReleases(probeArr)) > 0 {
 			obj.raiseListingModeConflict(key)
@@ -161,7 +177,9 @@ func (obj *Obj) listGitVersions(ctx context.Context, key string, sourceURL strin
 			return nil, false, false
 		}
 		tagArr = dropUnstorableReleases(tagArr)
-		_ = obj.stateObj.MarkAvailable(key, len(tagArr) > 0, cycleStart)
+		if err := obj.stateObj.MarkAvailable(key, len(tagArr) > 0, cycleStart); err == nil {
+			obj.clearKeyUnavailable(key)
+		}
 		return tagArr, truncated, true
 
 	default:
@@ -169,8 +187,6 @@ func (obj *Obj) listGitVersions(ctx context.Context, key string, sourceURL strin
 	}
 }
 
-// listGitUndecided resolves listing mode by trying releases first, then tags.
-// A 404 from the releases endpoint means "no releases feature" for Gitea/Forgejo-style forges, not outage.
 func (obj *Obj) listGitUndecided(ctx context.Context, key string, sourceURL string, depth uint, persistMode bool, cycleStart time.Time) ([]source.GitReleaseObj, bool, bool) {
 	releaseArr, truncated, err := obj.sourceObj.Releases(ctx, sourceURL, depth)
 	if err != nil && !source.IsNotFound(err) {
@@ -183,7 +199,9 @@ func (obj *Obj) listGitUndecided(ctx context.Context, key string, sourceURL stri
 		if persistMode {
 			obj.persistListingMode(ctx, key, core.ListingModeReleases)
 		}
-		_ = obj.stateObj.MarkAvailable(key, true, cycleStart)
+		if err := obj.stateObj.MarkAvailable(key, true, cycleStart); err == nil {
+			obj.clearKeyUnavailable(key)
+		}
 		return releaseArr, truncated, true
 	}
 	tagArr, tagTruncated, tagErr := obj.sourceObj.Tags(ctx, sourceURL, depth)
@@ -197,11 +215,14 @@ func (obj *Obj) listGitUndecided(ctx context.Context, key string, sourceURL stri
 		if persistMode {
 			obj.persistListingMode(ctx, key, core.ListingModeTags)
 		}
-		_ = obj.stateObj.MarkAvailable(key, true, cycleStart)
+		if err := obj.stateObj.MarkAvailable(key, true, cycleStart); err == nil {
+			obj.clearKeyUnavailable(key)
+		}
 		return tagArr, tagTruncated, true
 	}
-	// Both listings are empty: the key is reachable, but no storable mode has been proven yet.
-	_ = obj.stateObj.MarkAvailable(key, false, cycleStart)
+	if err := obj.stateObj.MarkAvailable(key, false, cycleStart); err == nil {
+		obj.clearKeyUnavailable(key)
+	}
 	return nil, false, true
 }
 
@@ -216,7 +237,6 @@ func (obj *Obj) persistListingMode(ctx context.Context, key string, mode string)
 	}
 }
 
-// gitCycleCountersObj summarizes one git key's cycle decisions for debug logs.
 type gitCycleCountersObj struct {
 	newIngested int
 	skipped     int
@@ -281,14 +301,12 @@ func (obj *Obj) ingestGit(ctx context.Context, key string, sourceURL string, cyc
 	}
 }
 
-// processGitRelease decides whether one listed version needs download, resurrection, heal, or deep verification.
 func (obj *Obj) processGitRelease(ctx context.Context, key string, releaseObj source.GitReleaseObj, upstreamSeq int64, refsObj map[string]string, localObj map[string]core.VersionObj, rankObj map[string]int, cycleStart time.Time, forceRefresh bool, verifyBudget *int, countersObj *gitCycleCountersObj) {
 	refSHA := refsObj[releaseObj.Version]
 	existingObj, hasRow := localObj[releaseObj.Version]
 	if !hasRow {
-		// A deterministic failure for the same SHA is useless to redownload until content changes.
 		if forceRefresh {
-			obj.clearPermanentFailure(key, releaseObj.Version)
+			obj.forceClearPermanentFailure(ctx, key, releaseObj.Version)
 		} else if obj.permanentFailureSkip(key, releaseObj.Version, refSHA) {
 			countersObj.skippedPerm++
 			return
@@ -313,10 +331,9 @@ func (obj *Obj) processGitRelease(ctx context.Context, key string, releaseObj so
 	case refKnown && existingObj.UpstreamRef != refSHA:
 		refetchFlag = true
 	case existingObj.HealPending:
-		// Blocked Go zip with all other artifacts present can heal without download.
 		refetchFlag = !obj.clearBlockedGoHeal(ctx, key, releaseObj.Version, existingObj)
 	default:
-		if verifyDue(existingObj, rankObj[releaseObj.Version], cycleStart, obj.configObj.Rescan.Verify.RecentInterval, obj.configObj.Rescan.Verify.ArchiveInterval) {
+		if verifyDue(existingObj, rankObj[releaseObj.Version], refKnown, cycleStart, obj.configObj.Rescan.Verify.RecentInterval, obj.configObj.Rescan.Verify.ArchiveInterval) {
 			switch {
 			case rankObj[releaseObj.Version] == 0:
 				verifyFlag = true
@@ -331,7 +348,7 @@ func (obj *Obj) processGitRelease(ctx context.Context, key string, releaseObj so
 
 	if !refetchFlag && !verifyFlag {
 		countersObj.skipped++
-		// Rows without ref can silently adopt the current SHA from the same source.
+		obj.markVersionTerminalSuccess(ctx, key, releaseObj.Version)
 		if refSHA != "" && existingObj.UpstreamRef == "" {
 			if touchErr := obj.storageObj.TouchVersionVerified(ctx, key, releaseObj.Version, time.Time{}, refSHA); touchErr == nil {
 				countersObj.adopted++
@@ -341,7 +358,7 @@ func (obj *Obj) processGitRelease(ctx context.Context, key string, releaseObj so
 	}
 
 	if forceRefresh {
-		obj.clearPermanentFailure(key, releaseObj.Version)
+		obj.forceClearPermanentFailure(ctx, key, releaseObj.Version)
 	} else if obj.permanentFailureSkip(key, releaseObj.Version, refSHA) {
 		countersObj.skippedPerm++
 		return
@@ -354,14 +371,11 @@ func (obj *Obj) processGitRelease(ctx context.Context, key string, releaseObj so
 	} else {
 		countersObj.refetched++
 	}
-	// Publish may cheap-skip by tree hash, so mark verification explicitly.
 	_ = obj.storageObj.TouchVersionVerified(ctx, key, releaseObj.Version, time.Now().UTC(), refSHA)
 }
 
-// verifyDue reports whether a version needs deep verification: rank 0 every cycle, legacy rows immediately,
-// then by tiered interval.
-func verifyDue(versionObj core.VersionObj, rank int, now time.Time, recentInterval time.Duration, archiveInterval time.Duration) bool {
-	if rank == 0 {
+func verifyDue(versionObj core.VersionObj, rank int, shaConfirmed bool, now time.Time, recentInterval time.Duration, archiveInterval time.Duration) bool {
+	if rank == 0 && !shaConfirmed {
 		return true
 	}
 	if versionObj.VerifiedTS.IsZero() {
@@ -374,7 +388,6 @@ func verifyDue(versionObj core.VersionObj, rank int, now time.Time, recentInterv
 	return now.Sub(versionObj.VerifiedTS) >= intervalValue
 }
 
-// fetchRefs returns tag-to-SHA once per key per cycle; failure disables SHA checks without changing availability.
 func (obj *Obj) fetchRefs(ctx context.Context, key string, sourceURL string) map[string]string {
 	refsObj, err := obj.sourceObj.Refs(ctx, sourceURL)
 	if err != nil {
@@ -389,8 +402,6 @@ func (obj *Obj) fetchRefs(ctx context.Context, key string, sourceURL string) map
 	return refsObj
 }
 
-// localGitState loads all key versions once: version map and active rank map where 0 is newest.
-// Read failure returns nil maps, which safely falls back to full re-download.
 func (obj *Obj) localGitState(ctx context.Context, key string) (map[string]core.VersionObj, map[string]int) {
 	versionArr, err := obj.storageObj.ListVersions(ctx, key, true)
 	if err != nil {
@@ -409,8 +420,6 @@ func (obj *Obj) localGitState(ctx context.Context, key string) (map[string]core.
 	return byVersionObj, rankByVersionObj
 }
 
-// minListedSeq returns the minimum source position among listed versions. Rows below it are older than
-// the listing window and exempt from deletion grace. Unknown positions are skipped; 0 disables exemption.
 func minListedSeq(releaseArr []source.GitReleaseObj, localObj map[string]core.VersionObj, seqByVersion map[string]int64) int64 {
 	minSeq := int64(0)
 	for i := range releaseArr {
@@ -431,8 +440,6 @@ func minListedSeq(releaseArr []source.GitReleaseObj, localObj map[string]core.Ve
 	return minSeq
 }
 
-// minReleaseVersion returns the semver floor of the listing window. Raw names use minListedSeq instead;
-// semver keeps its own floor because source seq order can diverge from semver order.
 func minReleaseVersion(releaseArr []source.GitReleaseObj) string {
 	floor := ""
 	for i := range releaseArr {
@@ -451,9 +458,6 @@ func minReleaseVersion(releaseArr []source.GitReleaseObj) string {
 	return floor
 }
 
-// assignUpstreamSeqs assigns source positions to not-yet-published listed versions before publication.
-// Existing versions keep their position; read failure skips assignment so publish can fall back to max+1.
-// localObj is an optional snapshot to avoid one GetVersion per release.
 func (obj *Obj) assignUpstreamSeqs(ctx context.Context, key string, versionArr []string, localObj map[string]core.VersionObj) map[string]int64 {
 	baseSeq, err := obj.storageObj.MaxUpstreamSeq(ctx, key)
 	if err != nil {
@@ -487,10 +491,11 @@ func (obj *Obj) assignUpstreamSeqs(ctx context.Context, key string, versionArr [
 }
 
 type fetchedArchiveObj struct {
-	sourceHash core.HashObj
-	sourceSize uint64
-	entries    []core.StagedEntryObj
-	blobs      []core.StagedBlobObj
+	sourceHash      core.HashObj
+	sourceSize      uint64
+	entries         []core.StagedEntryObj
+	blobs           []core.StagedBlobObj
+	droppedSymlinks []string
 }
 
 func (obj *Obj) fetchExtractArchive(ctx context.Context, key string, version string, archiveURL string, format string, spoolObj *storage.BlobSpoolObj) (fetchedArchiveObj, string, error) {
@@ -520,14 +525,14 @@ func (obj *Obj) fetchExtractArchive(ctx context.Context, key string, version str
 		return fetchedArchiveObj{}, "archive_invalid", err
 	}
 	return fetchedArchiveObj{
-		sourceHash: sourceHashObj,
-		sourceSize: fetchObj.SizeBytes,
-		entries:    extractObj.Entries,
-		blobs:      extractObj.Blobs,
+		sourceHash:      sourceHashObj,
+		sourceSize:      fetchObj.SizeBytes,
+		entries:         extractObj.Entries,
+		blobs:           extractObj.Blobs,
+		droppedSymlinks: extractObj.DroppedSymlinks,
 	}, "", nil
 }
 
-// ingestGitVersion downloads an archive and publishes a version; true means publish or cheap-skip succeeded.
 func (obj *Obj) ingestGitVersion(ctx context.Context, key string, releaseObj source.GitReleaseObj, upstreamSeq int64, upstreamRef string) bool {
 	spoolObj, err := obj.storageObj.NewBlobSpool(ctx)
 	if err != nil {
@@ -544,33 +549,31 @@ func (obj *Obj) ingestGitVersion(ctx context.Context, key string, releaseObj sou
 	archiveObj, phaseText, err := obj.fetchExtractArchive(ctx, key, releaseObj.Version, releaseObj.ArchiveURL, releaseObj.Format, spoolObj)
 	if err != nil {
 		if phaseText == "fetch_failed" {
-			// Size overflow is content-deterministic, so retrying is useless until the upstream ref changes.
 			var limitErr *stcode.ErrArchiveLimitExceededObj
 			if errors.As(err, &limitErr) {
-				obj.recordPermanentFailure(key, releaseObj.Version, upstreamRef)
+				obj.recordPermanentFailure(ctx, key, releaseObj.Version, upstreamRef, "fetch_failed", err.Error())
 			}
 		}
 		if phaseText == "archive_invalid" {
-			// Extraction failures are deterministic for this archive content.
-			obj.recordPermanentFailure(key, releaseObj.Version, upstreamRef)
+			obj.recordPermanentFailure(ctx, key, releaseObj.Version, upstreamRef, "archive_invalid", err.Error())
 		}
 		obj.raiseVersionDegraded(key, releaseObj.Version, phaseText, err)
 		return false
 	}
 
-	obj.clearPermanentFailure(key, releaseObj.Version)
 	return obj.publishVersion(ctx, publishInputObj{
-		key:          key,
-		version:      releaseObj.Version,
-		releaseNotes: releaseObj.BodyMD,
-		sourceHash:   archiveObj.sourceHash,
-		sourceSize:   archiveObj.sourceSize,
-		upstreamSeq:  upstreamSeq,
-		upstreamRef:  upstreamRef,
-		verifiedTS:   time.Now().UTC(),
-		entries:      archiveObj.entries,
-		blobs:        archiveObj.blobs,
-		spool:        spoolObj,
+		key:             key,
+		version:         releaseObj.Version,
+		releaseNotes:    truncateReleaseNotes(releaseObj.BodyMD),
+		sourceHash:      archiveObj.sourceHash,
+		sourceSize:      archiveObj.sourceSize,
+		upstreamSeq:     upstreamSeq,
+		upstreamRef:     upstreamRef,
+		verifiedTS:      time.Now().UTC(),
+		entries:         archiveObj.entries,
+		blobs:           archiveObj.blobs,
+		droppedSymlinks: archiveObj.droppedSymlinks,
+		spool:           spoolObj,
 	}, &committed)
 }
 
@@ -590,13 +593,22 @@ type publishInputObj struct {
 	permanentFailureRef  string
 	entries              []core.StagedEntryObj
 	blobs                []core.StagedBlobObj
+	droppedSymlinks      []string
 	spool                *storage.BlobSpoolObj
 }
 
-// cRawVersionEvidence marks raw versions in detection evidence; the version name remains the source of truth.
 const cRawVersionEvidence = `{"raw_version":true}`
 
-// detectTree skips ecosystem detection for raw versions so they publish only universal archives.
+const cOverlayFallbackCode = "materialization_error"
+
+func healQuarantineCode(derr error) (string, bool) {
+	code, _ := overlay.DegradedReason(derr)
+	if code == cOverlayFallbackCode {
+		return code, false
+	}
+	return "heal_failed", true
+}
+
 func (obj *Obj) detectTree(ctx context.Context, version string, treeArr []core.TreeEntryObj, spoolSrc spoolSourceObj) (overlay.DetectionResultObj, error) {
 	if util.IsRawVersionName(version) {
 		return overlay.DetectionResultObj{Detection: core.DetectionObj{EvidenceJSON: cRawVersionEvidence}}, nil
@@ -604,26 +616,68 @@ func (obj *Obj) detectTree(ctx context.Context, version string, treeArr []core.T
 	return obj.overlayObj.Detect(ctx, treeArr, spoolSrc)
 }
 
-// publishVersion returns true for terminal success: publish, tree-hash skip, resurrection, or heal.
+func (inObj publishInputObj) failureRef(treeHashObj core.HashObj) string {
+	switch {
+	case inObj.permanentFailureRef != "":
+		return inObj.permanentFailureRef
+	case inObj.upstreamRef != "":
+		return inObj.upstreamRef
+	case !inObj.expectedTreeHash.IsZero():
+		return inObj.expectedTreeHash.Hex()
+	case !treeHashObj.IsZero():
+		return treeHashObj.Hex()
+	default:
+		return inObj.sourceHash.Hex()
+	}
+}
+
+func droppedSymlinkEventMessage(pathArr []string) string {
+	if len(pathArr) == 0 {
+		return ""
+	}
+	const prefixText = "dropped "
+	const middleText = " escaping symlinks: "
+	builderObj := strings.Builder{}
+	builderObj.Grow(128)
+	builderObj.WriteString(prefixText)
+	_, _ = fmt.Fprint(&builderObj, len(pathArr))
+	builderObj.WriteString(middleText)
+	for i := range pathArr {
+		partText := pathArr[i]
+		if i > 0 {
+			partText = ", " + partText
+		}
+		if builderObj.Len()+len(partText) > cMaxFailureMessageBytes-len(" ...") {
+			builderObj.WriteString(" ...")
+			return builderObj.String()
+		}
+		builderObj.WriteString(partText)
+	}
+	return builderObj.String()
+}
+
+func droppedSymlinkSample(pathArr []string) []string {
+	if len(pathArr) <= 16 {
+		return append([]string(nil), pathArr...)
+	}
+	return append([]string(nil), pathArr[:16]...)
+}
+
 func (obj *Obj) publishVersion(ctx context.Context, inObj publishInputObj, committed *bool) bool {
 	treeArr, treeHashObj, err := obj.storageObj.CanonicalTree(inObj.entries, inObj.key, inObj.version)
 	if err != nil {
-		if inObj.permanentFailureRef != "" {
-			obj.recordPermanentFailure(inObj.key, inObj.version, inObj.permanentFailureRef)
-		}
+		obj.recordPermanentFailure(ctx, inObj.key, inObj.version, inObj.failureRef(core.HashObj{}), "tree_invalid", err.Error())
 		obj.raiseVersionDegraded(inObj.key, inObj.version, "tree_invalid", err)
 		return false
 	}
 	if !inObj.expectedTreeHash.IsZero() && treeHashObj != inObj.expectedTreeHash {
-		if inObj.permanentFailureRef != "" {
-			obj.recordPermanentFailure(inObj.key, inObj.version, inObj.permanentFailureRef)
-		}
 		codeText := inObj.treeHashMismatchCode
 		if codeText == "" {
 			codeText = "tree_hash_mismatch"
 		}
-		obj.raiseVersionDegraded(inObj.key, inObj.version, codeText,
-			fmt.Errorf("expected tree hash %s, got %s", inObj.expectedTreeHash.Hex(), treeHashObj.Hex()))
+		hashErr := fmt.Errorf("expected tree hash %s, got %s", inObj.expectedTreeHash.Hex(), treeHashObj.Hex())
+		obj.recordPermanentFailure(ctx, inObj.key, inObj.version, inObj.failureRef(treeHashObj), codeText, hashErr.Error())
+		obj.raiseVersionDegraded(inObj.key, inObj.version, codeText, hashErr)
 		return false
 	}
 	existingObj, ok, getErr := obj.storageObj.GetVersion(ctx, inObj.key, inObj.version)
@@ -633,11 +687,15 @@ func (obj *Obj) publishVersion(ctx context.Context, inObj publishInputObj, commi
 				obj.raiseVersionDegraded(inObj.key, inObj.version, "resurrect_failed", resErr)
 				return false
 			}
+			obj.markVersionTerminalSuccess(ctx, inObj.key, inObj.version)
 			return true
 		}
 		if existingObj.HealPending {
-			obj.healIncompleteArtifacts(ctx, inObj, treeArr, treeHashObj)
+			if !obj.healIncompleteArtifacts(ctx, inObj, treeArr, treeHashObj) {
+				return false
+			}
 		}
+		obj.markVersionTerminalSuccess(ctx, inObj.key, inObj.version)
 		return true
 	}
 
@@ -647,8 +705,10 @@ func (obj *Obj) publishVersion(ctx context.Context, inObj publishInputObj, commi
 		obj.raiseVersionDegraded(inObj.key, inObj.version, "detect_failed", err)
 		return false
 	}
-	// Log once for a valid version whose tree cannot produce a Go module zip.
 	if detectionObj.Detection.GoZipBlocked {
+		if strings.Contains(detectionObj.Detection.GoZipBlockReason, overlay.GoZipUnclassifiedLabel) {
+			obj.metricsObj.recordGoZipUnclassified()
+		}
 		obj.logObj.Info().
 			Str("component", "rescan").
 			Str("key", inObj.key).
@@ -675,13 +735,33 @@ func (obj *Obj) publishVersion(ctx context.Context, inObj publishInputObj, commi
 		HealPending:     !completeFlag,
 		ReleaseNotes:    inObj.releaseNotes,
 	}
+	if len(inObj.droppedSymlinks) > 0 {
+		stagedObj.EventMessage = droppedSymlinkEventMessage(inObj.droppedSymlinks)
+	}
 	*committed = true
 	resultObj, err := obj.storageObj.PublishStaged(ctx, inObj.spool, stagedObj)
 	if err != nil {
+		if errors.Is(err, storage.ErrStagedSymlinkRejected) {
+			obj.recordPermanentFailure(ctx, inObj.key, inObj.version, inObj.failureRef(treeHashObj), "tree_invalid", err.Error())
+			obj.raiseVersionDegraded(inObj.key, inObj.version, "tree_invalid", err)
+			return false
+		}
 		obj.raiseVersionDegraded(inObj.key, inObj.version, "publish_failed", err)
 		return false
 	}
+	obj.markVersionTerminalSuccess(ctx, inObj.key, inObj.version)
 	obj.metricsObj.recordVersionPublished()
+	if len(inObj.droppedSymlinks) > 0 {
+		obj.metricsObj.recordDegradedPublish()
+		obj.metricsObj.recordDroppedSymlinks(len(inObj.droppedSymlinks))
+		obj.logObj.Warn().
+			Str("component", "rescan").
+			Str("key", inObj.key).
+			Str("version", inObj.version).
+			Int("dropped_symlinks", len(inObj.droppedSymlinks)).
+			Strs("sample", droppedSymlinkSample(inObj.droppedSymlinks)).
+			Msg("published version after dropping escaping symlinks")
+	}
 	if statsObj := obj.cycleStats(); statsObj != nil {
 		if resultObj.Published {
 			statsObj.versionsPublished.Add(1)
@@ -754,20 +834,21 @@ func storedArtifactKey(artifactObj core.ArtifactObj) string {
 	return artifactObj.MaterializerID + "\x00" + artifactObj.ArtifactKind + "\x00" + artifactObj.ListenerID
 }
 
-func (obj *Obj) healIncompleteArtifacts(ctx context.Context, inObj publishInputObj, treeArr []core.TreeEntryObj, treeHashObj core.HashObj) {
+func (obj *Obj) healIncompleteArtifacts(ctx context.Context, inObj publishInputObj, treeArr []core.TreeEntryObj, treeHashObj core.HashObj) bool {
 	spoolSrc := newSpoolSource(treeArr, inObj.blobs, obj.storageObj)
 	detectionObj, err := obj.detectTree(ctx, inObj.version, treeArr, spoolSrc)
 	if err != nil {
-		return
+		return false
 	}
-	// Legacy rows may predate Go-zip block detection; persist it or goproxy would advertise
-	// an impossible version and heal would keep retrying.
 	if storedObj, ok, getErr := obj.storageObj.GetDetection(ctx, inObj.key, inObj.version); getErr == nil && ok &&
 		(storedObj.GoZipBlocked != detectionObj.Detection.GoZipBlocked || storedObj.GoZipBlockReason != detectionObj.Detection.GoZipBlockReason) {
 		if putErr := obj.storageObj.PutDetection(ctx, inObj.key, inObj.version, detectionObj.Detection); putErr != nil {
-			return
+			return false
 		}
 		if detectionObj.Detection.GoZipBlocked {
+			if strings.Contains(detectionObj.Detection.GoZipBlockReason, overlay.GoZipUnclassifiedLabel) {
+				obj.metricsObj.recordGoZipUnclassified()
+			}
 			obj.logObj.Info().
 				Str("component", "rescan").
 				Str("key", inObj.key).
@@ -779,16 +860,17 @@ func (obj *Obj) healIncompleteArtifacts(ctx context.Context, inObj publishInputO
 	planArr := obj.overlayObj.ArtifactPlan(spoolSrc, inObj.key, inObj.version, treeHashObj, detectionObj.Detection, detectionObj.Go, detectionObj.RewriteBlobs, obj.listenerArr)
 	existingArr, err := obj.storageObj.ListArtifacts(ctx, inObj.key, inObj.version)
 	if err != nil {
-		return
+		return false
 	}
 	haveSet := make(map[string]struct{}, len(existingArr))
 	for i := range existingArr {
 		haveSet[storedArtifactKey(existingArr[i])] = struct{}{}
 	}
 	registerFailed := false
+	materializeFailed := false
 	for i := range planArr {
 		if ctx.Err() != nil {
-			return
+			return false
 		}
 		planObj := planArr[i]
 		if _, exists := haveSet[planArtifactKey(planObj)]; exists {
@@ -797,10 +879,14 @@ func (obj *Obj) healIncompleteArtifacts(ctx context.Context, inObj publishInputO
 		digestObj, derr := obj.digestGated(ctx, planObj.Builder)
 		if derr != nil {
 			if ctx.Err() != nil {
-				return
+				return false
 			}
-			code, _ := overlay.DegradedReason(derr)
-			obj.raiseVersionDegraded(inObj.key, inObj.version, code, derr)
+			codeText, permanentFlag := healQuarantineCode(derr)
+			obj.raiseVersionDegraded(inObj.key, inObj.version, codeText, derr)
+			if permanentFlag {
+				obj.recordPermanentFailure(ctx, inObj.key, inObj.version, inObj.failureRef(treeHashObj), codeText, derr.Error())
+			}
+			materializeFailed = true
 			continue
 		}
 		if rerr := obj.storageObj.RegisterArtifact(ctx, artifactFromPlan(planObj, inObj.key, inObj.version, digestObj)); rerr != nil {
@@ -808,13 +894,12 @@ func (obj *Obj) healIncompleteArtifacts(ctx context.Context, inObj publishInputO
 			registerFailed = true
 		}
 	}
-	if !registerFailed {
+	if !registerFailed && !materializeFailed {
 		_ = obj.storageObj.SetHealPending(ctx, inObj.key, inObj.version, false)
 	}
+	return !registerFailed && !materializeFailed
 }
 
-// clearBlockedGoHeal clears legacy HealPending without refetching when the stored detection already proves
-// that Go artifacts are intentionally blocked and every remaining planned artifact exists.
 func (obj *Obj) clearBlockedGoHeal(ctx context.Context, key string, version string, versionObj core.VersionObj) bool {
 	detectionObj, ok, err := obj.storageObj.GetDetection(ctx, key, version)
 	if err != nil || !ok || !detectionObj.GoZipBlocked {

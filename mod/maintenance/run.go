@@ -1,18 +1,16 @@
-package main
+package maintenance
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/signal"
 	"sort"
 	"strings"
 	"syscall"
 
 	"github.com/rs/zerolog"
 
-	"github.com/voluminor/yggvault/mod/cli"
 	"github.com/voluminor/yggvault/mod/mesh"
 	"github.com/voluminor/yggvault/mod/overlay"
 	"github.com/voluminor/yggvault/mod/storage"
@@ -22,14 +20,8 @@ import (
 // // // // // // // // // //
 
 const (
-	// cMaintenanceKeyPage — page size when iterating storage keys (keyset pagination).
 	cMaintenanceKeyPage = 512
 )
-
-// errAlreadyReported — sentinel: the error has already been rendered (json to stderr); main just exits with code 1.
-var errAlreadyReported = errors.New("maintenance error already reported")
-
-// // // // // // // // // //
 
 func isStorageLockError(err error) bool {
 	return errors.Is(err, syscall.EAGAIN) ||
@@ -45,21 +37,6 @@ func openStorageExclusive(ctx context.Context, configObj *stconf.ConfigObj, logA
 		return nil, err
 	}
 	return storeObj, nil
-}
-
-func maintenanceCommandName(maintenanceObj cli.MaintenanceObj) string {
-	switch {
-	case maintenanceObj.Inspect:
-		return cli.CommandInspect
-	case maintenanceObj.Vacuum:
-		return cli.CommandVacuum
-	case maintenanceObj.Prune:
-		return cli.CommandPrune
-	case maintenanceObj.RebuildCache:
-		return cli.CommandRebuildCache
-	default:
-		return "maintenance"
-	}
 }
 
 func allDistinctKeys(ctx context.Context, storeObj *storage.Obj) ([]string, error) {
@@ -87,47 +64,42 @@ func allDistinctKeys(ctx context.Context, storeObj *storage.Obj) ([]string, erro
 
 // // // // // // // // // //
 
-func runMaintenance(bootObj *cli.Obj) error {
-	maintenanceObj := bootObj.Maintenance
-
-	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stopSignals()
-
+// Run executes a maintenance command over exclusively opened storage.
+func Run(ctx context.Context, configObj *stconf.ConfigObj, requestObj RequestObj, logArr ...zerolog.Logger) error {
 	storageLogArr := []zerolog.Logger(nil)
-	if !maintenanceObj.JsonOutput {
-		storageLogArr = append(storageLogArr, *bootObj.Logger.Zero())
+	if !requestObj.JsonOutput {
+		storageLogArr = append(storageLogArr, logArr...)
 	}
-	storeObj, err := openStorageExclusive(ctx, bootObj.Config, storageLogArr...)
+	storeObj, err := openStorageExclusive(ctx, configObj, storageLogArr...)
 	if err != nil {
-		return reportMaintenanceError(maintenanceObj, err)
+		return reportError(requestObj, err)
 	}
 	defer func() { _ = storeObj.Close(context.Background()) }()
 
-	if err = dispatchMaintenance(ctx, bootObj, storeObj); err != nil {
-		return reportMaintenanceError(maintenanceObj, err)
+	if err = dispatch(ctx, configObj, requestObj, storeObj); err != nil {
+		return reportError(requestObj, err)
 	}
 	return nil
 }
 
-func reportMaintenanceError(maintenanceObj cli.MaintenanceObj, err error) error {
-	if maintenanceObj.JsonOutput {
-		renderErrorJSON(os.Stderr, maintenanceCommandName(maintenanceObj), err)
-		return errAlreadyReported
+func reportError(requestObj RequestObj, err error) error {
+	if requestObj.JsonOutput {
+		renderErrorJSON(os.Stderr, requestObj.CommandName(), err)
+		return ReportedErrObj{Err: err}
 	}
 	return err
 }
 
-func dispatchMaintenance(ctx context.Context, bootObj *cli.Obj, storeObj *storage.Obj) error {
-	maintenanceObj := bootObj.Maintenance
+func dispatch(ctx context.Context, configObj *stconf.ConfigObj, requestObj RequestObj, storeObj *storage.Obj) error {
 	switch {
-	case maintenanceObj.Inspect:
-		return runInspect(ctx, storeObj, maintenanceObj.JsonOutput)
-	case maintenanceObj.Vacuum:
-		return runVacuum(ctx, storeObj, maintenanceObj.JsonOutput)
-	case maintenanceObj.Prune:
-		return runPrune(ctx, bootObj.Config, storeObj, maintenanceObj.Force, maintenanceObj.JsonOutput)
-	case maintenanceObj.RebuildCache:
-		return runRebuildCache(ctx, bootObj.Config, storeObj, maintenanceObj.JsonOutput)
+	case requestObj.Inspect:
+		return runInspect(ctx, storeObj, requestObj.JsonOutput)
+	case requestObj.Vacuum:
+		return runVacuum(ctx, storeObj, requestObj.JsonOutput)
+	case requestObj.Prune:
+		return runPrune(ctx, configObj, storeObj, requestObj.Force, requestObj.JsonOutput)
+	case requestObj.RebuildCache:
+		return runRebuildCache(ctx, configObj, storeObj, requestObj.JsonOutput)
 	default:
 		return errors.New("no maintenance command requested")
 	}
@@ -183,16 +155,17 @@ func runPrune(ctx context.Context, configObj *stconf.ConfigObj, storeObj *storag
 	beforeBytes := storeObj.DurableBytes()
 	itemArr := make([]pruneKeyViewObj, 0, len(staleArr))
 	var deletedVersions uint64
-	// DeleteKey deliberately does not touch shared blobs — RepairBlobRefs picks them up.
-	// A prune interrupted (error, Ctrl-C) without repair leaks orphan blobs forever:
-	// a re-run will no longer see the deleted keys. That is why repair runs to completion via defer.
 	repairPending := false
 	defer func() {
 		if !repairPending {
 			return
 		}
 		if repairErr := storeObj.RepairBlobRefs(context.WithoutCancel(ctx)); repairErr != nil {
-			fmt.Fprintf(os.Stderr, "prune: orphan blob repair failed: %v\n", repairErr)
+			if jsonOutput {
+				renderErrorJSON(os.Stderr, cCommandPrune, fmt.Errorf("orphan blob repair failed: %w", repairErr))
+			} else {
+				fmt.Fprintf(os.Stderr, "prune: orphan blob repair failed: %v\n", repairErr)
+			}
 		}
 	}()
 	for _, keyText := range staleArr {
@@ -208,7 +181,6 @@ func runPrune(ctx context.Context, configObj *stconf.ConfigObj, storeObj *storag
 		itemArr = append(itemArr, pruneKeyViewObj{Key: keyText, Versions: versionCount, ReclaimBytesEstimate: reclaimBytes})
 	}
 	if repairPending {
-		// Clear before the explicit attempt; defer must not run a second repair after a failed call.
 		repairPending = false
 		if err = storeObj.RepairBlobRefs(ctx); err != nil {
 			return err
@@ -239,7 +211,7 @@ func runRebuildCache(ctx context.Context, configObj *stconf.ConfigObj, storeObj 
 			return fmt.Errorf("derive ygg host: %w", err)
 		}
 	}
-	listenerArr := listenerContextsFromConfig(configObj, yggHost)
+	listenerArr := ListenersFromConfig(configObj, yggHost)
 
 	fingerprint := hostIdentityFingerprint(configObj, yggHost)
 	priorFingerprint, hadPrior, err := storeObj.GetGlobal(ctx, cHostIdentityGlobalKey)
@@ -248,14 +220,14 @@ func runRebuildCache(ctx context.Context, configObj *stconf.ConfigObj, storeObj 
 	}
 	hostChanged := hadPrior && priorFingerprint != fingerprint
 
-	resultObj, err := rebuildAllArtifacts(ctx, storeObj, overlayObj, listenerArr)
+	resultObj, err := RebuildArtifacts(ctx, storeObj, overlayObj, listenerArr)
 	if err != nil {
 		return err
 	}
 	if err = storeObj.SetGlobal(ctx, cHostIdentityGlobalKey, fingerprint); err != nil {
 		return err
 	}
-	if err = storeObj.SetGlobal(ctx, cArtifactLayoutGlobalKey, artifactLayoutFingerprint()); err != nil {
+	if err = storeObj.SetGlobal(ctx, ArtifactLayoutGlobalKey, ArtifactLayoutFingerprint()); err != nil {
 		return err
 	}
 	return renderRebuild(resultObj, hostChanged, jsonOutput)

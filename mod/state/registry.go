@@ -120,30 +120,81 @@ func (obj *Obj) unindexDiagnosticLocked(keyObj diagnosticKeyObj) {
 	}
 }
 
-func (obj *Obj) evictInactiveDiagnosticLocked() bool {
-	for index, keyObj := range obj.diagnosticOrder {
-		recordObj := obj.diagnosticMap[keyObj]
-		if recordObj == nil || recordObj.active {
-			continue
-		}
-
-		delete(obj.diagnosticMap, keyObj)
-		obj.unindexDiagnosticLocked(keyObj)
-		lastIndex := len(obj.diagnosticOrder) - 1
-		obj.diagnosticOrder[index] = obj.diagnosticOrder[lastIndex]
-		obj.diagnosticOrder[lastIndex] = diagnosticKeyObj{}
-		obj.diagnosticOrder = obj.diagnosticOrder[:lastIndex]
-		return true
+func keyFromDiagnosticRecordObj(recordObj *diagnosticRecordObj) diagnosticKeyObj {
+	return diagnosticKeyObj{
+		code:    recordObj.code,
+		scope:   recordObj.scope,
+		key:     recordObj.key,
+		version: recordObj.version,
 	}
-	return false
+}
+
+func (obj *Obj) pushInactiveTailLocked(recordObj *diagnosticRecordObj) {
+	if recordObj == nil {
+		return
+	}
+	if obj.inactiveTail == nil {
+		obj.inactiveHead = recordObj
+		obj.inactiveTail = recordObj
+		obj.inactiveLen++
+		return
+	}
+
+	recordObj.inactivePrev = obj.inactiveTail
+	obj.inactiveTail.inactiveNext = recordObj
+	obj.inactiveTail = recordObj
+	obj.inactiveLen++
+}
+
+func (obj *Obj) unlinkInactiveLocked(recordObj *diagnosticRecordObj) bool {
+	if recordObj == nil {
+		return false
+	}
+	if recordObj.inactivePrev == nil && recordObj.inactiveNext == nil && obj.inactiveHead != recordObj {
+		return false
+	}
+
+	if recordObj.inactivePrev != nil {
+		recordObj.inactivePrev.inactiveNext = recordObj.inactiveNext
+	} else {
+		obj.inactiveHead = recordObj.inactiveNext
+	}
+	if recordObj.inactiveNext != nil {
+		recordObj.inactiveNext.inactivePrev = recordObj.inactivePrev
+	} else {
+		obj.inactiveTail = recordObj.inactivePrev
+	}
+	recordObj.inactivePrev = nil
+	recordObj.inactiveNext = nil
+	if obj.inactiveLen > 0 {
+		obj.inactiveLen--
+	}
+	return true
+}
+
+func (obj *Obj) evictOldestInactiveLocked() bool {
+	recordObj := obj.inactiveHead
+	if recordObj == nil {
+		return false
+	}
+
+	keyObj := keyFromDiagnosticRecordObj(recordObj)
+	obj.unlinkInactiveLocked(recordObj)
+	delete(obj.diagnosticMap, keyObj)
+	obj.unindexDiagnosticLocked(keyObj)
+	return true
 }
 
 func (obj *Obj) upsertDiagnosticLocked(keyObj diagnosticKeyObj, diagnosticObj DiagnosticObj, now time.Time) (bool, error) {
 	if recordObj, ok := obj.diagnosticMap[keyObj]; ok {
+		reactivateFlag := !recordObj.active
 		structuralChange := !recordObj.active ||
 			recordObj.impact != diagnosticObj.Impact ||
 			recordObj.reason != diagnosticObj.Reason ||
 			recordObj.scope != diagnosticObj.Scope
+		if reactivateFlag {
+			obj.unlinkInactiveLocked(recordObj)
+		}
 		recordObj.scope = diagnosticObj.Scope
 		recordObj.impact = diagnosticObj.Impact
 		recordObj.reason = diagnosticObj.Reason
@@ -156,7 +207,7 @@ func (obj *Obj) upsertDiagnosticLocked(keyObj diagnosticKeyObj, diagnosticObj Di
 		return structuralChange, nil
 	}
 
-	if len(obj.diagnosticMap) >= obj.maxDiagnostics && !obj.evictInactiveDiagnosticLocked() {
+	if len(obj.diagnosticMap) >= obj.maxDiagnostics && !obj.evictOldestInactiveLocked() {
 		if obj.droppedDiagnostics < ^uint64(0) {
 			obj.droppedDiagnostics++
 		}
@@ -185,7 +236,6 @@ func (obj *Obj) upsertDiagnosticLocked(keyObj diagnosticKeyObj, diagnosticObj Di
 		count:     1,
 		active:    true,
 	}
-	obj.diagnosticOrder = append(obj.diagnosticOrder, storedKeyObj)
 	obj.indexDiagnosticLocked(storedKeyObj)
 	return true, nil
 }
@@ -205,6 +255,7 @@ func (obj *Obj) clearDiagnosticsLocked(key string, version string, versionOnly b
 			continue
 		}
 		recordObj.active = false
+		obj.pushInactiveTailLocked(recordObj)
 		changedFlag = true
 	}
 	return changedFlag
@@ -213,8 +264,9 @@ func (obj *Obj) clearDiagnosticsLocked(key string, version string, versionOnly b
 // //
 
 // RaiseDiagnostic creates or updates a diagnostic.
-// Repeating the same active diagnostic bumps count/lastSeen cheaply; structural changes rebuild the snapshot.
-// A full registry with no inactive record to evict returns an error and increments dropped diagnostics.
+// Repeating the same active diagnostic bumps count/lastSeen in place and republishes a rebuilt,
+// LastSeen-sorted snapshot. A full registry with no inactive record to evict returns an error and
+// increments dropped diagnostics.
 func (obj *Obj) RaiseDiagnostic(diagnosticObj DiagnosticObj) error {
 	if err := ensureObj(obj); err != nil {
 		return err
@@ -235,12 +287,10 @@ func (obj *Obj) RaiseDiagnostic(diagnosticObj DiagnosticObj) error {
 	keyObj := keyFromDiagnosticObj(diagnosticObj)
 	fullRebuildFlag, err := obj.upsertDiagnosticLocked(keyObj, diagnosticObj, time.Now().UTC())
 	switch {
-	case fullRebuildFlag:
-		obj.publishChangedLocked(true)
-	case err != nil:
+	case err != nil && !fullRebuildFlag:
 		obj.publishHealthChangedLocked(true)
 	default:
-		obj.publishDiagnosticBumpLocked(keyObj)
+		obj.publishChangedLocked(true)
 	}
 	return err
 }
@@ -269,6 +319,7 @@ func (obj *Obj) ClearDiagnostic(diagnosticObj DiagnosticKeyObj) error {
 		changedFlag = recordObj.active
 		if changedFlag {
 			recordObj.active = false
+			obj.pushInactiveTailLocked(recordObj)
 		}
 	}
 	obj.publishChangedLocked(changedFlag)
@@ -322,6 +373,7 @@ func (obj *Obj) ClearAllDiagnostics() {
 	for _, recordObj := range obj.diagnosticMap {
 		if recordObj != nil && recordObj.active {
 			recordObj.active = false
+			obj.pushInactiveTailLocked(recordObj)
 			changedFlag = true
 		}
 	}

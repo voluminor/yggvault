@@ -44,17 +44,14 @@ func (obj *Obj) ListArtifacts(ctx context.Context, key string, version string) (
 	return obj.indexObj.ListArtifacts(ctx, key, version)
 }
 
-// RegisterArtifact registers one version artifact under writeMu in one transaction.
-// Digests are computed beforehand by ArtifactDigest, then metadata and a history event are written.
+// RegisterArtifact registers one version artifact in one transaction under writeMu.
+// Hot-file digests are verified before the lock; only metadata and a history event are written under it.
 func (obj *Obj) RegisterArtifact(ctx context.Context, artifactObj core.ArtifactObj) error {
 	releaseFunc, err := beginOperation(obj)
 	if err != nil {
 		return err
 	}
 	defer releaseFunc()
-
-	obj.writeMu.Lock()
-	defer obj.writeMu.Unlock()
 
 	artifactArr, err := obj.prepareArtifacts(ctx, artifactObj.Key, artifactObj.Version, []core.ArtifactObj{artifactObj})
 	if err != nil {
@@ -64,6 +61,10 @@ func (obj *Obj) RegisterArtifact(ctx context.Context, artifactObj core.ArtifactO
 	if err != nil {
 		return err
 	}
+
+	obj.writeMu.Lock()
+	defer obj.writeMu.Unlock()
+
 	return obj.indexObj.WithTx(ctx, func(txObj *sqliteindex.TxObj) error {
 		if err = txObj.InsertArtifacts(ctx, artifactObj.Key, artifactObj.Version, artifactArr); err != nil {
 			return err
@@ -155,13 +156,9 @@ func (obj *Obj) EnsureArtifactFile(ctx context.Context, keyObj core.ArtifactKeyO
 	if err != nil {
 		return nil, err
 	}
-	if fileObj.BodyHash != artifactObj.BodyHash {
+	if err = obj.validateSharedHotFile(ctx, keyObj, fileObj, artifactObj); err != nil {
 		_ = fileObj.Close()
-		return nil, newArtifactBuildErr(keyObj, nil, cArtifactCheckStaleHash, artifactObj.BodyHash.Hex(), fileObj.BodyHash.Hex(), 0, 0)
-	}
-	if fileObj.SizeBytes != artifactObj.SizeBytes {
-		_ = fileObj.Close()
-		return nil, newArtifactBuildErr(keyObj, nil, cArtifactCheckStaleSize, "", "", artifactObj.SizeBytes, fileObj.SizeBytes)
+		return nil, err
 	}
 	select {
 	case <-ctx.Done():

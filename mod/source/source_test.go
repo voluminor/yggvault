@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/rpc"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -46,6 +47,8 @@ type fakeBrotherObj struct {
 	helloReply   brotherwire.HelloReplyObj
 	versionReply brotherwire.VersionReplyObj
 	indexReply   brotherwire.IndexReplyObj
+	indexFunc    func(brotherwire.IndexArgObj, *brotherwire.IndexReplyObj) error
+	indexArgs    []brotherwire.IndexArgObj
 	blobs        map[brotherwire.HashWire][]byte
 	fetchFunc    func(brotherwire.BlobsFetchArgObj, *brotherwire.BlobsFetchReplyObj) error
 }
@@ -55,7 +58,11 @@ func (f *fakeBrotherObj) Hello(_ brotherwire.HelloArgObj, reply *brotherwire.Hel
 	return nil
 }
 
-func (f *fakeBrotherObj) Index(_ brotherwire.IndexArgObj, reply *brotherwire.IndexReplyObj) error {
+func (f *fakeBrotherObj) Index(arg brotherwire.IndexArgObj, reply *brotherwire.IndexReplyObj) error {
+	f.indexArgs = append(f.indexArgs, arg)
+	if f.indexFunc != nil {
+		return f.indexFunc(arg, reply)
+	}
 	*reply = f.indexReply
 	return nil
 }
@@ -235,14 +242,14 @@ func TestPublicMirrorVersionsResolvesUniversalArchives(t *testing.T) {
 	t.Cleanup(ts.Close)
 	obj := newTestObj(t, testConfigObj(t))
 
-	versionArr, truncated, err := obj.PublicMirrorVersions(context.Background(), ts.URL+"/core-lib", "core-lib")
+	listingObj, err := obj.PublicMirrorVersions(context.Background(), ts.URL+"/core-lib", "core-lib", nil)
 	if err != nil {
 		t.Fatalf("PublicMirrorVersions returned error: %v", err)
 	}
-	if truncated || len(versionArr) != 1 {
-		t.Fatalf("versions=%d truncated=%v want 1,false", len(versionArr), truncated)
+	if listingObj.Truncated || len(listingObj.Versions) != 1 || len(listingObj.Names) != 1 || listingObj.Unresolved != 0 {
+		t.Fatalf("versions=%d names=%d unresolved=%d truncated=%v want 1,1,0,false", len(listingObj.Versions), len(listingObj.Names), listingObj.Unresolved, listingObj.Truncated)
 	}
-	versionObj := versionArr[0]
+	versionObj := listingObj.Versions[0]
 	if versionObj.Version != "v1.0.0" || versionObj.ReleaseNotes != "notes" || versionObj.TreeHash != treeHash {
 		t.Fatalf("unexpected version: %+v", versionObj)
 	}
@@ -251,6 +258,89 @@ func TestPublicMirrorVersionsResolvesUniversalArchives(t *testing.T) {
 	}
 	if wantURL := ts.URL + "/core-lib/v1.0.0.tar.gz"; versionObj.ArchiveURL != wantURL {
 		t.Fatalf("archive url=%q want %q", versionObj.ArchiveURL, wantURL)
+	}
+}
+
+func TestPublicMirrorVersionsIsolatesBrokenVersion(t *testing.T) {
+	treeHash := core.HashBytes([]byte("tree"))
+	var goodHits, badHits atomic.Int64
+	mux := http.NewServeMux()
+	mux.HandleFunc("/core-lib/releases.json", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"releases":[{"version":"v1.0.0","url":"v1.0.0.json"},{"version":"v2.0.0","url":"v2.0.0.json"}]}`)
+	})
+	mux.HandleFunc("/core-lib/v1.0.0.json", func(w http.ResponseWriter, _ *http.Request) {
+		goodHits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"version":"v1.0.0","hash":"`+treeHash.Hex()+`","artifacts":[{"kind":"tree-zip","url":"v1.0.0.zip"}]}`)
+	})
+	mux.HandleFunc("/core-lib/v2.0.0.json", func(w http.ResponseWriter, _ *http.Request) {
+		badHits.Add(1)
+		http.Error(w, "gone", http.StatusNotFound)
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	obj := newTestObj(t, testConfigObj(t))
+
+	listingObj, err := obj.PublicMirrorVersions(context.Background(), ts.URL+"/core-lib", "core-lib", nil)
+	if err != nil {
+		t.Fatalf("one broken version must not fail the listing: %v", err)
+	}
+	if len(listingObj.Versions) != 1 || listingObj.Versions[0].Version != "v1.0.0" {
+		t.Fatalf("resolved versions=%+v want only v1.0.0", listingObj.Versions)
+	}
+	if len(listingObj.Names) != 2 {
+		t.Fatalf("names=%v want both versions for deletion safety", listingObj.Names)
+	}
+	if listingObj.Unresolved != 1 {
+		t.Fatalf("unresolved=%d want 1", listingObj.Unresolved)
+	}
+	if got := badHits.Load(); got != 1 {
+		t.Fatalf("broken detail hits=%d want 1 (no retry on permanent 404)", got)
+	}
+	if got := goodHits.Load(); got != 1 {
+		t.Fatalf("good detail hits=%d want 1", got)
+	}
+}
+
+func TestPublicMirrorVersionsSkipsKnownDetails(t *testing.T) {
+	treeHash := core.HashBytes([]byte("tree"))
+	var v1Hits, v2Hits atomic.Int64
+	mux := http.NewServeMux()
+	mux.HandleFunc("/core-lib/releases.json", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"releases":[{"version":"v1.0.0","url":"v1.0.0.json"},{"version":"v2.0.0","url":"v2.0.0.json"}]}`)
+	})
+	mux.HandleFunc("/core-lib/v1.0.0.json", func(w http.ResponseWriter, _ *http.Request) {
+		v1Hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"version":"v1.0.0","hash":"`+treeHash.Hex()+`","artifacts":[{"kind":"tree-zip","url":"v1.0.0.zip"}]}`)
+	})
+	mux.HandleFunc("/core-lib/v2.0.0.json", func(w http.ResponseWriter, _ *http.Request) {
+		v2Hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"version":"v2.0.0","hash":"`+treeHash.Hex()+`","artifacts":[{"kind":"tree-zip","url":"v2.0.0.zip"}]}`)
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	obj := newTestObj(t, testConfigObj(t))
+
+	skip := func(version string) bool { return version == "v1.0.0" }
+	listingObj, err := obj.PublicMirrorVersions(context.Background(), ts.URL+"/core-lib", "core-lib", skip)
+	if err != nil {
+		t.Fatalf("PublicMirrorVersions returned error: %v", err)
+	}
+	if len(listingObj.Versions) != 1 || listingObj.Versions[0].Version != "v2.0.0" {
+		t.Fatalf("resolved versions=%+v want only v2.0.0", listingObj.Versions)
+	}
+	if len(listingObj.Names) != 2 {
+		t.Fatalf("names=%v want both versions", listingObj.Names)
+	}
+	if got := v1Hits.Load(); got != 0 {
+		t.Fatalf("skipped version detail was fetched %d times, want 0 (N+1 avoided)", got)
+	}
+	if got := v2Hits.Load(); got != 1 {
+		t.Fatalf("new version detail hits=%d want 1", got)
 	}
 }
 
@@ -264,7 +354,7 @@ func TestPublicMirrorVersionsRejectsEmptyCursorPage(t *testing.T) {
 	t.Cleanup(ts.Close)
 	obj := newTestObj(t, testConfigObj(t))
 
-	if _, _, err := obj.PublicMirrorVersions(context.Background(), ts.URL+"/core-lib", "core-lib"); err == nil {
+	if _, err := obj.PublicMirrorVersions(context.Background(), ts.URL+"/core-lib", "core-lib", nil); err == nil {
 		t.Fatal("expected error for an empty page with a next cursor")
 	}
 }

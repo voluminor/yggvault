@@ -60,15 +60,19 @@ func WriteFileFromTemplate(pathToFile string, textTemplate string, dataTemplate 
 	}
 	defer file.Close()
 
-	formatted, err := format.Source(buf.Bytes())
-	if err != nil {
-		fmt.Printf("ERROR\tformat template [%s]: %s\n", fileName, err.Error())
+	formatted, formatErr := format.Source(buf.Bytes())
+	if formatErr != nil {
+		// Keep the raw output on disk for debugging, but fail the generation run.
 		formatted = buf.Bytes()
 	}
 
 	_, err = file.Write(formatted)
 	if err != nil {
 		return fmt.Errorf("write file [%s]: %s", fileName, err.Error())
+	}
+
+	if formatErr != nil {
+		return fmt.Errorf("format template [%s] (raw output kept): %s", fileName, formatErr.Error())
 	}
 
 	fmt.Println("\tGenerate: " + pathToFile)

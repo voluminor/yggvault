@@ -6,10 +6,12 @@ properties:
     type: integer
     format: int64
     description: Number of recent diagnostics currently tracked.
+    example: 1
   dropped:
     type: integer
     format: int64
     description: Diagnostics dropped after the registry reached capacity.
+    example: 0
   recent:
     type: array
     description: Newest diagnostics first, capped by `metrics.errors.recent_buffer`.

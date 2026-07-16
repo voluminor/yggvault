@@ -10,10 +10,8 @@ import (
 
 // // // // // // // // // //
 
-// markdownObj is goldmark with GFM and without html.WithUnsafe, so raw HTML is escaped.
 var markdownObj = goldmark.New(goldmark.WithExtensions(extension.GFM))
 
-// sanitizerObj removes remaining vectors such as javascript/data schemes and unsafe tags.
 var sanitizerObj = bluemonday.UGCPolicy()
 
 // // // // // // // // // //

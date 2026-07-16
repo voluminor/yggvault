@@ -114,8 +114,6 @@ func (obj *Obj) deleteVersionLocked(ctx context.Context, key string, version str
 	return true, estimateBytes, nil
 }
 
-// resolveUpstreamSeq preserves an existing version position; new versions use a precomputed seq
-// or max+1 inside the transaction.
 func resolveUpstreamSeq(ctx context.Context, txObj *sqliteindex.TxObj, publishObj core.PublishObj, existingObj core.VersionObj, existingFlag bool) (int64, error) {
 	if existingFlag && existingObj.UpstreamSeq > 0 {
 		return existingObj.UpstreamSeq, nil
@@ -196,7 +194,6 @@ func (obj *Obj) publishTx(ctx context.Context, txObj *sqliteindex.TxObj, publish
 	if err := txObj.AddHistory(ctx, publishObj.Key, publishObj.Version, publishObj.EventType, treeHashObj, core.HashObj{}, publishObj.EventMessage); err != nil {
 		return resultObj, err
 	}
-	// Latest is derived by a top-1 query over versions, so no cache update is needed.
 	resultObj.Published = true
 	return resultObj, nil
 }

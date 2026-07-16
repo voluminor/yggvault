@@ -66,18 +66,10 @@ func (obj *Obj) ListVersions(ctx context.Context, key string, includeDeleted boo
 	}
 	defer rowsObj.Close()
 
-	resultArr := make([]core.VersionObj, 0)
-	for rowsObj.Next() {
-		versionObj, scanErr := scanVersion(rowsObj)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		resultArr = append(resultArr, versionObj)
-	}
-	if err = rowsObj.Err(); err != nil {
+	resultArr, err := scanAll(rowsObj, 0, scanVersion)
+	if err != nil {
 		return nil, err
 	}
-
 	sortVersions(resultArr)
 	return resultArr, nil
 }
@@ -120,18 +112,7 @@ func (obj *Obj) ListVersionsPage(ctx context.Context, key string, includeDeleted
 	}
 	defer rowsObj.Close()
 
-	resultArr := make([]core.VersionObj, 0, limit)
-	for rowsObj.Next() {
-		versionObj, scanErr := scanVersion(rowsObj)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		resultArr = append(resultArr, versionObj)
-	}
-	if err = rowsObj.Err(); err != nil {
-		return nil, err
-	}
-	return resultArr, nil
+	return scanAll(rowsObj, limit, scanVersion)
 }
 
 // ListVersionsKeyset returns a newest-first keyset page by afterSeq and afterVersion cursor.
@@ -156,18 +137,7 @@ func (obj *Obj) ListVersionsKeyset(ctx context.Context, key string, includeDelet
 	}
 	defer rowsObj.Close()
 
-	resultArr := make([]core.VersionObj, 0, limit)
-	for rowsObj.Next() {
-		versionObj, scanErr := scanVersion(rowsObj)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		resultArr = append(resultArr, versionObj)
-	}
-	if err = rowsObj.Err(); err != nil {
-		return nil, err
-	}
-	return resultArr, nil
+	return scanAll(rowsObj, limit, scanVersion)
 }
 
 // ListVersionsKeysetBefore returns up to limit versions strictly newer than the (beforeSeq, beforeVersion) cursor,
@@ -190,18 +160,7 @@ func (obj *Obj) ListVersionsKeysetBefore(ctx context.Context, key string, includ
 	}
 	defer rowsObj.Close()
 
-	resultArr := make([]core.VersionObj, 0, limit)
-	for rowsObj.Next() {
-		versionObj, scanErr := scanVersion(rowsObj)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		resultArr = append(resultArr, versionObj)
-	}
-	if err = rowsObj.Err(); err != nil {
-		return nil, err
-	}
-	return resultArr, nil
+	return scanAll(rowsObj, limit, scanVersion)
 }
 
 // DistinctVersionKeys returns one keyset page of unique keys with key > afterKey.
@@ -263,18 +222,7 @@ func (obj *Obj) VersionsByIngest(ctx context.Context, afterObj core.VersionObj, 
 	}
 	defer rowsObj.Close()
 
-	resultArr := make([]core.VersionObj, 0)
-	for rowsObj.Next() {
-		versionObj, scanErr := scanVersion(rowsObj)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		resultArr = append(resultArr, versionObj)
-	}
-	if err = rowsObj.Err(); err != nil {
-		return nil, err
-	}
-	return resultArr, nil
+	return scanAll(rowsObj, 0, scanVersion)
 }
 
 // LatestVersion returns the newest active version without release_notes; no row returns false, nil.
@@ -303,7 +251,6 @@ func (obj *Obj) LatestVersion(ctx context.Context, key string) (core.VersionObj,
 				semverMax = versionObj
 			}
 		} else if !haveRaw {
-			// Query order is upstream_seq DESC, so the first non-semver row is the top raw version.
 			rawTop, haveRaw = versionObj, true
 		}
 	}
@@ -481,7 +428,6 @@ func (obj *TxObj) InsertVersion(ctx context.Context, versionObj core.VersionObj)
 	return err
 }
 
-// formatVerifiedTS serializes deep-verification time; zero time is stored as an empty string.
 func formatVerifiedTS(ts time.Time) string {
 	if ts.IsZero() {
 		return ""
@@ -554,7 +500,6 @@ func NewVersion(key string, version string, sourceHashObj core.HashObj, sourceSi
 	}
 }
 
-// sortVersions orders by source position newest-first, then by version string like SQL paths.
 func sortVersions(versionArr []core.VersionObj) {
 	sort.Slice(versionArr, func(i, j int) bool {
 		if versionArr[i].UpstreamSeq != versionArr[j].UpstreamSeq {

@@ -6,23 +6,15 @@ import (
 	"sync"
 
 	"golang.org/x/time/rate"
+
+	"github.com/voluminor/yggvault/mod/internal/util"
 )
 
 // // // // // // // // // //
 
-// cPeerLimiterShards is the number of limiter map shards; it must be a power of two.
 const cPeerLimiterShards = 16
 
 // // // //
-
-func shardHash(keyText string) uint32 {
-	hashValue := uint32(2166136261)
-	for i := 0; i < len(keyText); i++ {
-		hashValue ^= uint32(keyText[i])
-		hashValue *= 16777619
-	}
-	return hashValue
-}
 
 func clientKey(r *http.Request) string {
 	hostText, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -35,28 +27,18 @@ func clientKey(r *http.Request) string {
 // // // // // // // // // //
 
 type peerShardObj struct {
-	muObj   sync.Mutex
-	curMap  map[string]*rate.Limiter
-	prevMap map[string]*rate.Limiter
-	capVal  int
+	muObj  sync.Mutex
+	genMap *util.GenMapObj[*rate.Limiter]
 }
 
 func (obj *peerShardObj) limiter(keyText string, rateValue rate.Limit, burstValue int) *rate.Limiter {
 	obj.muObj.Lock()
 	defer obj.muObj.Unlock()
-	if limiterObj, ok := obj.curMap[keyText]; ok {
-		return limiterObj
-	}
-	if limiterObj, ok := obj.prevMap[keyText]; ok {
-		obj.curMap[keyText] = limiterObj
+	if limiterObj, ok := obj.genMap.Get(keyText); ok {
 		return limiterObj
 	}
 	limiterObj := rate.NewLimiter(rateValue, burstValue)
-	if len(obj.curMap) >= obj.capVal {
-		obj.prevMap = obj.curMap
-		obj.curMap = make(map[string]*rate.Limiter, obj.capVal)
-	}
-	obj.curMap[keyText] = limiterObj
+	obj.genMap.Put(keyText, limiterObj)
 	return limiterObj
 }
 
@@ -82,11 +64,7 @@ func newPeerLimiter(ratePerSecond uint, burst uint, maxTracked uint) *peerLimite
 	}
 	shardArr := make([]*peerShardObj, cPeerLimiterShards)
 	for i := range shardArr {
-		shardArr[i] = &peerShardObj{
-			curMap:  make(map[string]*rate.Limiter, perShardCap),
-			prevMap: map[string]*rate.Limiter{},
-			capVal:  perShardCap,
-		}
+		shardArr[i] = &peerShardObj{genMap: util.NewGenMap[*rate.Limiter](perShardCap)}
 	}
 	return &peerLimiterObj{rateValue: rate.Limit(ratePerSecond), burstValue: burstVal, shardArr: shardArr}
 }
@@ -95,6 +73,6 @@ func (obj *peerLimiterObj) allow(keyText string) bool {
 	if obj == nil {
 		return true
 	}
-	shardObj := obj.shardArr[shardHash(keyText)&uint32(len(obj.shardArr)-1)]
+	shardObj := obj.shardArr[util.FNV32a(keyText)&uint32(len(obj.shardArr)-1)]
 	return shardObj.limiter(keyText, obj.rateValue, obj.burstValue).Allow()
 }

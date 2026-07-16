@@ -41,8 +41,6 @@ func goPublishable(ctx context.Context, store StorageReaderInterface, overlayObj
 	return active, err
 }
 
-// versionsInMajor collects only the major's go-publishable versions: a version without go.mod
-// is left out of the list and does not 404 the whole bucket if it happens to be the newest.
 func versionsInMajor(ctx context.Context, store StorageReaderInterface, overlayObj *overlay.Obj, key string, major string, lc overlay.ListenerCtxObj) ([]string, core.VersionObj, bool, error) {
 	nameArr := make([]string, 0, pager.PageSize)
 	var latest core.VersionObj

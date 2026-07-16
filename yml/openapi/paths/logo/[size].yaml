@@ -14,6 +14,7 @@ get:
       description: Whitelisted logo edge in pixels, for example `192`.
       schema:
         type: string
+        example: "192"
     - $ref: parameters/if_none_match
   responses:
     '200':
@@ -23,10 +24,12 @@ get:
           description: Strong cache validator derived from the generated body.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Long-lived cache policy for the constant asset.
           schema:
             type: string
+            example: public, max-age=86400
       content:
         image/png:
           schema:

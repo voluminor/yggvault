@@ -10,26 +10,22 @@ import (
 
 // // // // // // // // // //
 
-// errForbiddenTarget rejects clearnet dials to non-public addresses for SSRF protection.
-// Untrusted upstreams and redirects must not reach local, private, metadata, CGNAT, or NAT64 targets.
 var errForbiddenTarget = errors.New("refusing dial to non-public address")
 
-// forbiddenSpecialUseArr covers IANA special-use ranges not fully handled by net.IP helpers.
-// NAT64 is included because well-known prefixes can map internal IPv4 targets into IPv6.
 var forbiddenSpecialUseArr = mustPrefixes(
-	"100.64.0.0/10",   // CGNAT (RFC 6598)
-	"192.0.0.0/24",    // IETF protocol assignments (RFC 6890)
-	"192.0.2.0/24",    // TEST-NET-1 (RFC 5737)
-	"198.18.0.0/15",   // benchmarking (RFC 2544)
-	"198.51.100.0/24", // TEST-NET-2 (RFC 5737)
-	"203.0.113.0/24",  // TEST-NET-3 (RFC 5737)
-	"240.0.0.0/4",     // reserved for future use (RFC 1112)
-	"64:ff9b::/96",    // NAT64 well-known prefix (RFC 6052)
-	"64:ff9b:1::/48",  // NAT64 local-use (RFC 8215)
-	"100::/64",        // discard-only (RFC 6666)
-	"2001::/23",       // IETF protocol assignments incl Teredo/ORCHIDv2 (RFC 2928)
-	"2001:db8::/32",   // documentation (RFC 3849)
-	"0200::/7",        // Yggdrasil mesh range; the clearnet dialer must never touch it
+	"100.64.0.0/10",
+	"192.0.0.0/24",
+	"192.0.2.0/24",
+	"198.18.0.0/15",
+	"198.51.100.0/24",
+	"203.0.113.0/24",
+	"240.0.0.0/4",
+	"64:ff9b::/96",
+	"64:ff9b:1::/48",
+	"100::/64",
+	"2001::/23",
+	"2001:db8::/32",
+	"0200::/7",
 )
 
 // // // // // // // // // //
