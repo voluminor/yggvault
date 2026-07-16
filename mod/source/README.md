@@ -5,10 +5,10 @@ yggvault node, downloads release archives, speaks brother RPC over HTTP CONNECT,
 release API when RPC is unavailable. It owns egress safety: routed dials, retry policy, credentials, redirects, SSRF
 checks, bounded RPC decoding, and bounded public metadata reads.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   rescan["mod/rescan"] --> source["mod/source"]
   source --> git["git API and archive URLs"]
   source --> brother["brother RPC"]
@@ -31,7 +31,7 @@ flowchart LR
 - Negotiate brother blob-fetch byte and batch limits through `Brother.Hello`.
 - Enforce redirect, response, gob, body, throughput, and private-address limits.
 
-## Discovery Flow
+## Discovery flow
 
 ```mermaid
 flowchart TD
@@ -72,18 +72,18 @@ back to the local `web.routing.prefix`, so existing deployments keep resolving k
   version. The caller-supplied skip predicate avoids re-fetching details for versions already stored.
 - This package does not parse archives and does not commit storage.
 
-## Important Files
+## Important files
 
 - `obj.go`: object shape, constructor, and public DTOs.
 - `client.go`: HTTP clients, routed dialer, probes, archive streaming.
 - `ratelimit.go`, `metrics.go`: per-host limiter and outbound source metrics.
 - `discovery.go`: source classification and remote-key derivation.
-- `git.go`, `refs.go`, `tags.go`: git provider listing and refs fallback.
+- `git.go`, `refs.go`, `info.go`: git provider listing, refs fallback, and source metadata.
 - `public_mirror.go`: public yggvault release API fallback for brother sources without RPC.
 - `brother.go`, `brother_codec.go`: brother session and bounded gob codec.
 - `ssrf.go`, `auth.go`, `retry.go`: egress guard, credentials, and retry policy.
 
-## Operational Notes
+## Operational notes
 
 The download client intentionally has no global `http.Client.Timeout`; streaming is bounded by request context,
 archive size, idle timeout, and throughput floor. This allows large valid archives to finish while still stopping

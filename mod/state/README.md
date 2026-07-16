@@ -4,10 +4,10 @@
 diagnostics, content checksum, and small serving metadata. It is rebuilt from config and storage during runtime and is
 not the durable source of truth.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   rescan["mod/rescan"] --> state["mod/state"]
   storage["mod/storage"] --> state
   server["mod/server"] --> state
@@ -38,7 +38,7 @@ flowchart LR
 - `ClearVersionDiagnostics` is intentionally cheap when there is nothing to clear: it must not publish a new snapshot or
   bump the generation in that case.
 
-## Important Files
+## Important files
 
 - `obj.go`: public types, state object, and internal mutable record types.
 - `init.go`: construction from config and initial snapshot publication.
@@ -50,7 +50,7 @@ flowchart LR
 - `helper.go`: validation, key index construction, and snapshot publication helpers.
 - `metrics.go`: state-related metrics.
 
-## Operational Notes
+## Operational notes
 
 State updates should be cheap. Expensive work such as storage scans, archive checks, and artifact builds belongs in
 `mod/rescan` or `mod/storage`; state should only publish the resulting facts.

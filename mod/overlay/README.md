@@ -4,10 +4,10 @@
 packages, rewrites Go module paths for Go proxy artifacts when enabled, plans raw universal archives, and builds
 artifact bytes from storage.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   tree["canonical tree"] --> overlay["mod/overlay"]
   overlay --> detect["ecosystem detection"]
   overlay --> plan["artifact plan"]
@@ -40,16 +40,16 @@ flowchart LR
 - Artifact identifiers include listener id when output depends on host or scheme; raw universal archives use the global
   listener id.
 
-## Important Files
+## Important files
 
 - `detect.go`, `goviability.go`: ecosystem detection and Go zip viability.
 - `rewrite.go`: Go module path and import rewriting.
-- `artifact.go`, `plan.go`: artifact planning.
-- `go*.go`, `composer*.go`, `universal.go`: domain builders.
+- `plan.go`, `materialize.go`: artifact planning and materialization.
+- `gorender.go`, `gozip.go`, `composer.go`, `universal.go`: domain builders.
 - `snippet.go`: UI install snippets.
 - `interface.go`: storage and reader seams.
 
-## Operational Notes
+## Operational notes
 
 Overlay code is intentionally strict. A tree that is valid as a universal archive can still be blocked for Go if it
 would produce a module zip that Go tooling rejects. The version remains published; only Go-specific artifacts are

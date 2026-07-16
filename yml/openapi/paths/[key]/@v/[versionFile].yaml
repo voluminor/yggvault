@@ -23,6 +23,7 @@ get:
       description: Version file name, for example `v1.2.3.info`, `v1.2.3.mod`, or `v1.2.3.zip`.
       schema:
         type: string
+        example: v0.3.4.zip
     - $ref: parameters/if_none_match
     - $ref: parameters/if_modified_since
     - $ref: parameters/range
@@ -35,27 +36,33 @@ get:
           description: Strong cache validator for the generated body or zip artifact.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Cache policy for generated data.
           schema:
             type: string
+            example: public, must-revalidate, max-age=300
         Last-Modified:
           description: Modification time of the opened hot-cache zip file.
           schema:
             type: string
+            example: Thu, 16 Jul 2026 18:42:47 GMT
         Accept-Ranges:
           description: Byte range support marker for zip artifacts. The value is `bytes`.
           schema:
             type: string
+            example: bytes
         Content-Length:
           description: Body size in bytes. Zip responses use a fixed length, not chunked transfer.
           schema:
             type: integer
             format: int64
+            example: 10485760
         Content-Disposition:
           description: Download file name for the `.zip` module artifact. The value is `attachment; filename="<key>@<version>.zip"`.
           schema:
             type: string
+            example: attachment; filename="yggvault@v0.3.4.zip"
       content:
         application/octet-stream:
           schema:

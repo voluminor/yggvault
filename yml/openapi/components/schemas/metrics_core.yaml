@@ -6,15 +6,19 @@ properties:
     type: integer
     format: int64
     description: Total handled requests since process start.
+    example: 18542
   errors_total:
     type: integer
     format: int64
     description: Total requests that produced an error response.
+    example: 27
   request_duration_seconds_sum:
     type: number
     format: double
     description: Sum of request durations in seconds across all requests.
+    example: 93.715
   request_duration_seconds_count:
     type: integer
     format: int64
     description: Number of observed request durations.
+    example: 18542

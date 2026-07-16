@@ -4,10 +4,10 @@
 and it does not commit durable state. Its job is to parse archive formats safely, enforce archive limits, and produce
 staged entries and blob files for `mod/rescan` and `mod/storage`.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   source["downloaded archive"] --> archive["mod/archive"]
   archive --> checks["format, paths, limits"]
   checks --> spool["staged blobs"]
@@ -33,14 +33,14 @@ flowchart LR
 - The package must not trust archive metadata without checking the actual bytes read.
 - The output tree is staged, not published. `mod/storage.PublishStaged` is the durability boundary.
 
-## Important Files
+## Important files
 
 - `obj.go`: archive object and public extraction entry.
 - `zip.go`, `tar.go`: format-specific readers.
 - `write.go`: staged blob writing and hash calculation.
 - `helper.go`: path and mode helpers.
 
-## Operational Notes
+## Operational notes
 
 Archive parsing is an abuse boundary. Keep new format support conservative and make every new entry type explicit.
 Silent best-effort extraction is not acceptable because the result becomes package-manager input. Symlink drops are the

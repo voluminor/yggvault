@@ -5,7 +5,7 @@ generated API calls, serves package-manager endpoints, renders the HTML UI, stre
 hosts brother RPC on enabled web and Yggdrasil entries. The same public release and artifact routes can also be used
 by a brother as a read-only fallback when RPC is disabled.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
 flowchart TD
@@ -30,9 +30,9 @@ flowchart TD
 - Stream large artifacts with `ETag`, `Last-Modified`, `Content-Length`, `Range`, and `HEAD` support.
 - Gate brother RPC per listener with `brother.rpc.web_enabled` and `brother.rpc.ygg_enabled`.
 - Keep public release metadata and universal archives usable for brother fallback even when `/rpc` is disabled.
-- Expose metrics JSON groups and optional internal Prometheus text.
+- Expose public JSON metric groups, including aggregate Yggdrasil state, and optional internal Prometheus text.
 
-## Request Flow
+## Request flow
 
 ```mermaid
 sequenceDiagram
@@ -59,11 +59,13 @@ sequenceDiagram
 - `/rpc` accepts only `CONNECT`; normal HTTP methods do not enter the RPC server.
 - Public fallback uses normal generated routes, so reverse proxies handle it like ordinary read-only client traffic.
 - Metrics labels must stay low-cardinality.
+- `/metrics/ygg` must return 404 when the mesh is disabled. Per-peer details require internal metrics on the current
+  listener; aggregate values remain available with public metrics alone.
 - Cold metadata and typed-object cache misses share the configured cache build gate.
 - Generated sitemap bodies are capped at 8 MiB in addition to `web.pages.sitemap_size`; generated Atom feeds cap release
   notes at 64 KiB per entry before markdown rendering and cap the final XML document at 4 MiB.
 
-## Two Caches
+## Two caches
 
 Server responses use two different process-local caches:
 
@@ -78,7 +80,7 @@ size. Both caches share the same detached-build gate, so cold clients cannot sta
 
 The typed cache has no byte accounting or metrics. That is a known limitation rather than an omission in `mod/cache`.
 
-## Important Files
+## Important files
 
 - `server.go`, `deps.go`, `listener.go`: assembly and lifecycle.
 - `front.go`, `hooks.go`, `respond.go`, `errors.go`: common HTTP frame.
@@ -87,7 +89,7 @@ The typed cache has no byte accounting or metrics. That is a known limitation ra
 - `brother/`: RPC server.
 - `dataapi/`, `goproxy/`, `composer/`, `feedatom/`, `webui/`: domain response builders.
 
-## Operational Notes
+## Operational notes
 
 `shared` mode is for a TLS-terminating reverse proxy where the public scheme is HTTPS but the process listens on one
 plain HTTP socket. `split` mode is for separate HTTP and HTTPS binds. `single` mode is simplest for local development.

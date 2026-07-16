@@ -7,3 +7,4 @@ description: >-
   unsupported ranges are ignored and the full body is returned.
 schema:
   type: string
+  example: bytes=0-1048575

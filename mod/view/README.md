@@ -4,10 +4,10 @@
 rendering package: server and webui builders prepare data, then `mod/view` turns it into HTML, PNG, or small static
 assets.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   webui["server/webui builders"] --> view["mod/view"]
   view --> templates["HTML templates"]
   view --> css["embedded CSS"]
@@ -31,14 +31,15 @@ flowchart LR
 - PNG generation must be deterministic for the same input.
 - CSS and HTML should avoid layout assumptions that break long keys, versions, hashes, or Yggdrasil addresses.
 
-## Important Files
+## Important files
 
-- `*.go`: view models and render helpers.
+- `catalog.go`, `key.go`, `version.go`, `metrics.go`: page-specific view models.
+- `common.go`, `view.go`: shared render helpers and template assembly.
 - `templates/`: HTML templates and stylesheet.
-- `logo.go`, `media.go`: generated images and media helpers.
+- `media.go`: generated images and media helpers.
 - `markdown` integration is handled before release notes reach templates.
 
-## Operational Notes
+## Operational notes
 
 The UI is operational rather than marketing-oriented. It should favor dense, readable package information, stable
 navigation, copyable hashes, and install snippets over decorative content.

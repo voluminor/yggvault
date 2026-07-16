@@ -3,10 +3,10 @@
 `mod/internal` contains helpers that are useful across packages but should not become public API. It currently groups
 filesystem utilities and small string/version helpers behind Go's `internal` import boundary.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
-flowchart LR
+flowchart TB
   packages["runtime packages"] --> internal["mod/internal"]
   internal --> osfs["osfs helpers"]
   internal --> util["utility predicates"]
@@ -26,12 +26,12 @@ flowchart LR
 - Filesystem helpers should avoid following attacker-controlled paths outside caller-approved roots.
 - Utility predicates used by storage and rescan must have identical behavior across both packages.
 
-## Important Files
+## Important files
 
 - `osfs/`: filesystem and OS-level helpers.
 - `util/`: version/path predicates plus small shared helpers (`hash.go` FNV, `genmap.go` generational map).
 
-## Operational Notes
+## Operational notes
 
 Do not move domain logic here just to avoid an import cycle. If a helper understands releases, storage commits, HTTP
 semantics, or Yggdrasil behavior, it belongs in the owning package.

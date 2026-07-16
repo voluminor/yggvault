@@ -4,34 +4,44 @@ properties:
   code:
     type: string
     description: Stable diagnostic code from the Error Registry.
+    example: upstream_unavailable
   scope:
     type: string
     description: "Diagnostic scope such as `global` or a per-key scope."
+    example: key
   impact:
     type: string
     enum: [ ok, degraded, error ]
     description: Operational impact this diagnostic contributes to node health.
+    example: degraded
   reason:
     type: string
     description: Stable reason string classifying the diagnostic.
+    example: upstream_unavailable
   key:
     type: string
     description: Affected mirror key; omitted for global diagnostics.
+    example: yggvault
   version:
     type: string
     description: Affected version; omitted when the diagnostic is not version-scoped.
+    example: v0.3.4
   message:
     type: string
     description: Human-readable diagnostic message; omitted when unset.
+    example: upstream request timed out
   count:
     type: integer
     format: int64
     description: Number of times this diagnostic was observed since first seen.
+    example: 3
   first_seen:
     type: string
     format: date-time
     description: Timestamp the diagnostic was first observed; omitted when unset.
+    example: "2026-07-16T18:35:00Z"
   last_seen:
     type: string
     format: date-time
     description: Timestamp the diagnostic was last observed.
+    example: "2026-07-16T18:42:47Z"

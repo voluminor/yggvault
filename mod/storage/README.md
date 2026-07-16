@@ -4,7 +4,7 @@
 and indexes in SQLite, and regenerated serving artifacts in a bounded hot-file cache. It is the source of truth for
 published versions and ingest failure state.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
 flowchart TB
@@ -27,7 +27,7 @@ flowchart TB
 - Maintain hot artifacts and enforce storage quotas.
 - Provide maintenance operations for inspect, prune, vacuum, compaction, and cache rebuild.
 
-## Publish Boundary
+## Publish boundary
 
 ```mermaid
 sequenceDiagram
@@ -52,7 +52,7 @@ sequenceDiagram
 - Blob read/write paths materialize whole blobs, so configured per-file limits and in-flight read budgets are required.
 - Generated cache rebuilds must be deterministic for the same stored tree and listener context.
 
-## Lock Order
+## Lock order
 
 Storage locks are taken one at a time. The only permitted nesting is `writeMu -> hotActiveMu`; no code may acquire
 another storage lock while already holding `hotActiveMu`, `flightMu`, `metricRegMu`, or `closeMu`.
@@ -73,7 +73,7 @@ Known backlog:
 - Large Go zip rewrites above the small rewrite cache threshold can read and scan the same blob twice. Hot artifacts
   mitigate repeated requests, but a measured single-materialization optimization is still possible.
 
-## Important Files
+## Important files
 
 - `obj.go`, `init.go`: storage object and startup.
 - `staged.go`, `version.go`: publish path and version metadata.
@@ -83,7 +83,7 @@ Known backlog:
 - `hot_build.go`, `hot_path.go`, `quota.go`, `maintenance.go`: hot cache, quota, and maintenance.
 - `validate.go`: archive and storage limit enforcement.
 
-## Operational Notes
+## Operational notes
 
 For tuning compression, memtables, block cache, CGO builds, and hot-cache verification, use the root
 `STORAGE-TUNING.md`. This README describes package boundaries; tuning profiles describe operator choices.

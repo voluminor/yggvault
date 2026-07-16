@@ -20,10 +20,12 @@ get:
           description: Strong cache validator for the generated response body.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Cache policy for generated metadata.
           schema:
             type: string
+            example: public, must-revalidate, max-age=300
       content:
         application/json:
           schema:

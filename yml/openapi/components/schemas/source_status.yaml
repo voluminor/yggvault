@@ -6,11 +6,14 @@ properties:
     description: >-
       Original upstream URL from `release_mirrors`. It is still reported when
       the last sync used a brother node.
+    example: https://github.com/voluminor/yggvault
   status:
     type: string
     enum: [ available, temporary_down, permanent_down, unknown ]
     description: "Upstream availability as observed by this node during the last scan."
+    example: available
   last_scan:
     type: string
     format: date-time
     description: "Scan timestamp that produced this source status."
+    example: "2026-07-16T18:40:00Z"

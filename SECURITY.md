@@ -1,11 +1,11 @@
-# Security Policy
+# Security policy
 
-## Supported Versions
+## Supported versions
 
 Security support covers the latest release and the current default branch. Please update to the most recent version
 before filing a report when that is practical.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
 Email `git@sunsung.fun` with the subject `SECURITY: <short summary>`.
 
@@ -32,7 +32,7 @@ We will:
 Please keep the report private until a fix or mitigation is available. We will coordinate public disclosure and credit
 you unless you ask otherwise.
 
-## Out of Scope
+## Out of scope
 
 The following are usually out of scope unless they demonstrate a concrete, exploitable weakness in this project:
 
@@ -43,12 +43,12 @@ The following are usually out of scope unless they demonstrate a concrete, explo
 - Findings that require non-default, explicitly unsafe configuration.
 - Vulnerabilities in third-party dependencies that should be reported upstream.
 
-## Safe Harbor
+## Safe harbor
 
 If you follow this policy and act in good faith, we will not pursue legal action or intentionally block your research.
 Stay within the minimum testing needed to prove the issue, avoid accessing data that is not yours, and stop if you
 believe testing could harm another system or user.
 
-## Security Updates
+## Security updates
 
 Security fixes are shipped as patch releases when applicable and are noted in release notes or changelog entries.

@@ -4,24 +4,31 @@ properties:
   name:
     type: string
     description: File name shown to clients for this derived artifact.
+    example: yggvault-v0.3.4.tar.gz
   url:
     type: string
     description: "Download path for the artifact, relative to the current API mount."
+    example: /yggvault/v0.3.4.tar.gz
   kind:
     type: string
     description: "Artifact class: `go-zip`, `composer-dist`, `tree-zip`, or `tree-targz`."
+    example: tree-targz
   size:
     type: integer
     format: int64
     description: Artifact body size in bytes.
+    example: 12582912
   hash:
     type: string
     description: "BLAKE3-24 XOF digest of the artifact body, encoded as 48 lowercase hex characters."
+    example: 0123456789abcdef0123456789abcdef0123456789abcdef
   sha256:
     type: string
     description: >-
       SHA-256 body digest in hex, intended for ecosystems that require SHA-256
       integrity such as Bazel `http_archive`.
+    example: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   shasum:
     type: string
     description: "SHA-1 body digest in hex. Present for Composer dist artifacts as `dist.shasum`."
+    example: 0123456789abcdef0123456789abcdef01234567

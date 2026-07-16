@@ -4,14 +4,18 @@ properties:
   version:
     type: string
     description: Version label.
+    example: v0.3.4
   time:
     type: string
     format: date-time
     description: "Release timestamp from upstream metadata."
+    example: "2026-07-16T18:42:47Z"
   size:
     type: integer
     format: int64
     description: Total source content size in bytes.
+    example: 7340032
   url:
     type: string
     description: "Path to the version detail document, normally `<version>.json`."
+    example: /yggvault/v0.3.4.json

@@ -18,10 +18,12 @@ get:
           description: Strong cache validator for the generated response body.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Cache policy for generated metadata.
           schema:
             type: string
+            example: public, must-revalidate, max-age=300
       content:
         application/json:
           schema:
@@ -29,6 +31,8 @@ get:
         text/plain:
           schema:
             type: string
+          example: >-
+            {"keys":[{"key":"yggvault","latest":"v0.3.4","status":"ok","classification":"git","source":{"url":"https://github.com/voluminor/yggvault","status":"available","last_scan":"2026-07-16T18:40:00Z"},"url":"/yggvault/releases.json"}]}
     '304':
       $ref: responses/not_modified
     '400':

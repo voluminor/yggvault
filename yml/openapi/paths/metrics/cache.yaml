@@ -16,6 +16,7 @@ get:
           description: No-cache policy for live metrics.
           schema:
             type: string
+            example: no-cache, max-age=0, must-revalidate
       content:
         application/json:
           schema:

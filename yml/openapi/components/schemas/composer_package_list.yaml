@@ -4,5 +4,7 @@ properties:
   packageNames:
     type: array
     description: Composer package names available through this repository after collision resolution.
+    example: [ vendor/package, vendor/utility ]
     items:
       type: string
+      example: vendor/package

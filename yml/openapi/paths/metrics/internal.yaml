@@ -5,10 +5,11 @@ get:
   summary: Full Prometheus text exposition
   description: >-
     Complete Prometheus-compatible text exposition (version 0.0.4) covering every
-    metric group: core, cache, rescan, errors, and internal runtime signals. Built
-    for scrapers such as VictoriaMetrics and Prometheus. Served only when internal
-    metrics are enabled for the current entry (`metrics.web.internal` or
-    `metrics.ygg.internal`); otherwise the endpoint returns 404.
+    metric group: core, cache, rescan, errors, Yggdrasil, and internal runtime
+    signals. Built for scrapers such as VictoriaMetrics and Prometheus. Served
+    only when internal metrics are enabled for the current entry
+    (`metrics.web.internal` or `metrics.ygg.internal`); otherwise the endpoint
+    returns 404.
   responses:
     '200':
       description: Prometheus text exposition (version 0.0.4).
@@ -17,10 +18,18 @@ get:
           description: No-store policy for metric snapshots.
           schema:
             type: string
+            example: no-store
       content:
         text/plain; version=0.0.4; charset=utf-8:
           schema:
             type: string
+          example: |
+            # HELP ygg_peers_up peers with a connected link
+            # TYPE ygg_peers_up gauge
+            ygg_peers_up 2
+            # HELP ygg_no_reachable_notifications isolation notifications observed from the peer manager; best-effort delivery, rapid bursts coalesce
+            # TYPE ygg_no_reachable_notifications counter
+            ygg_no_reachable_notifications_total 1
     '400':
       $ref: responses/default_error
     '404':

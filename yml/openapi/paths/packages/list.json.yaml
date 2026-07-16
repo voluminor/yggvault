@@ -14,6 +14,7 @@ get:
       description: Composer filter with optional `*` wildcards.
       schema:
         type: string
+        example: vendor/*
     - $ref: parameters/if_none_match
   responses:
     '200':
@@ -23,10 +24,12 @@ get:
           description: Strong cache validator for the generated package list.
           schema:
             type: string
+            example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
         Cache-Control:
           description: Cache policy for generated Composer metadata.
           schema:
             type: string
+            example: public, must-revalidate, max-age=300
       content:
         application/json:
           schema:

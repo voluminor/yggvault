@@ -6,7 +6,7 @@ the workload, then check the benchmark numbers near the end.
 For installation, first run, Yggdrasil setup, source archives, and release binaries, start with
 [README.md](README.md). This file only covers storage and serving trade-offs.
 
-## Quick Choice
+## Quick choice
 
 | Task now                         | Baseline profile                                          | Build                  | Main gain                                  | Main cost                                   |
 |----------------------------------|-----------------------------------------------------------|------------------------|--------------------------------------------|---------------------------------------------|
@@ -22,7 +22,7 @@ For installation, first run, Yggdrasil setup, source archives, and release binar
 Main rule: tune for the current bottleneck. Do not enable `zstd`, a large `block_cache`, `memtable=256mb`, and
 `hot.verify_on_read=always` all at once "just in case"; these knobs solve different problems.
 
-## Build Prerequisites for Examples
+## Build prerequisites for examples
 
 The `go build` snippets below assume one of these source layouts:
 
@@ -39,7 +39,7 @@ All local examples create `tmp/` before writing binaries:
 mkdir -p tmp
 ```
 
-## Profiles with Ready Config Fragments
+## Profiles with ready config fragments
 
 The fragments below can be pasted into `config.yml`. They are not complete configs; they only set the storage knobs
 that matter for the profile.
@@ -253,7 +253,7 @@ storage:
 
 Expected result: strongest hot-file verification. Cost: latency and CPU grow roughly linearly with artifact size.
 
-## Combining Profiles
+## Combining profiles
 
 - `storage.pebble.compression` affects durable storage size and write cost. It barely changes latency once a hot file
   already exists.
@@ -268,7 +268,7 @@ Expected result: strongest hot-file verification. Cost: latency and CPU grow rou
 - Disk-oriented compression profiles affect durable storage. Total node disk also depends on `storage.hot.*`,
   `storage.quota.*`, logs, and your source archive set.
 
-## What Each Knob Changes
+## What each knob changes
 
 | Parameter                         | What it changes                                              | What it does not solve                             |
 |-----------------------------------|--------------------------------------------------------------|----------------------------------------------------|
@@ -283,7 +283,7 @@ Expected result: strongest hot-file verification. Cost: latency and CPU grow rou
 | `storage.hot.verify_on_read`      | latency and CPU on client serving                            | blob verification during rebuild                   |
 | `storage.pebble.verify_on_read`   | durable blob/tree verification during build and repair paths | hot serving path                                   |
 
-## Benchmark Numbers and Comparisons
+## Benchmark numbers and comparisons
 
 All numbers below are `median-of-3` on one reference machine:
 
@@ -302,7 +302,7 @@ Raw result JSON/TXT files are not committed in this repository. For publishable 
 target machine and record at least: commit hash, CPU model, OS/kernel, Go version, storage medium, dataset source, and
 raw result files.
 
-### Compression: Durable Storage Size and Write Cost
+### Compression: durable storage size and write cost
 
 Measurement: `CGO_ENABLED=0`, reference text dataset 26 MB.
 
@@ -327,7 +327,7 @@ Practical reading:
 - `zstd`: minimum disk, but expensive on writes under `CGO_ENABLED=0`.
 - `balanced`/`good`: do not expect a big win on small stores; they are for larger and deeper LSM stores.
 
-### CGO: Effect on zstd and SQLite
+### CGO: effect on zstd and SQLite
 
 | Build           | zstd codec | zstd write CPU/RAM                               | SQLite driver                        |
 |-----------------|------------|--------------------------------------------------|--------------------------------------|
@@ -337,7 +337,7 @@ Practical reading:
 Conclusion: CGO is usually unnecessary for `snappy`/`minlz`. It matters for `zstd`/`good`, and can matter for
 `balanced` on large write-heavy stores.
 
-### RAM: Memtable, Block Cache, In-Flight
+### RAM: memtable, block cache, in-flight
 
 | Knob                                 | Value            | Effect                                       |
 |--------------------------------------|------------------|----------------------------------------------|
@@ -351,7 +351,7 @@ Conclusion: CGO is usually unnecessary for `snappy`/`minlz`. It matters for `zst
 Memtable size should be proportional to large blob objects. If `storage.archive_limits.size.per_file` is near 64 MB,
 do not set `memtable_size=16mb` without intentionally limiting file size.
 
-### Hot Verify: Serving Latency
+### Hot verify: serving latency
 
 This measures `storage.hot.verify_on_read`, because it sits on the hot serving path.
 
@@ -367,7 +367,7 @@ Takeaways:
 - `sampled` checks 1 out of 16 opens and is roughly 15 times cheaper than `always` on large files.
 - `always` is for integrity-critical serving; its cost grows linearly with artifact size.
 
-### High-Load Serving
+### High-load serving
 
 Measurement: live server, keepalive, 200 concurrent connections, loopback, reference dataset.
 
@@ -387,7 +387,7 @@ Takeaways:
 - RAM stayed stable: 38-47 MB under 200 connections.
 - Errors in all runs: 0.
 
-### Build: Portable, CGO, and Native Target
+### Build: portable, CGO, and native target
 
 Build choice should follow the storage profile.
 
@@ -446,7 +446,7 @@ What counts as a win:
   build host CPU; do not run that binary on older CPUs unless you know the instruction set is compatible.
 - For portable production artifacts, use the baseline build or build separate binaries per host class.
 
-## How to Reproduce
+## How to reproduce
 
 Storage microbench. By default, the wrapper uses `$HOME/go/pkg/mod`, caps the raw dataset at 150 MB, builds CGO=0 and
 CGO=1 images, and writes JSON to `tmp/tests/bench-results`:
@@ -478,7 +478,7 @@ Result file:
 
 Benchmark harness description: [tests/bench](tests/bench/README.md).
 
-## Interpretation Limits
+## Interpretation limits
 
 - One host.
 - One tenant.
@@ -492,7 +492,7 @@ For production sizing, benchmark on the target machine, with the target release 
 generator when you need to include network, TLS, and reverse proxy behavior. For native builds, compare at least three
 variants: portable `CGO_ENABLED=0`, generic `CGO_ENABLED=1`, and target-tuned build with `GOAMD64`/`CGO_CFLAGS`.
 
-## Related Project Documents
+## Related project documents
 
 - Main user guide and release assets: [README.md](README.md)
 - Self build and source archive workflow: [README.md#self-build](README.md#self-build)

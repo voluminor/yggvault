@@ -5,39 +5,50 @@ properties:
   uri:
     type: string
     description: Configured or inbound peer URI with userinfo credentials stripped; omitted when unknown or unparsable.
+    example: tls://peer.example.org:443
   up:
     type: boolean
     description: Whether the peer link is currently connected.
+    example: true
   inbound:
     type: boolean
     description: Whether the peer initiated the connection.
+    example: false
   public_key:
     type: string
     description: Hexadecimal peer public key; omitted while the peer has never completed a handshake.
+    example: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   latency_nanos:
     type: integer
     format: int64
     description: Measured peer latency in nanoseconds; 0 when unknown.
+    example: 24500000
   cost:
     type: integer
     format: int64
     description: Routing cost through the peer.
+    example: 1
   rx_bytes:
     type: integer
     format: int64
     description: Bytes received over the current connection.
+    example: 4194304
   tx_bytes:
     type: integer
     format: int64
     description: Bytes transmitted over the current connection.
+    example: 2097152
   uptime_seconds:
     type: number
     format: double
     description: Connection age in seconds as reported by the node.
+    example: 86400.5
   last_error:
     type: string
     description: Latest error observed on the peer link; omitted when none.
+    example: dial timeout
   last_error_time:
     type: string
     format: date-time
     description: When the latest peer error occurred; omitted when none.
+    example: "2026-07-16T17:30:00Z"

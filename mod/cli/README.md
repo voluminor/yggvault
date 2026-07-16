@@ -4,7 +4,7 @@
 and runtime assembly: server start, config validation, preset generation, key generation, storage inspection, and
 maintenance all begin here.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
 flowchart TB
@@ -31,7 +31,7 @@ flowchart TB
 - `--make-preset`, `--validate-config`, and `--make-ygg-key` are one-shot commands and should not assemble the server.
 - User-facing command text is part of the operator interface and should remain stable.
 
-## Important Files
+## Important files
 
 - `obj.go`: command object and parser entry.
 - `helper.go`: flag parsing and command validation.
@@ -39,7 +39,7 @@ flowchart TB
 - `render.go`: terminal and JSON rendering.
 - `error.go`: CLI error wrapping and output.
 
-## Operational Notes
+## Operational notes
 
 Prefer explicit commands in automation. `yggvault <config>` is convenient for humans; `yggvault --config <config>` is
 clearer in service units and scripts.

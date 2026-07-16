@@ -3,7 +3,7 @@
 `mod/maintenance` contains storage-only commands that run outside the serving runtime. The root `main` and `runtime`
 files keep thin wrappers for CLI wiring, signal handling, and user output; the command behavior lives here.
 
-## Place in the Runtime
+## Place in the runtime
 
 ```mermaid
 flowchart TB
@@ -31,7 +31,7 @@ flowchart TB
   maintenance failures.
 - Maintenance must treat hot files as regenerable and Pebble/SQLite as durable truth.
 
-## Important Files
+## Important files
 
 - `obj.go`: command request, typed errors, and shared command constants.
 - `run.go`: command dispatcher and output mode handling.
@@ -40,7 +40,7 @@ flowchart TB
 - `keysource.go`: key source reconciliation.
 - `render.go`: text and JSON rendering helpers.
 
-## Operational Notes
+## Operational notes
 
 Stop the running server before `inspect`, `prune`, `vacuum`, or `rebuild-cache`. These commands intentionally avoid the
 normal runtime graph so they can fail early when storage is locked and so automation receives deterministic output.

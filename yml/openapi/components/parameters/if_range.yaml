@@ -7,3 +7,4 @@ description: >-
   full resource with `200 OK`.
 schema:
   type: string
+  example: '"0123456789abcdef0123456789abcdef0123456789abcdef"'
