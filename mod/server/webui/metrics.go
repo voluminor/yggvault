@@ -14,6 +14,7 @@ type metricGroupObj struct {
 	url      string
 	detail   string
 	internal bool
+	ygg      bool
 }
 
 var cMetricGroupArr = []metricGroupObj{
@@ -21,15 +22,17 @@ var cMetricGroupArr = []metricGroupObj{
 	{name: "cache", url: route.MetricsCache, detail: "metadata/hot-file RAM cache and storage engine", internal: false},
 	{name: "errors", url: route.MetricsErrors, detail: "layer errors and upstream failures", internal: false},
 	{name: "rescan", url: route.MetricsRescan, detail: "integrator cycles and materialization", internal: false},
+	{name: "ygg", url: route.MetricsYgg, detail: "yggdrasil peers, traffic, and isolation events", ygg: true},
 	{name: "internal", url: route.MetricsInternal, detail: "private runtime telemetry", internal: true},
 }
 
 // // // // // // // // // //
 
 // Metrics builds the metric group index honoring the current entry's flags.
-// Groups that would return 404 are hidden from navigation.
+// Groups that would return 404 are hidden from navigation: internal behind its own gate,
+// the ygg group additionally requires a running Yggdrasil node.
 // refreshInterval sets the live polling period for JSON groups on the page.
-func Metrics(ctxObj view.ContextObj, publicEnabled bool, internalEnabled bool, refreshInterval time.Duration) ([]byte, error) {
+func Metrics(ctxObj view.ContextObj, publicEnabled bool, internalEnabled bool, yggEnabled bool, refreshInterval time.Duration) ([]byte, error) {
 	rnd, err := renderer()
 	if err != nil {
 		return nil, err
@@ -42,6 +45,9 @@ func Metrics(ctxObj view.ContextObj, publicEnabled bool, internalEnabled bool, r
 			continue
 		}
 		if !descObj.internal && !publicEnabled {
+			continue
+		}
+		if descObj.ygg && !yggEnabled {
 			continue
 		}
 		kind := "json"

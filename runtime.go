@@ -177,6 +177,9 @@ func (rt *runtimeObj) registerMetrics() error {
 	if err := rt.state.RegisterMetrics(rt.telemetry.Meter(telemetry.GroupErrors)); err != nil {
 		return fmt.Errorf("register errors metrics: %w", err)
 	}
+	if err := rt.mesh.RegisterMetrics(rt.telemetry.Meter(telemetry.GroupYgg)); err != nil {
+		return fmt.Errorf("register mesh metrics: %w", err)
+	}
 	if err := rt.loggerObj.RegisterMetrics(rt.telemetry.Meter(telemetry.GroupInternal)); err != nil {
 		return fmt.Errorf("register logger metrics: %w", err)
 	}

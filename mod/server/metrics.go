@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/voluminor/yggvault/mod/mesh"
 	"github.com/voluminor/yggvault/mod/server/serr"
 	"github.com/voluminor/yggvault/mod/server/webui"
 	"github.com/voluminor/yggvault/mod/state"
@@ -65,6 +66,36 @@ func (obj *funcObj) groupValues(enabled bool, groupObj telemetry.Group) (map[str
 	return obj.deps.Telemetry.GroupValues(groupObj)
 }
 
+func mapYggPeers(peerArr []mesh.PeerSnapshotObj) []api.MetricsYggPeerObj {
+	outArr := make([]api.MetricsYggPeerObj, 0, len(peerArr))
+	for i := range peerArr {
+		peerObj := peerArr[i]
+		entryObj := api.MetricsYggPeerObj{
+			Up:            peerObj.Up,
+			Inbound:       peerObj.Inbound,
+			LatencyNanos:  peerObj.LatencyNanos,
+			Cost:          int64(peerObj.Cost),
+			RxBytes:       int64(peerObj.RXBytes),
+			TxBytes:       int64(peerObj.TXBytes),
+			UptimeSeconds: peerObj.UptimeSeconds,
+		}
+		if peerObj.URI != "" {
+			entryObj.URI = api.NewOptString(peerObj.URI)
+		}
+		if peerObj.PublicKey != "" {
+			entryObj.PublicKey = api.NewOptString(peerObj.PublicKey)
+		}
+		if peerObj.LastError != "" {
+			entryObj.LastError = api.NewOptString(peerObj.LastError)
+		}
+		if !peerObj.LastErrorTime.IsZero() {
+			entryObj.LastErrorTime = api.NewOptDateTime(peerObj.LastErrorTime.UTC())
+		}
+		outArr = append(outArr, entryObj)
+	}
+	return outArr
+}
+
 // // // // // // // // // //
 
 // GetMetricsIndex builds a no-cache HTML page of metric groups.
@@ -74,7 +105,8 @@ func (obj *funcObj) GetMetricsIndex(ctx context.Context) (api.GetMetricsIndexRes
 	if !lc.publicMetricsEnabled && !lc.internalMetricsEnabled {
 		return nil, serr.ErrNotFound
 	}
-	htmlArr, err := webui.Metrics(obj.viewContext(lc), lc.publicMetricsEnabled, lc.internalMetricsEnabled, obj.deps.Config.Metrics.SnapshotInterval)
+	yggEnabled := obj.deps.Mesh != nil && obj.deps.Mesh.Enabled()
+	htmlArr, err := webui.Metrics(obj.viewContext(lc), lc.publicMetricsEnabled, lc.internalMetricsEnabled, yggEnabled, obj.deps.Config.Metrics.SnapshotInterval)
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +226,43 @@ func (obj *funcObj) GetMetricsRescan(ctx context.Context) (api.GetMetricsRescanR
 	return &api.MetricsRescanObjHeaders{
 		CacheControl: api.NewOptString(cNoCacheControl),
 		Response:     rescanObj,
+	}, nil
+}
+
+// GetMetricsYgg serves Yggdrasil mesh aggregates as JSON behind the public gate; a stopped mesh
+// returns 404 on every listener. Aggregates come from the prebuilt telemetry snapshot, so a
+// public request performs no live node work and stays as cheap as the other metric groups.
+// The per-peer list exposes direct topology, so it is included only behind the internal gate;
+// that live read is an operator-only surface, matching the errors group precedent.
+func (obj *funcObj) GetMetricsYgg(ctx context.Context) (api.GetMetricsYggRes, error) {
+	lc := listenerCtxFrom(ctx)
+	if obj.deps.Mesh == nil || !obj.deps.Mesh.Enabled() {
+		return nil, serr.ErrNotFound
+	}
+	valuesObj, ok := obj.groupValues(lc.publicMetricsEnabled, telemetry.GroupYgg)
+	if !ok {
+		return nil, serr.ErrNotFound
+	}
+	yggObj := api.MetricsYggObj{
+		PeersKnown:                    metricInt(valuesObj, "ygg_peers_known"),
+		PeersUp:                       metricInt(valuesObj, "ygg_peers_up"),
+		PeersInbound:                  metricInt(valuesObj, "ygg_peers_inbound"),
+		ActiveSelected:                metricInt(valuesObj, "ygg_active_selected"),
+		RxBytes:                       metricInt(valuesObj, "ygg_rx_bytes"),
+		TxBytes:                       metricInt(valuesObj, "ygg_tx_bytes"),
+		NoReachableNotificationsTotal: metricInt(valuesObj, "ygg_no_reachable_notifications"),
+	}
+	if latencyNanos := metricInt(valuesObj, "ygg_best_latency_nanos"); latencyNanos > 0 {
+		yggObj.BestLatencyNanos = api.NewOptInt64(latencyNanos)
+	}
+	if lc.internalMetricsEnabled {
+		if peerArr, peersOK := obj.deps.Mesh.PeerList(); peersOK {
+			yggObj.Peers = mapYggPeers(peerArr)
+		}
+	}
+	return &api.MetricsYggObjHeaders{
+		CacheControl: api.NewOptString(cNoCacheControl),
+		Response:     yggObj,
 	}, nil
 }
 

@@ -6,8 +6,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/voluminor/ratatoskr/mod/resolver"
 )
 
 // // // // // // // // // //
@@ -40,8 +38,8 @@ func TestGenerateKeyRoundTrip(t *testing.T) {
 	if len(pemBytes) == 0 {
 		t.Fatal("GenerateKey returned empty pem")
 	}
-	if !strings.HasSuffix(host, resolver.NameMappingSuffix) {
-		t.Fatalf("host %q lacks naming suffix %q", host, resolver.NameMappingSuffix)
+	if !strings.HasSuffix(host, cHostSuffix) {
+		t.Fatalf("host %q lacks naming suffix %q", host, cHostSuffix)
 	}
 
 	derived, err := HostFromKey(writeKey(t, pemBytes))

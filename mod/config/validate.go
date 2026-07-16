@@ -45,6 +45,7 @@ func validate(stc *stcfg.ConfigObj) error {
 		validateSource,
 		validateWeb,
 		validateInfo,
+		validateYgg,
 		validateTopLevel,
 		validatePaths,
 		validateFiles,
@@ -62,10 +63,46 @@ func validateInfo(stc *stcfg.ConfigObj) error {
 	return mesh.ValidateInfoConfig(stc.Info)
 }
 
+func validateYgg(stc *stcfg.ConfigObj) error {
+	return mesh.ValidateYggConfig(stc.Ygg)
+}
+
+// ownIdentityHosts returns the node's own hostnames: the configured web domain and the Yggdrasil
+// host derived from the pem key when the key file is readable. An unreadable key only skips the
+// Yggdrasil comparison; startup will surface the key problem itself.
+func ownIdentityHosts(stc *stcfg.ConfigObj) (domainText string, yggHost string) {
+	domainText = strings.TrimSpace(stc.Web.Server.Domain)
+	if pemPath := strings.TrimSpace(stc.Ygg.PemKey); pemPath != "" {
+		if hostText, err := mesh.HostFromKey(pemPath); err == nil {
+			yggHost = hostText
+		}
+	}
+	return domainText, yggHost
+}
+
+// validateMirrorNotSelf rejects a mirror URL that addresses this node itself. Discovery would
+// classify the node's own /info as a valid brother and the key would stay silently empty or
+// stale while burning an RPC session to itself every rescan cycle.
+func validateMirrorNotSelf(key string, sourceURL string, ownDomain string, ownYggHost string) error {
+	parsedObj, err := url.Parse(strings.TrimSpace(sourceURL))
+	if err != nil {
+		return nil
+	}
+	hostText := parsedObj.Hostname()
+	if ownDomain != "" && strings.EqualFold(hostText, ownDomain) {
+		return fmt.Errorf("release_mirrors[%q]: source URL points at this node itself (host equals web.server.domain %q); a node cannot mirror itself", key, ownDomain)
+	}
+	if ownYggHost != "" && strings.EqualFold(hostText, ownYggHost) {
+		return fmt.Errorf("release_mirrors[%q]: source URL points at this node itself (host equals this node's Yggdrasil host); a node cannot mirror itself", key)
+	}
+	return nil
+}
+
 func validateRegistry(stc *stcfg.ConfigObj) error {
 	if len(stc.ReleaseMirrors) == 0 {
 		return errors.New("release_mirrors must contain at least one entry")
 	}
+	ownDomain, ownYggHost := ownIdentityHosts(stc)
 	for k, sourceURL := range stc.ReleaseMirrors {
 		if k == "" {
 			return errors.New("release_mirrors: key must not be empty")
@@ -86,6 +123,9 @@ func validateRegistry(stc *stcfg.ConfigObj) error {
 			return fmt.Errorf("release_mirrors: source URL for key %q must not be empty", k)
 		}
 		if err := validateHTTPURL(fmt.Sprintf("release_mirrors[%q]", k), sourceURL); err != nil {
+			return err
+		}
+		if err := validateMirrorNotSelf(k, sourceURL, ownDomain, ownYggHost); err != nil {
 			return err
 		}
 	}

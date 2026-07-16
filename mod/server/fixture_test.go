@@ -246,19 +246,40 @@ func (fakeMeshObj) DialContext(_ context.Context, _ string, _ string) (net.Conn,
 func (fakeMeshObj) ListenerFor(_ mesh.TransportType) (net.Listener, error) {
 	return nil, errMeshDisabled
 }
-func (fakeMeshObj) Host() string                  { return "" }
-func (fakeMeshObj) Address() net.IP               { return nil }
-func (fakeMeshObj) OwnsHost(_ string) bool        { return false }
-func (fakeMeshObj) Enabled() bool                 { return false }
-func (fakeMeshObj) Close(_ context.Context) error { return nil }
+func (fakeMeshObj) Host() string                             { return "" }
+func (fakeMeshObj) Address() net.IP                          { return nil }
+func (fakeMeshObj) OwnsHost(_ string) bool                   { return false }
+func (fakeMeshObj) Enabled() bool                            { return false }
+func (fakeMeshObj) PeerList() ([]mesh.PeerSnapshotObj, bool) { return nil, false }
+func (fakeMeshObj) Close(_ context.Context) error            { return nil }
 
 var _ mesh.NodeInterface = fakeMeshObj{}
+
+// enabledFakeMeshObj models a running node with one connected peer for ygg metrics tests.
+type enabledFakeMeshObj struct{ fakeMeshObj }
+
+func (enabledFakeMeshObj) Enabled() bool { return true }
+func (enabledFakeMeshObj) PeerList() ([]mesh.PeerSnapshotObj, bool) {
+	return []mesh.PeerSnapshotObj{{
+		URI:           "tls://peer.example:443",
+		Up:            true,
+		PublicKey:     "aabb",
+		LatencyNanos:  1500000,
+		Cost:          10,
+		RXBytes:       2048,
+		TXBytes:       1024,
+		UptimeSeconds: 12.5,
+	}}, true
+}
+
+var _ mesh.NodeInterface = enabledFakeMeshObj{}
 
 // // // // // // // // // //
 
 type testOptionsObj struct {
 	publicMetrics      bool
 	internalMetrics    bool
+	yggPublicMetrics   bool
 	rateLimitRPS       uint
 	rateLimitBurst     uint
 	staticDir          string
@@ -274,6 +295,10 @@ type testOptionFunc func(*testOptionsObj)
 
 func withPublicMetrics() testOptionFunc {
 	return func(o *testOptionsObj) { o.publicMetrics = true }
+}
+
+func withYggPublicMetrics() testOptionFunc {
+	return func(o *testOptionsObj) { o.yggPublicMetrics = true }
 }
 
 func withInternalMetrics() testOptionFunc {
@@ -424,6 +449,7 @@ func newTestServer(t *testing.T, optArr ...testOptionFunc) (*Obj, listenerCtxObj
 	cfgObj.Storage.Dir = storageDir
 	cfgObj.Metrics.Web.Public = optionsObj.publicMetrics
 	cfgObj.Metrics.Web.Internal = optionsObj.internalMetrics
+	cfgObj.Metrics.Ygg.Public = optionsObj.yggPublicMetrics
 	cfgObj.RateLimit.Web.Http.RequestsPerSecond = optionsObj.rateLimitRPS
 	cfgObj.RateLimit.Web.Http.Burst = optionsObj.rateLimitBurst
 

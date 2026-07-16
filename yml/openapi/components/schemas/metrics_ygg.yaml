@@ -1,0 +1,41 @@
+type: object
+required: [ peers_known, peers_up, peers_inbound, active_selected, rx_bytes, tx_bytes, no_reachable_notifications_total ]
+description: Yggdrasil mesh peer metrics snapshot. Aggregates come from the prebuilt telemetry snapshot.
+properties:
+  peers_known:
+    type: integer
+    format: int64
+    description: Peers known to the node, configured and inbound.
+  peers_up:
+    type: integer
+    format: int64
+    description: Peers with a currently connected link.
+  peers_inbound:
+    type: integer
+    format: int64
+    description: Peers that initiated their connection to this node.
+  active_selected:
+    type: integer
+    format: int64
+    description: Peers currently selected by the peer manager; 0 without a manager. Updates once per probe cycle, so it can lag the connected state by up to ygg.peers.probe_timeout.
+  rx_bytes:
+    type: integer
+    format: int64
+    description: Bytes received across current peer connections.
+  tx_bytes:
+    type: integer
+    format: int64
+    description: Bytes transmitted across current peer connections.
+  best_latency_nanos:
+    type: integer
+    format: int64
+    description: Lowest measured latency among connected peers in nanoseconds; omitted when unknown.
+  no_reachable_notifications_total:
+    type: integer
+    format: int64
+    description: Peer-manager isolation notifications observed since process start. Delivery is best-effort and rapid bursts coalesce, so this is a lower bound on isolation episodes.
+  peers:
+    type: array
+    description: Point-in-time peer list. Present only when internal metrics are enabled for the current entry (`metrics.web.internal` or `metrics.ygg.internal`); the public response carries aggregates only, because per-peer data exposes direct topology. Capped at 256 entries and refreshed at most once per metrics.snapshot_interval; exact totals live in the aggregate counters. Per-peer data is also intentionally absent from the Prometheus exposition.
+    items:
+      $ref: metrics_ygg_peer

@@ -41,6 +41,7 @@ release_mirrors:
     - "Mirror source registry: local key -> upstream repository root URL."
     - "Keys must match `^[a-z0-9][a-z0-9._-]{1,38}[a-z0-9]$`, must not equal web.server.domain, and must not use reserved route names or Go major suffixes such as `v2`."
     - "Values must be non-empty HTTP or HTTPS URLs with a host."
+    - "A URL must not point at this node itself: hosts equal to web.server.domain or to this node's own Yggdrasil host are rejected, because a node cannot mirror itself."
 
 web:
   usage: "Web ingress, route topology, static file serving, and browser/API pagination."
@@ -204,12 +205,22 @@ ygg:
     initial:
       type: "[]string"
       value: [ ]
-      usage: "Initial peer URI candidates. Empty list disables peer manager startup."
+      usage:
+        - "Initial peer URI candidates. Empty list disables peer manager startup."
+        - "Invalid or duplicate entries are dropped with startup warnings; validation fails only when no usable candidate remains."
+    passive:
+      type: bool
+      value: false
+      usage:
+        - "Keeps every configured peer connected and managed, skipping latency-based selection."
+        - "When enabled, ygg.peers.max_per_proto and ygg.peers.min_peers are ignored and health recovery does not run; scheduled ygg.peers.refresh_interval refreshes still reconnect lost peers."
     max_per_proto:
       type: uint
       value: 1
       min: 1
-      usage: "Target number of best peers retained per transport protocol."
+      usage:
+        - "Target number of best peers retained per transport protocol."
+        - "Ignored when ygg.peers.passive is enabled."
     probe_timeout:
       type: time.Duration
       value: "10s"
@@ -219,12 +230,43 @@ ygg:
       type: time.Duration
       value: "0s"
       min: "0s"
-      usage: "Interval between peer-pool refreshes. Zero means a single refresh at startup. Accepts values such as `5m`, `1h`, or a nanosecond integer."
+      usage:
+        - "Interval between scheduled peer-pool refreshes. Zero disables scheduled refreshes after the startup selection; outage and min_peers recovery still run independently through ygg.peers.health_interval."
+        - "One refresh re-probes the whole candidate pool, so non-zero values below 1m are raised to 1m at startup with a warning. Accepts values such as `5m`, `1h`, or a nanosecond integer."
     batch_size:
       type: uint
       value: 8
       min: 2
-      usage: "Maximum peer candidates probed concurrently in one batch. Must be >= 2."
+      usage: "Maximum new peer connections attempted in one refresh cycle. Values above 256 are capped by the library internally."
+    min_peers:
+      type: uint
+      value: 0
+      max: 256
+      usage:
+        - "Early-recovery threshold: when the count of active peers stays at or below this value for ygg.peers.min_peers_confirmations consecutive health checks, an unscheduled peer-pool refresh runs."
+        - "0 disables early recovery. Valid range: 0..256."
+        - "Must stay below the selectable peer capacity: the sum over distinct URI schemes in ygg.peers.initial of min(scheme candidates, max_per_proto)."
+        - "Ignored in passive mode and when health recovery is disabled (ygg.peers.health_interval=0)."
+    min_peers_confirmations:
+      type: uint
+      value: 3
+      min: 1
+      max: 1000
+      usage: "Number of consecutive low-peer-count health checks required before early recovery triggers. Guards against refresh storms on short connectivity blips. Valid range: 1..1000."
+    health_interval:
+      type: time.Duration
+      value: "10s"
+      min: "0s"
+      usage:
+        - "Interval between peer health checks driving outage detection and ygg.peers.min_peers early recovery."
+        - "0 disables health recovery. Non-zero values must be at least 1s. Accepts values such as `10s`, `1m`, or a nanosecond integer."
+    reprobe_interval:
+      type: time.Duration
+      value: "30m"
+      min: "0s"
+      usage:
+        - "Minimum holdoff before reconnecting a reachable peer that lost latency selection. Prevents flapping between near-equal candidates."
+        - "0 disables the holdoff. Accepts values such as `30m`, `1h`, or a nanosecond integer."
 
 logging:
   usage: "Runtime logging pipeline and event sinks."
@@ -319,7 +361,7 @@ metrics:
     public:
       type: bool
       value: false
-      usage: "Publishes the HTML metrics index at /metrics and the JSON metric groups on web routes: /metrics/core, /metrics/cache, /metrics/errors, and /metrics/rescan. Disabled by default: metrics stay operator-only until explicitly exposed."
+      usage: "Publishes the HTML metrics index at /metrics and the JSON metric groups on web routes: /metrics/core, /metrics/cache, /metrics/errors, /metrics/rescan, and /metrics/ygg. The ygg group exists only while Yggdrasil ingress is running and returns 404 otherwise. Disabled by default: metrics stay operator-only until explicitly exposed."
     internal:
       type: bool
       value: false
@@ -804,7 +846,10 @@ shutdown_timeout:
   type: time.Duration
   value: "10s"
   min: "1s"
-  usage: "Global graceful shutdown budget. Storage close still gets its own integrity budget in runtime shutdown code. Accepts values such as `10s`, `1m`, or a nanosecond integer."
+  usage:
+    - "Global graceful shutdown budget. Storage close still gets its own integrity budget in runtime shutdown code."
+    - "Also applied as the embedded Yggdrasil node close budget: node teardown that exceeds it continues in the background."
+    - "Accepts values such as `10s`, `1m`, or a nanosecond integer."
 
 profiling:
   usage: "Built-in net/http/pprof and runtime-trace listener for load diagnostics. Disabled mode starts no listener. Enabled mode must bind only to loopback; use an SSH tunnel for remote access."

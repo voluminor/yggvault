@@ -22,6 +22,7 @@ const (
 	GroupCache    Group = "cache"
 	GroupRescan   Group = "rescan"
 	GroupErrors   Group = "errors"
+	GroupYgg      Group = "ygg"
 	GroupInternal Group = "internal"
 )
 
@@ -29,7 +30,7 @@ const cScopePrefix = "github.com/voluminor/yggvault/"
 
 const cPushPath = "/api/v1/import/prometheus"
 
-var knownGroupsArr = []Group{GroupCore, GroupCache, GroupRescan, GroupErrors, GroupInternal}
+var knownGroupsArr = []Group{GroupCore, GroupCache, GroupRescan, GroupErrors, GroupYgg, GroupInternal}
 
 var knownGroupSetObj = func() map[Group]bool {
 	setObj := make(map[Group]bool, len(knownGroupsArr))

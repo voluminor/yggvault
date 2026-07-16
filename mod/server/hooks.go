@@ -31,6 +31,7 @@ func isDataOp(operationName api.OperationName) bool {
 		api.GetMetricsCacheOperation,
 		api.GetMetricsErrorsOperation,
 		api.GetMetricsRescanOperation,
+		api.GetMetricsYggOperation,
 		api.GetMetricsInternalOperation:
 		return false
 	default:

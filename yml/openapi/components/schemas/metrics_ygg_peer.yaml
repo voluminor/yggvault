@@ -1,0 +1,43 @@
+type: object
+required: [ up, inbound, latency_nanos, cost, rx_bytes, tx_bytes, uptime_seconds ]
+description: One Yggdrasil peer connection at snapshot time.
+properties:
+  uri:
+    type: string
+    description: Configured or inbound peer URI with userinfo credentials stripped; omitted when unknown or unparsable.
+  up:
+    type: boolean
+    description: Whether the peer link is currently connected.
+  inbound:
+    type: boolean
+    description: Whether the peer initiated the connection.
+  public_key:
+    type: string
+    description: Hexadecimal peer public key; omitted while the peer has never completed a handshake.
+  latency_nanos:
+    type: integer
+    format: int64
+    description: Measured peer latency in nanoseconds; 0 when unknown.
+  cost:
+    type: integer
+    format: int64
+    description: Routing cost through the peer.
+  rx_bytes:
+    type: integer
+    format: int64
+    description: Bytes received over the current connection.
+  tx_bytes:
+    type: integer
+    format: int64
+    description: Bytes transmitted over the current connection.
+  uptime_seconds:
+    type: number
+    format: double
+    description: Connection age in seconds as reported by the node.
+  last_error:
+    type: string
+    description: Latest error observed on the peer link; omitted when none.
+  last_error_time:
+    type: string
+    format: date-time
+    description: When the latest peer error occurred; omitted when none.

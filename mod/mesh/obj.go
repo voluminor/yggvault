@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -22,8 +24,6 @@ import (
 
 const (
 	cYggPort = "80"
-
-	cCoreStopTimeout = 5 * time.Second
 )
 
 // //
@@ -53,6 +53,7 @@ type NodeInterface interface {
 	Address() net.IP
 	OwnsHost(host string) bool
 	Enabled() bool
+	PeerList() ([]PeerSnapshotObj, bool)
 	Close(ctx context.Context) error
 }
 
@@ -65,22 +66,87 @@ type Obj struct {
 	host     string
 	addr     net.IP
 	enabled  bool
+	// noPeersStop ends the isolation watcher; nil when the peer manager or logger is absent.
+	noPeersStop chan struct{}
+	// noPeersEvents counts peer-manager isolation notifications for the metrics snapshot.
+	noPeersEvents atomic.Uint64
+	// closeOnce guards the single teardown; closeDone publishes closeErr to every Close caller.
+	closeOnce sync.Once
+	closeDone chan struct{}
+	closeErr  error
+	// closing plus snapMu fence metrics reads off node teardown: the library does not guard node
+	// state reads on a closed core, and telemetry keeps collecting until it closes after mesh.
+	// Readers take snapMu.RLock and check closing; Close sets closing, then acquires the write
+	// lock once, so no reader can overlap or follow node.Close.
+	closing atomic.Bool
+	snapMu  sync.RWMutex
+	// peerListTTL/peerListMu/peerListCache bound live node reads for the detailed peer list.
+	peerListTTL   time.Duration
+	peerListMu    sync.Mutex
+	peerListCache *peerListCacheObj
 }
 
 var _ NodeInterface = (*Obj)(nil)
 
 // // // // // // // // // //
 
+// buildPeerManager maps ygg.peers config to the manager contract. The config treats zero
+// health_interval and reprobe_interval as disabled, while the library reserves zero for its
+// defaults and negative values for disabled, so zero is translated to -1 here. A non-zero
+// refresh_interval below the anti-storm floor is clamped, not rejected: the field predates the
+// floor and older configs must keep starting. Unbounded uints are clamped on conversion.
 func buildPeerManager(yg stconf.YggObj) *peermgr.ConfigObj {
 	if len(yg.Peers.Initial) == 0 {
 		return nil
 	}
+	healthInterval := yg.Peers.HealthInterval
+	if healthInterval == 0 {
+		healthInterval = -1
+	}
+	reprobeInterval := yg.Peers.ReprobeInterval
+	if reprobeInterval == 0 {
+		reprobeInterval = -1
+	}
+	refreshInterval := yg.Peers.RefreshInterval
+	if refreshInterval > 0 && refreshInterval < cMinRefreshInterval {
+		refreshInterval = cMinRefreshInterval
+	}
 	return &peermgr.ConfigObj{
-		Peers:           yg.Peers.Initial,
-		ProbeTimeout:    yg.Peers.ProbeTimeout,
-		RefreshInterval: yg.Peers.RefreshInterval,
-		MaxPerProto:     int(yg.Peers.MaxPerProto),
-		BatchSize:       int(yg.Peers.BatchSize),
+		Peers:                 yg.Peers.Initial,
+		ProbeTimeout:          yg.Peers.ProbeTimeout,
+		RefreshInterval:       refreshInterval,
+		MaxPerProto:           clampToInt(yg.Peers.MaxPerProto),
+		BatchSize:             clampToInt(yg.Peers.BatchSize),
+		Passive:               yg.Peers.Passive,
+		MinPeers:              clampToInt(yg.Peers.MinPeers),
+		MinPeersConfirmations: clampToInt(yg.Peers.MinPeersConfirmations),
+		HealthInterval:        healthInterval,
+		ReprobeInterval:       reprobeInterval,
+	}
+}
+
+// logInertPeerFields warns about configured ygg.peers values the runtime adjusts or ignores,
+// mirroring the peermgr downgrade rules in config terms: passive mode drops selection knobs,
+// disabled health recovery drops min_peers, and a sub-floor refresh interval is clamped.
+func logInertPeerFields(logObj zerolog.Logger, yg stconf.YggObj, managerConfigObj *peermgr.ConfigObj) {
+	if refreshInterval := yg.Peers.RefreshInterval; refreshInterval > 0 && refreshInterval < cMinRefreshInterval {
+		logObj.Warn().Str("component", "mesh").
+			Msgf("ygg.peers.refresh_interval %s is below the %s anti-storm floor and was raised to it", refreshInterval, cMinRefreshInterval)
+	}
+	if managerConfigObj.Passive {
+		if managerConfigObj.MaxPerProto > 1 {
+			logObj.Warn().Str("component", "mesh").
+				Msg("ygg.peers.max_per_proto is ignored because ygg.peers.passive keeps every configured peer")
+		}
+		if managerConfigObj.MinPeers > 0 {
+			logObj.Warn().Str("component", "mesh").
+				Msg("ygg.peers.min_peers is ignored because ygg.peers.passive keeps every configured peer")
+		}
+		return
+	}
+	if managerConfigObj.HealthInterval < 0 && managerConfigObj.MinPeers > 0 {
+		logObj.Warn().Str("component", "mesh").
+			Msg("ygg.peers.min_peers is ignored because health recovery is disabled (ygg.peers.health_interval=0)")
 	}
 }
 
@@ -124,11 +190,24 @@ func New(configObj *stconf.ConfigObj, logArr ...zerolog.Logger) (*Obj, error) {
 		return nil, fmt.Errorf("build node sigils: %w", err)
 	}
 
+	peersConfigObj := buildPeerManager(yg)
+	if peersConfigObj != nil && len(logArr) > 0 {
+		logInertPeerFields(logArr[0], yg, peersConfigObj)
+	}
+
+	var noPeersChan chan struct{}
+	var noPeersStop chan struct{}
+	if peersConfigObj != nil && len(logArr) > 0 {
+		noPeersChan = make(chan struct{}, 1)
+		noPeersStop = make(chan struct{})
+		peersConfigObj.NoReachablePeers = noPeersChan
+	}
+
 	nodeConfigObj := ratatoskr.ConfigObj{
-		Config:          cfg,
-		CoreStopTimeout: cCoreStopTimeout,
-		Peers:           buildPeerManager(yg),
-		Sigils:          sigilArr,
+		Config:       cfg,
+		CloseTimeout: configObj.ShutdownTimeout,
+		Peers:        peersConfigObj,
+		Sigils:       sigilArr,
 	}
 	if len(logArr) > 0 {
 		nodeConfigObj.Logger = newRatatoskrLogger(logArr[0])
@@ -139,14 +218,43 @@ func New(configObj *stconf.ConfigObj, logArr ...zerolog.Logger) (*Obj, error) {
 		return nil, fmt.Errorf("start yggdrasil node: %w", err)
 	}
 
+	resolverObj, err := resolver.New(resolver.ConfigObj{Dialer: node})
+	if err != nil {
+		_ = node.Close()
+		return nil, fmt.Errorf("start ygg resolver: %w", err)
+	}
+
+	peerListTTL := configObj.Metrics.SnapshotInterval
+	if peerListTTL < time.Second {
+		peerListTTL = time.Second
+	}
 	obj := &Obj{
-		node:     node,
-		resolver: resolver.New(node, ""),
-		host:     hostFromPublicKey(node.PublicKey()),
-		addr:     node.Address(),
-		enabled:  true,
+		node:        node,
+		resolver:    resolverObj,
+		host:        hostFromPublicKey(node.PublicKey()),
+		addr:        node.Address(),
+		enabled:     true,
+		noPeersStop: noPeersStop,
+		closeDone:   make(chan struct{}),
+		peerListTTL: peerListTTL,
+	}
+	if noPeersStop != nil {
+		go obj.watchNoReachablePeers(logArr[0], noPeersChan)
 	}
 	return obj, nil
+}
+
+// watchNoReachablePeers counts and logs manager isolation events until noPeersStop closes.
+func (obj *Obj) watchNoReachablePeers(logObj zerolog.Logger, eventChan <-chan struct{}) {
+	for {
+		select {
+		case <-eventChan:
+			obj.noPeersEvents.Add(1)
+			logObj.Warn().Str("component", "mesh").Msg("yggdrasil mesh has no reachable peers")
+		case <-obj.noPeersStop:
+			return
+		}
+	}
 }
 
 // // // // // // // // // //
@@ -164,7 +272,7 @@ func (obj *Obj) Address() net.IP { return obj.addr }
 // disabled nodes; reachability is gated separately by Enabled.
 func (obj *Obj) OwnsHost(host string) bool {
 	hostText := strings.ToLower(strings.TrimSpace(host))
-	if strings.HasSuffix(hostText, resolver.NameMappingSuffix) {
+	if strings.HasSuffix(hostText, cHostSuffix) {
 		return true
 	}
 	if ipObj := net.ParseIP(hostText); ipObj != nil {
@@ -175,18 +283,34 @@ func (obj *Obj) OwnsHost(host string) bool {
 	return false
 }
 
-// Close stops the node within ctx budget; disabled mode is an idempotent no-op.
+// Close stops the resolver, then the node, within ctx budget; it is idempotent and concurrent-safe,
+// and disabled mode is a no-op. Teardown runs once; every caller observes the same result through
+// closeDone. The node bounds its own teardown by the configured CloseTimeout and finishes it in the
+// background when that budget expires, so an early ctx exit never strands shutdown.
 func (obj *Obj) Close(ctx context.Context) error {
 	if !obj.enabled || obj.node == nil {
 		return nil
 	}
 
-	done := make(chan error, 1)
-	go func() { done <- obj.node.Close() }()
+	obj.closeOnce.Do(func() {
+		obj.closing.Store(true)
+		go func() {
+			// The write lock first drains in-flight metrics readers, then covers teardown itself:
+			// with closing already set, a reader that acquires the lock later bails before touching
+			// the node, so no snapshot can overlap or follow node.Close.
+			obj.snapMu.Lock()
+			obj.closeErr = errors.Join(obj.resolver.Close(), obj.node.Close())
+			obj.snapMu.Unlock()
+			if obj.noPeersStop != nil {
+				close(obj.noPeersStop)
+			}
+			close(obj.closeDone)
+		}()
+	})
 
 	select {
-	case err := <-done:
-		return err
+	case <-obj.closeDone:
+		return obj.closeErr
 	case <-ctx.Done():
 		return ctx.Err()
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/voluminor/yggvault/mod/internal/util"
+	"github.com/voluminor/yggvault/mod/mesh"
 	stcfg "github.com/voluminor/yggvault/target/stconf"
 )
 
@@ -18,7 +19,7 @@ func newValidConfigObjForTest(t *testing.T) *stcfg.ConfigObj {
 	configObj := stcfg.FullConfig()
 
 	configObj.ReleaseMirrors = map[string]string{
-		"core-lib": "https://example.com/core-lib",
+		"core-lib": "https://upstream.example.org/core-lib",
 	}
 	configObj.Ygg.PemKey = "test-pem-key"
 
@@ -80,9 +81,68 @@ func TestNewLoadsValidConfig(t *testing.T) {
 	if loadedObj == nil {
 		t.Fatal("New returned nil config")
 	}
-	if loadedObj.ReleaseMirrors["core-lib"] != "https://example.com/core-lib" {
+	if loadedObj.ReleaseMirrors["core-lib"] != "https://upstream.example.org/core-lib" {
 		t.Fatalf("unexpected release mirror: %#v", loadedObj.ReleaseMirrors)
 	}
+}
+
+func TestValidateRejectsSelfMirror(t *testing.T) {
+	t.Run("mirror host equals own web domain", func(t *testing.T) {
+		configObj := newValidConfigObjForTest(t)
+		enableWebForTest(configObj)
+		configObj.ReleaseMirrors["looped"] = "https://example.com/looped"
+
+		err := validate(configObj)
+		if err == nil || !strings.Contains(err.Error(), "cannot mirror itself") {
+			t.Fatalf("expected self-mirror rejection, got: %v", err)
+		}
+	})
+
+	t.Run("mirror host equals own ygg host", func(t *testing.T) {
+		pemBytes, ownHost, err := mesh.GenerateKey()
+		if err != nil {
+			t.Fatalf("GenerateKey returned error: %v", err)
+		}
+		pemPath := filepath.Join(t.TempDir(), "node.pem")
+		if err := mesh.WriteKeyFile(pemPath, pemBytes); err != nil {
+			t.Fatalf("WriteKeyFile returned error: %v", err)
+		}
+
+		configObj := newValidConfigObjForTest(t)
+		configObj.Ygg.PemKey = pemPath
+		configObj.Ygg.Peers.Initial = []string{"tls://peer.example:443"}
+		configObj.ReleaseMirrors["looped"] = "http://" + ownHost + "/looped"
+
+		err = validate(configObj)
+		if err == nil || !strings.Contains(err.Error(), "cannot mirror itself") {
+			t.Fatalf("expected self-mirror rejection, got: %v", err)
+		}
+	})
+
+	t.Run("foreign ygg host and loopback stay valid", func(t *testing.T) {
+		pemBytes, _, err := mesh.GenerateKey()
+		if err != nil {
+			t.Fatalf("GenerateKey returned error: %v", err)
+		}
+		pemPath := filepath.Join(t.TempDir(), "node.pem")
+		if err := mesh.WriteKeyFile(pemPath, pemBytes); err != nil {
+			t.Fatalf("WriteKeyFile returned error: %v", err)
+		}
+		_, foreignHost, err := mesh.GenerateKey()
+		if err != nil {
+			t.Fatalf("GenerateKey returned error: %v", err)
+		}
+
+		configObj := newValidConfigObjForTest(t)
+		enableWebForTest(configObj)
+		configObj.Ygg.PemKey = pemPath
+		configObj.ReleaseMirrors["brother"] = "http://" + foreignHost + "/brother"
+		configObj.ReleaseMirrors["local"] = "http://127.0.0.1:9999/local"
+
+		if err := validate(configObj); err != nil {
+			t.Fatalf("validate returned error: %v", err)
+		}
+	})
 }
 
 func TestValidateRejectsMissingIngress(t *testing.T) {

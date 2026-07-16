@@ -71,6 +71,10 @@
                     label: "Source rescan",
                     desc: "Background source refresh cycles and published versions."
                 },
+                group_ygg: {
+                    label: "Yggdrasil mesh",
+                    desc: "Embedded node peers, traffic, and isolation events."
+                },
                 cache: {
                     label: "RAM metadata cache",
                     desc: "Small generated metadata payloads and ETag validators kept in RAM."
@@ -329,6 +333,83 @@
                 first_seen: {
                     label: "First seen",
                     desc: "First time this diagnostic entered the registry."
+                },
+                peers_known: {
+                    label: "Known peers",
+                    desc: "Peers known to the node: configured plus inbound."
+                },
+                peers_up: {
+                    label: "Connected peers",
+                    desc: "Peers with a currently connected link."
+                },
+                peers_inbound: {
+                    label: "Inbound peers",
+                    desc: "Peers that initiated their connection to this node."
+                },
+                active_selected: {
+                    label: "Selected peers",
+                    desc: "Peers currently selected by the peer manager."
+                },
+                rx_bytes: {
+                    label: "Received",
+                    desc: "Bytes received; the stat card sums current peers, a peer row shows one link.",
+                    unit: "bytes"
+                },
+                tx_bytes: {
+                    label: "Transmitted",
+                    desc: "Bytes transmitted; the stat card sums current peers, a peer row shows one link.",
+                    unit: "bytes"
+                },
+                best_latency_nanos: {
+                    label: "Best latency",
+                    desc: "Lowest measured latency among connected peers.",
+                    unit: "nanos"
+                },
+                no_reachable_notifications_total: {
+                    label: "Isolation notifications",
+                    desc: "Best-effort count of no-reachable-peer notifications; rapid bursts coalesce."
+                },
+                peers: {
+                    label: "Peers",
+                    desc: "Current peer connections reported by the node."
+                },
+                uri: {
+                    label: "URI",
+                    desc: "Configured or inbound peer URI."
+                },
+                up: {
+                    label: "Up",
+                    desc: "Whether the peer link is connected."
+                },
+                inbound: {
+                    label: "Inbound",
+                    desc: "Whether the peer initiated the connection."
+                },
+                public_key: {
+                    label: "Public key",
+                    desc: "Hexadecimal peer public key."
+                },
+                latency_nanos: {
+                    label: "Latency",
+                    desc: "Measured peer latency.",
+                    unit: "nanos"
+                },
+                cost: {
+                    label: "Cost",
+                    desc: "Routing cost through the peer."
+                },
+                uptime_seconds: {
+                    label: "Uptime",
+                    desc: "Current connection age.",
+                    unit: "duration_s"
+                },
+                last_error: {
+                    label: "Last error",
+                    desc: "Latest error observed on the peer link."
+                },
+                last_error_time: {
+                    label: "Last error time",
+                    desc: "When the latest peer error occurred."
                 }
             };
 
@@ -460,11 +541,13 @@
 
             function rowsTable(title, arr) {
                 var frag = document.createDocumentFragment();
-                frag.appendChild(el("div", "live-sub", fmtLabel(title) + " (" + arr.length + ")"));
+                var rows = arr.slice(0, 20);
+                var countText = rows.length < arr.length ? rows.length + " of " + arr.length : String(arr.length);
+                frag.appendChild(el("div", "live-sub", fmtLabel(title) + " (" + countText + ")"));
                 if (!arr.length) return frag;
                 var seen = {};
                 var cols = [];
-                arr.slice(0, 20).forEach(function (row) {
+                rows.forEach(function (row) {
                     Object.keys(row).forEach(function (k) {
                         if (!seen[k]) {
                             seen[k] = true;
@@ -485,7 +568,7 @@
                 thead.appendChild(hr);
                 table.appendChild(thead);
                 var tbody = el("tbody");
-                arr.slice(0, 20).forEach(function (row) {
+                rows.forEach(function (row) {
                     var tr = el("tr");
                     cols.forEach(function (c) {
                         tr.appendChild(el("td", "", fmtVal(c, row[c])));

@@ -33,6 +33,9 @@ const (
 
 	// MetricsRescan defines the rescan metrics group path.
 	MetricsRescan = Metrics + "/rescan"
+
+	// MetricsYgg defines the Yggdrasil mesh metrics group path.
+	MetricsYgg = Metrics + "/ygg"
 )
 
 // // // // // // // // // //
