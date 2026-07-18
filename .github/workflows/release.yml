@@ -90,7 +90,7 @@ jobs:
 
       - name: 🔎 Lookup green marker
         id: marker
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .ci/tests-green
           key: ${{ steps.hash.outputs.marker-key }}
